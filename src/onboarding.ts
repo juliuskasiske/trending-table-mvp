@@ -899,9 +899,12 @@ export function initOnboarding(): void {
     console.info("[trending-table] restaurant profile:", profile);
 
     window.setTimeout(() => {
-      const doneName = byId("done-name");
+      const doneTitle = byId("done-title");
       const doneEmail = byId("done-email");
-      if (doneName) doneName.textContent = profile.name || "friend";
+      // Greet by restaurant name when we have it; otherwise a clean "You're in."
+      // (never a placeholder). The account itself is keyed to the email below.
+      const name = profile.name.trim();
+      if (doneTitle) doneTitle.textContent = name ? `You're in, ${name}.` : "You're in.";
       if (doneEmail) doneEmail.textContent = profile.email;
       show(doneIndex);
       if (submitBtn) {
