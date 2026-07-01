@@ -36,6 +36,7 @@ npm run typecheck        # type-check only
 | `GOOGLE_MAPS_API_KEY`     | Google Cloud → enable **Places API (New)** → create an API key         |
 | `STRIPE_SECRET_KEY`       | Stripe Dashboard → Developers → API keys (`sk_test_…` to start)        |
 | `STRIPE_PUBLISHABLE_KEY`  | Same page (`pk_test_…`) — sent to the browser to init Stripe.js        |
+| `ANTHROPIC_API_KEY`       | [console.anthropic.com](https://console.anthropic.com/settings/keys) — powers PDF menu digitization |
 
 The secret keys never reach the browser. The frontend reads only what
 `/api/config` exposes (the publishable key + feature flags).
@@ -50,7 +51,9 @@ account  →  find restaurant  →  budget & payment  →  content guidelines  �
 2. **Find your restaurant** — Google Places search. Picking a result prefills
    **name, logo (website favicon / place photo), address, Google rating,
    category and description** — all editable. A menu link is prefilled from the
-   website (items import later). "Enter manually" is the fallback.
+   website. Alternatively, **upload a PDF menu** and it's digitized into
+   structured `{section, name, price}` items via Claude. "Enter manually" is the
+   fallback for the profile fields.
 3. **Budget** — a monthly spending-limit slider with live maths
    (**€0.01 / view + €50 fee**). Payment is deferred: when Stripe keys are set,
    this step also shows a **Stripe Payment Element** that saves a card via a
@@ -78,7 +81,7 @@ listed is captured, and the ones that can be are auto-filled:
 | Google rating (average)  | Google Places                                             |
 | Kurzbeschreibung         | Google Places editorial summary (editable)                |
 | Kategorisierung          | Google Places primary type (editable)                     |
-| Menu                     | Website menu link prefilled; item import is a later step  |
+| Menu                     | Website menu link, **or** upload a PDF → digitized into structured items via Claude |
 | Spending limit           | Budget slider (user)                                      |
 | Payment method           | Stripe SetupIntent (saved card)                           |
 | Content guidelines       | Structured presets + free text (user, with defaults)      |

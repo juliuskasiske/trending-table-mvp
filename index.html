@@ -134,9 +134,28 @@
                 </div>
 
                 <div class="field mb0">
-                  <label for="p-menu">Menu <span class="hint">(link — items import from here later)</span></label>
-                  <input class="input" type="url" id="p-menu" name="menuUrl"
-                    placeholder="https://…/menu" />
+                  <label>Menu</label>
+                  <div class="menu-tabs" role="tablist">
+                    <button type="button" class="menu-tab on" data-menu-tab="link">Link</button>
+                    <button type="button" class="menu-tab" data-menu-tab="pdf">Upload PDF</button>
+                  </div>
+
+                  <div data-menu-panel="link">
+                    <input class="input" type="url" id="p-menu" name="menuUrl"
+                      placeholder="https://…/menu" />
+                    <p class="menu-hint">We import items from this page later.</p>
+                  </div>
+
+                  <div data-menu-panel="pdf" hidden>
+                    <div class="notice" id="menu-ai-notice" hidden></div>
+                    <label class="filedrop" id="menu-drop">
+                      <input type="file" id="menu-pdf" accept="application/pdf" hidden />
+                      <span class="filedrop-icon" aria-hidden="true">⬆</span>
+                      <span id="menu-drop-text">Drop a PDF menu here, or click to choose</span>
+                    </label>
+                    <div class="menu-status" id="menu-status" hidden></div>
+                    <ul class="menu-items" id="menu-items"></ul>
+                  </div>
                 </div>
               </div>
             </div>
@@ -263,6 +282,7 @@
                 <div class="rrow"><dt>Category</dt><dd id="r-category">—</dd></div>
                 <div class="rrow"><dt>Address</dt><dd id="r-address">—</dd></div>
                 <div class="rrow"><dt>Google rating</dt><dd id="r-rating">—</dd></div>
+                <div class="rrow"><dt>Menu</dt><dd id="r-menu">—</dd></div>
               </dl>
             </div>
 

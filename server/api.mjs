@@ -12,14 +12,40 @@
 import { Router } from "express";
 import express from "express";
 import Stripe from "stripe";
+import Anthropic from "@anthropic-ai/sdk";
 
 const PLACES_KEY = process.env.GOOGLE_MAPS_API_KEY || "";
 const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY || "";
 const STRIPE_PUBLISHABLE = process.env.STRIPE_PUBLISHABLE_KEY || "";
+const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || "";
 
 const stripe = STRIPE_SECRET ? new Stripe(STRIPE_SECRET) : null;
+// Reads ANTHROPIC_API_KEY from the environment; null when unset so the app boots.
+const anthropic = ANTHROPIC_KEY ? new Anthropic() : null;
 
 const PLACES_BASE = "https://places.googleapis.com/v1";
+
+/** JSON Schema for a digitized menu — drives Claude's structured output. */
+const MENU_SCHEMA = {
+  type: "object",
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          section: { type: "string" },
+          name: { type: "string" },
+          price: { type: "string" },
+        },
+        required: ["name"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["items"],
+  additionalProperties: false,
+};
 
 /** Map a Google `types` array to a friendly primary category + tag list. */
 function classify(types = []) {
@@ -42,12 +68,14 @@ function classify(types = []) {
 
 export function createApiRouter() {
   const router = Router();
-  router.use(express.json());
+  // Menu PDFs arrive base64-encoded in the JSON body, so allow a large payload.
+  router.use(express.json({ limit: "25mb" }));
 
   // ---- Public config (safe to expose) ---------------------------------
   router.get("/config", (_req, res) => {
     res.json({
       placesEnabled: Boolean(PLACES_KEY),
+      menuAiEnabled: Boolean(anthropic),
       stripeEnabled: Boolean(stripe),
       stripePublishableKey: STRIPE_PUBLISHABLE || null,
       pricing: { ratePerView: 0.01, platformFee: 50 },
@@ -212,6 +240,52 @@ export function createApiRouter() {
       });
     } catch (err) {
       res.status(500).json({ error: "stripe_error", message: String(err) });
+    }
+  });
+
+  // ---- Menu: digitize a PDF into structured items --------------------
+  router.post("/menu/digitize", async (req, res) => {
+    if (!anthropic) {
+      return res
+        .status(501)
+        .json({ error: "not_configured", message: "Set ANTHROPIC_API_KEY." });
+    }
+    const data = String(req.body?.data || ""); // base64 PDF, no data: prefix
+    if (!data) return res.status(400).json({ error: "missing_pdf" });
+
+    try {
+      const message = await anthropic.messages.create({
+        model: "claude-opus-4-8",
+        max_tokens: 16000,
+        thinking: { type: "adaptive" },
+        output_config: { format: { type: "json_schema", schema: MENU_SCHEMA } },
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "document",
+                source: { type: "base64", media_type: "application/pdf", data },
+              },
+              {
+                type: "text",
+                text:
+                  "This is a restaurant menu. Extract every menu item as structured data. " +
+                  "For each item include its name, its price exactly as printed (e.g. \"€12,50\"), " +
+                  "and the section/heading it appears under (e.g. \"Starters\", \"Pizza\", \"Drinks\"). " +
+                  "Skip descriptions, allergen notes, and non-item text. Preserve the menu's order.",
+              },
+            ],
+          },
+        ],
+      });
+      // With output_config.format the first text block is the JSON payload.
+      const text = message.content.find((b) => b.type === "text")?.text ?? "{}";
+      const parsed = JSON.parse(text);
+      const items = Array.isArray(parsed.items) ? parsed.items : [];
+      res.json({ items, count: items.length });
+    } catch (err) {
+      res.status(500).json({ error: "digitize_error", message: String(err) });
     }
   });
 

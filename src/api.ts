@@ -2,10 +2,11 @@
  * Frontend API client — thin wrappers over the backend endpoints, plus a
  * couple of pure helpers (favicon logo, star markup) used by the UI.
  */
-import type { PlaceDetails, PlaceSuggestion } from "./types.ts";
+import type { MenuItem, PlaceDetails, PlaceSuggestion } from "./types.ts";
 
 export interface AppConfig {
   placesEnabled: boolean;
+  menuAiEnabled: boolean;
   stripeEnabled: boolean;
   stripePublishableKey: string | null;
   pricing: { ratePerView: number; platformFee: number };
@@ -49,6 +50,21 @@ export function faviconLogo(website: string | undefined, size = 128): string | u
   } catch {
     return undefined;
   }
+}
+
+/** Send a base64 PDF menu to the backend and get structured items back. */
+export async function digitizeMenu(base64Pdf: string): Promise<MenuItem[]> {
+  const r = await fetch("/api/menu/digitize", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ data: base64Pdf }),
+  });
+  if (!r.ok) {
+    const body = (await r.json().catch(() => ({}))) as { message?: string };
+    throw new Error(body.message || `digitize failed: ${r.status}`);
+  }
+  const data = (await r.json()) as { items?: MenuItem[] };
+  return data.items ?? [];
 }
 
 /** Create a Stripe SetupIntent so the restaurant can save a payment method. */

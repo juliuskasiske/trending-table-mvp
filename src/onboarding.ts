@@ -10,6 +10,7 @@
  */
 import {
   createSetupIntent,
+  digitizeMenu,
   faviconLogo,
   getConfig,
   getPaymentMethod,
@@ -23,6 +24,7 @@ import {
   PRICING,
   defaultGuidelines,
   type ContentGuidelines,
+  type MenuItem,
   type PaymentInfo,
   type PlaceDetails,
   type RestaurantProfile,
@@ -54,6 +56,7 @@ export function initOnboarding(): void {
   /* ---- App state ------------------------------------------------------- */
   let config: AppConfig | null = null;
   let selected: PlaceDetails | null = null; // chosen Google place (if any)
+  let menuItems: MenuItem[] = []; // digitized from an uploaded PDF menu
   let payment: PaymentInfo = { connected: false };
   let stripe: Stripe | null = null;
   let elements: StripeElements | null = null;
@@ -339,6 +342,103 @@ export function initOnboarding(): void {
     if (!selected) renderLogo((e.target as HTMLInputElement).value);
   });
 
+  /* ---- Menu: link vs digitized PDF ------------------------------------- */
+
+  form.querySelectorAll<HTMLButtonElement>(".menu-tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      const which = tab.dataset.menuTab;
+      form!.querySelectorAll<HTMLElement>(".menu-tab").forEach((t) =>
+        t.classList.toggle("on", t === tab),
+      );
+      form!.querySelectorAll<HTMLElement>("[data-menu-panel]").forEach((p) => {
+        p.hidden = p.dataset.menuPanel !== which;
+      });
+    });
+  });
+
+  function renderMenuItems(): void {
+    const list = byId<HTMLUListElement>("menu-items");
+    if (!list) return;
+    list.innerHTML = "";
+    let section = "";
+    for (const item of menuItems) {
+      if (item.section && item.section !== section) {
+        section = item.section;
+        const head = document.createElement("li");
+        head.className = "mi-section";
+        head.textContent = section;
+        list.appendChild(head);
+      }
+      const li = document.createElement("li");
+      li.innerHTML =
+        `<span class="mi-name"></span><span class="mi-price"></span>`;
+      li.querySelector(".mi-name")!.textContent = item.name;
+      li.querySelector(".mi-price")!.textContent = item.price ?? "";
+      list.appendChild(li);
+    }
+  }
+
+  function setMenuStatus(text: string, kind: "" | "loading" | "error" = ""): void {
+    const el = byId("menu-status");
+    if (!el) return;
+    el.hidden = text === "";
+    el.className = "menu-status" + (kind ? ` ${kind}` : "");
+    el.textContent = text;
+  }
+
+  /** Read a File as base64 (without the data: URL prefix). */
+  function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("read failed"));
+      reader.onload = () => {
+        const result = String(reader.result);
+        resolve(result.slice(result.indexOf(",") + 1));
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function handleMenuPdf(file: File): Promise<void> {
+    if (file.type !== "application/pdf") {
+      setMenuStatus("Please choose a PDF file.", "error");
+      return;
+    }
+    setMenuStatus(`Digitizing “${file.name}”…`, "loading");
+    try {
+      const base64 = await fileToBase64(file);
+      menuItems = await digitizeMenu(base64);
+      renderMenuItems();
+      setMenuStatus(
+        menuItems.length
+          ? `Digitized ${menuItems.length} item${menuItems.length === 1 ? "" : "s"}.`
+          : "No items found — try a clearer PDF.",
+      );
+      save();
+    } catch (err) {
+      setMenuStatus(`Couldn't digitize this menu: ${String(err)}`, "error");
+    }
+  }
+
+  const menuInput = byId<HTMLInputElement>("menu-pdf");
+  menuInput?.addEventListener("change", () => {
+    const file = menuInput.files?.[0];
+    if (file) void handleMenuPdf(file);
+  });
+
+  const drop = byId("menu-drop");
+  drop?.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    drop.classList.add("dragover");
+  });
+  drop?.addEventListener("dragleave", () => drop.classList.remove("dragover"));
+  drop?.addEventListener("drop", (e) => {
+    e.preventDefault();
+    drop.classList.remove("dragover");
+    const file = (e as DragEvent).dataTransfer?.files?.[0];
+    if (file) void handleMenuPdf(file);
+  });
+
   /* ---- Budget maths ---------------------------------------------------- */
 
   const limit = form.elements.namedItem("limit") as HTMLInputElement;
@@ -509,6 +609,12 @@ export function initOnboarding(): void {
     put("r-category", val("category"));
     put("r-address", val("address"));
     put("r-rating", selected?.rating ? `★ ${selected.rating.toFixed(1)}` : "—");
+    put(
+      "r-menu",
+      menuItems.length
+        ? `${menuItems.length} items (digitized from PDF)`
+        : val("menuUrl") || "Added later",
+    );
     const { limit: lim, views } = budget();
     put("r-limit", `${eur(lim)} / month`);
     put("r-views", `~${nf.format(views)} / month`);
@@ -533,6 +639,7 @@ export function initOnboarding(): void {
   function save(): void {
     const data: Record<string, unknown> = {
       selected,
+      menuItems,
       guidelines: guidelines(),
     };
     for (const n of [
@@ -578,6 +685,10 @@ export function initOnboarding(): void {
         if (typeof data[n] === "string") fill(idFor(n), data[n] as string);
       }
       if (data.selected) selected = data.selected as PlaceDetails;
+      if (Array.isArray(data.menuItems)) {
+        menuItems = data.menuItems as MenuItem[];
+        renderMenuItems();
+      }
       if (data.profileShown) {
         if (selected) {
           renderLogo(selected.name, selected.website, selected.photoName);
@@ -684,7 +795,7 @@ export function initOnboarding(): void {
       website: val("website") || undefined,
       logoUrl: selected?.website ? faviconLogo(selected.website) : undefined,
       photoName: selected?.photoName,
-      menu: [],
+      menu: menuItems,
       menuUrl: val("menuUrl") || undefined,
       spendingLimit: budget().limit,
       payment,
@@ -726,10 +837,25 @@ export function initOnboarding(): void {
         }
         if (manualToggle) manualToggle.hidden = false;
       }
+      // PDF digitization needs an Anthropic key — say so and disable the drop.
+      if (!c.menuAiEnabled) {
+        const notice = byId("menu-ai-notice");
+        if (notice) {
+          notice.hidden = false;
+          notice.textContent =
+            "PDF menu digitization needs ANTHROPIC_API_KEY. Add it to enable, or use the menu link instead.";
+        }
+        const dropEl = byId("menu-drop");
+        const input = byId<HTMLInputElement>("menu-pdf");
+        if (dropEl) dropEl.style.pointerEvents = "none";
+        if (dropEl) dropEl.style.opacity = "0.5";
+        if (input) input.disabled = true;
+      }
     })
     .catch(() => {
       config = {
         placesEnabled: false,
+        menuAiEnabled: false,
         stripeEnabled: false,
         stripePublishableKey: null,
         pricing: { ratePerView: PRICING.ratePerView, platformFee: PRICING.platformFee },
