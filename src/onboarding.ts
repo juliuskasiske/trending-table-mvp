@@ -792,69 +792,16 @@ export function initOnboarding(): void {
     }
   }
 
+  // Each visit starts a fresh restaurant. We deliberately do NOT resume a
+  // previous draft across page loads — otherwise reopening the app (or starting
+  // a new restaurant with a new email) would resurrect the last restaurant's
+  // name, menu and profile. Clear any stale draft on load.
   function restore(): void {
-    let raw: string | null = null;
     try {
-      raw = window.localStorage.getItem(STORAGE_KEY);
+      window.localStorage.removeItem(STORAGE_KEY);
     } catch {
-      raw = null;
+      /* storage unavailable — nothing to clear */
     }
-    if (!raw) return;
-    try {
-      const data = JSON.parse(raw) as Record<string, unknown>;
-      for (const n of [
-        "email",
-        "rname",
-        "category",
-        "address",
-        "description",
-        "website",
-        "menuUrl",
-        "limit",
-      ] as const) {
-        if (typeof data[n] === "string") fill(idFor(n), data[n] as string);
-      }
-      if (data.selected) selected = data.selected as PlaceDetails;
-      if (Array.isArray(data.menuItems)) {
-        menuItems = data.menuItems as MenuItem[];
-        renderMenuItems();
-      }
-      if (data.profileShown) {
-        if (selected) {
-          renderLogo(selected.name, selected.website, selected.photoName);
-          renderStars(selected.rating, selected.reviews);
-        } else {
-          renderLogo(val("rname"));
-          renderStars(undefined);
-        }
-        revealProfile();
-      }
-      const g = data.guidelines as ContentGuidelines | undefined;
-      if (g) {
-        fill("handle", g.handle ?? "");
-        fill("notes", g.notes ?? "");
-        pendingGuidelines = g;
-      }
-    } catch {
-      /* corrupt payload — ignore */
-    }
-  }
-
-  let pendingGuidelines: ContentGuidelines | null = null;
-  function idFor(name: string): string {
-    const map: Record<string, string> = {
-      rname: "p-name",
-      category: "p-category",
-      address: "p-address",
-      description: "p-description",
-      website: "p-website",
-      menuUrl: "p-menu",
-      email: "email",
-      limit: "limit",
-      handle: "handle",
-      notes: "notes",
-    };
-    return map[name] ?? name;
   }
 
   /* ---- Wiring ---------------------------------------------------------- */
@@ -944,17 +891,7 @@ export function initOnboarding(): void {
   /* ---- Boot ------------------------------------------------------------ */
 
   buildChips();
-  restore();
-  // Re-apply restored guideline selections after chips exist.
-  if (pendingGuidelines) {
-    (["show", "mustInclude", "avoid"] as const).forEach((group) => {
-      form!.querySelectorAll<HTMLInputElement>(`.chips[data-group="${group}"] input`).forEach((input) => {
-        const on = (pendingGuidelines![group] as string[]).includes(input.value);
-        input.checked = on;
-        input.closest(".chip")?.classList.toggle("on", on);
-      });
-    });
-  }
+  restore(); // clears any stale draft — every visit starts fresh
   renderBudget();
 
   getConfig()
