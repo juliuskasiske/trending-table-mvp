@@ -56,12 +56,13 @@ account  →  find restaurant  →  budget & payment  →  content guidelines  �
 2. **Find your restaurant** — Google Places search. Picking a result prefills
    **name, logo (website favicon / place photo), address, Google rating,
    category and description** — all editable. A menu link is prefilled from the
-   website. **Menu**: paste a menu **link** or **upload a PDF** — either way,
+   website. **Menu**: paste a menu **link** or **upload a PDF** —
    [MarkItDown](https://github.com/microsoft/markitdown) converts it (HTML or PDF)
-   to markdown, then **gpt-oss-120b** (via an OpenAI-compatible endpoint)
-   structures it into `{section, name, price}` items, with a heuristic fallback
-   when no LLM is configured. "Enter manually" is the fallback for the profile
-   fields.
+   to markdown, then a **fast heuristic** parses it into `{section, name, price}`
+   items instantly. The items are **editable** (rename, reprice, remove, add).
+   For messy menus, **✨ Improve with AI** re-runs the extraction through
+   **gpt-oss-120b** (slower, but far cleaner). "Enter manually" is the fallback
+   for the profile fields.
 3. **Budget** — a monthly spending-limit slider with live maths
    (**€0.01 / view + €50 fee**). Payment is deferred: when Stripe keys are set,
    this step also shows a **Stripe Payment Element** that saves a card via a

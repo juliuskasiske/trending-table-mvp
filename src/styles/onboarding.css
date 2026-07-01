@@ -813,9 +813,10 @@ body {
   border-color: var(--ink);
 }
 
-.mi-add {
+.menu-actions {
+  display: flex;
+  gap: 16px;
   margin-top: 10px;
-  display: inline-block;
 }
 
 /* ---- Payment ----------------------------------------------------------- */

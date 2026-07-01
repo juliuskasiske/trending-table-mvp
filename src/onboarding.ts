@@ -16,9 +16,11 @@ import {
   getConfig,
   getPaymentMethod,
   getPlaceDetails,
+  improveMenuWithAi,
   placePhotoUrl,
   searchPlaces,
   type AppConfig,
+  type MenuSource,
 } from "./api.ts";
 import {
   GUIDELINE_PRESETS,
@@ -58,6 +60,7 @@ export function initOnboarding(): void {
   let config: AppConfig | null = null;
   let selected: PlaceDetails | null = null; // chosen Google place (if any)
   let menuItems: MenuItem[] = []; // digitized from an uploaded PDF menu
+  let lastMenuSource: MenuSource | null = null; // for "improve with AI" re-runs
   let payment: PaymentInfo = { connected: false };
   let stripe: Stripe | null = null;
   let elements: StripeElements | null = null;
@@ -482,21 +485,46 @@ export function initOnboarding(): void {
       setMenuStatus("Please choose a PDF file.", "error");
       return;
     }
-    setMenuStatus(`Digitizing “${file.name}”…`, "loading");
+    setMenuStatus(`Reading “${file.name}”…`, "loading");
     try {
       const base64 = await fileToBase64(file);
+      lastMenuSource = { data: base64 };
       menuItems = await digitizeMenu(base64);
       renderMenuItems();
       setMenuStatus(
         menuItems.length
-          ? `Digitized ${menuItems.length} item${menuItems.length === 1 ? "" : "s"}.`
-          : "No items found — try a clearer PDF.",
+          ? `Read ${menuItems.length} item${menuItems.length === 1 ? "" : "s"}. Edit below, or improve with AI.`
+          : "No items found — try improving with AI, or a clearer PDF.",
       );
+      revealImprove();
       save();
     } catch (err) {
-      setMenuStatus(`Couldn't digitize this menu: ${String(err)}`, "error");
+      setMenuStatus(`Couldn't read this menu: ${String(err)}`, "error");
     }
   }
+
+  // Show the "Improve with AI" button only when gpt-oss is configured.
+  function revealImprove(): void {
+    const btn = byId("menu-improve");
+    if (btn) btn.hidden = !config?.menuLlmEnabled;
+  }
+
+  byId("menu-improve")?.addEventListener("click", async () => {
+    if (!lastMenuSource) return;
+    const btn = byId<HTMLButtonElement>("menu-improve");
+    if (btn) btn.disabled = true;
+    setMenuStatus("Improving with AI… this can take a few seconds.", "loading");
+    try {
+      menuItems = await improveMenuWithAi(lastMenuSource);
+      renderMenuItems();
+      setMenuStatus(`Improved — ${menuItems.length} items.`);
+      save();
+    } catch (err) {
+      setMenuStatus(`AI cleanup failed: ${String(err)}`, "error");
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
 
   const menuInput = byId<HTMLInputElement>("menu-pdf");
   menuInput?.addEventListener("change", () => {
@@ -513,13 +541,15 @@ export function initOnboarding(): void {
     }
     setMenuStatus("Reading your menu page…", "loading");
     try {
+      lastMenuSource = { url };
       menuItems = await digitizeMenuUrl(url);
       renderMenuItems();
       setMenuStatus(
         menuItems.length
-          ? `Digitized ${menuItems.length} item${menuItems.length === 1 ? "" : "s"}.`
-          : "No items found on that page — try the PDF upload instead.",
+          ? `Read ${menuItems.length} item${menuItems.length === 1 ? "" : "s"}. Edit below, or improve with AI.`
+          : "No items found — try improving with AI, or the PDF upload.",
       );
+      revealImprove();
       save();
     } catch (err) {
       setMenuStatus(`Couldn't read that menu: ${String(err)}`, "error");

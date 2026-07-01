@@ -53,12 +53,18 @@ export function faviconLogo(website: string | undefined, size = 128): string | u
   }
 }
 
-/** POST a digitize request (PDF bytes or a menu URL) and return the items. */
-async function postDigitize(body: { data: string } | { url: string }): Promise<MenuItem[]> {
+/** Where the menu bytes/markdown come from. */
+export type MenuSource = { data: string } | { url: string };
+
+/**
+ * POST a digitize request and return the items. `mode` defaults to the instant
+ * heuristic; pass "ai" to run the (slower) gpt-oss structuring.
+ */
+async function postDigitize(source: MenuSource, mode: "fast" | "ai" = "fast"): Promise<MenuItem[]> {
   const r = await fetch("/api/menu/digitize", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...source, mode }),
   });
   if (!r.ok) {
     const err = (await r.json().catch(() => ({}))) as { message?: string };
@@ -68,14 +74,19 @@ async function postDigitize(body: { data: string } | { url: string }): Promise<M
   return data.items ?? [];
 }
 
-/** Digitize an uploaded PDF menu (base64, no data: prefix) into items. */
+/** Digitize an uploaded PDF menu (base64, no data: prefix) — fast heuristic. */
 export function digitizeMenu(base64Pdf: string): Promise<MenuItem[]> {
   return postDigitize({ data: base64Pdf });
 }
 
-/** Digitize a menu web page (HTML link) into items via MarkItDown. */
+/** Digitize a menu web page (HTML link) — fast heuristic. */
 export function digitizeMenuUrl(url: string): Promise<MenuItem[]> {
   return postDigitize({ url });
+}
+
+/** Re-run digitization through gpt-oss-120b for cleaner results (slower). */
+export function improveMenuWithAi(source: MenuSource): Promise<MenuItem[]> {
+  return postDigitize(source, "ai");
 }
 
 /** Create a Stripe SetupIntent so the restaurant can save a payment method. */

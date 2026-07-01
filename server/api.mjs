@@ -362,14 +362,16 @@ export function createApiRouter() {
     }
     const data = String(req.body?.data || ""); // base64 PDF, no data: prefix
     const url = String(req.body?.url || "").trim(); // menu web page
+    // Default to the instant heuristic; only call the LLM when asked (mode:"ai").
+    const useLlm = req.body?.mode === "ai" && Boolean(llm);
     if (!data && !url) return res.status(400).json({ error: "missing_source" });
 
     try {
       const markdown = data ? await pdfToMarkdown(data) : await urlToMarkdown(url);
-      const items = llm
+      const items = useLlm
         ? await structureMenuWithLlm(markdown)
         : parseMenuMarkdown(markdown);
-      res.json({ items, count: items.length, source: llm ? "llm" : "heuristic" });
+      res.json({ items, count: items.length, source: useLlm ? "llm" : "heuristic" });
     } catch (err) {
       res.status(500).json({ error: "digitize_error", message: String(err) });
     }
