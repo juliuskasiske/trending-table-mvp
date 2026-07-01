@@ -140,22 +140,28 @@
                     <button type="button" class="menu-tab" data-menu-tab="pdf">Upload PDF</button>
                   </div>
 
+                  <div class="notice" id="menu-ai-notice" hidden></div>
+
                   <div data-menu-panel="link">
-                    <input class="input" type="url" id="p-menu" name="menuUrl"
-                      placeholder="https://…/menu" />
-                    <p class="menu-hint">We import items from this page later.</p>
+                    <div class="menu-link-row">
+                      <input class="input" type="url" id="p-menu" name="menuUrl"
+                        placeholder="https://…/menu" />
+                      <button type="button" class="btn btn-ink" id="digitize-link">Digitize</button>
+                    </div>
+                    <p class="menu-hint">Paste your menu page and we'll pull the items from it.</p>
                   </div>
 
                   <div data-menu-panel="pdf" hidden>
-                    <div class="notice" id="menu-ai-notice" hidden></div>
                     <label class="filedrop" id="menu-drop">
                       <input type="file" id="menu-pdf" accept="application/pdf" hidden />
                       <span class="filedrop-icon" aria-hidden="true">⬆</span>
                       <span id="menu-drop-text">Drop a PDF menu here, or click to choose</span>
                     </label>
-                    <div class="menu-status" id="menu-status" hidden></div>
-                    <ul class="menu-items" id="menu-items"></ul>
                   </div>
+
+                  <!-- shared results for both link + PDF digitization -->
+                  <div class="menu-status" id="menu-status" hidden></div>
+                  <ul class="menu-items" id="menu-items"></ul>
                 </div>
               </div>
             </div>

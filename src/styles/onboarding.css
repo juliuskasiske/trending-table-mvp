@@ -648,6 +648,20 @@ body {
   color: var(--on-accent);
 }
 
+.menu-link-row {
+  display: flex;
+  gap: 10px;
+}
+
+.menu-link-row .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.menu-link-row .btn {
+  flex: none;
+}
+
 .menu-hint {
   font-size: 13px;
   color: var(--muted);
@@ -849,12 +863,11 @@ body {
   font-weight: 600;
   cursor: pointer;
   user-select: none;
-  transition: box-shadow 0.08s ease, transform 0.08s ease;
+  transition: border-color 0.08s ease, background 0.08s ease;
 }
 
 .chip:hover {
-  transform: translate(-1px, -1px);
-  box-shadow: 3px 3px 0 var(--ink);
+  border-color: var(--accent-2);
 }
 
 .chip input {
@@ -875,9 +888,11 @@ body {
   color: var(--on-accent);
 }
 
+/* Selected state reads via the filled check + accent border — no drop shadow
+ * (the offset shadow made the small chip text look fuzzy). */
 .chip.on {
   background: var(--panel);
-  box-shadow: 3px 3px 0 var(--accent);
+  border-color: var(--accent);
 }
 
 .chip.on .box {

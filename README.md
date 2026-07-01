@@ -56,11 +56,12 @@ account  →  find restaurant  →  budget & payment  →  content guidelines  �
 2. **Find your restaurant** — Google Places search. Picking a result prefills
    **name, logo (website favicon / place photo), address, Google rating,
    category and description** — all editable. A menu link is prefilled from the
-   website. Alternatively, **upload a PDF menu**: [MarkItDown](https://github.com/microsoft/markitdown)
-   converts it to markdown, then **gpt-oss-120b** (via an OpenAI-compatible
-   endpoint) structures it into `{section, name, price}` items — with a heuristic
-   fallback when no LLM is configured. "Enter manually" is the fallback for the
-   profile fields.
+   website. **Menu**: paste a menu **link** or **upload a PDF** — either way,
+   [MarkItDown](https://github.com/microsoft/markitdown) converts it (HTML or PDF)
+   to markdown, then **gpt-oss-120b** (via an OpenAI-compatible endpoint)
+   structures it into `{section, name, price}` items, with a heuristic fallback
+   when no LLM is configured. "Enter manually" is the fallback for the profile
+   fields.
 3. **Budget** — a monthly spending-limit slider with live maths
    (**€0.01 / view + €50 fee**). Payment is deferred: when Stripe keys are set,
    this step also shows a **Stripe Payment Element** that saves a card via a
@@ -88,7 +89,7 @@ listed is captured, and the ones that can be are auto-filled:
 | Google rating (average)  | Google Places                                             |
 | Kurzbeschreibung         | Google Places editorial summary (editable)                |
 | Kategorisierung          | Google Places primary type (editable)                     |
-| Menu                     | Website menu link, **or** upload a PDF → MarkItDown + gpt-oss-120b → structured items |
+| Menu                     | Menu **link or PDF** → MarkItDown (HTML/PDF → markdown) + gpt-oss-120b → structured items |
 | Spending limit           | Budget slider (user)                                      |
 | Payment method           | Stripe SetupIntent (saved card)                           |
 | Content guidelines       | Structured presets + free text (user, with defaults)      |

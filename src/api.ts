@@ -53,19 +53,29 @@ export function faviconLogo(website: string | undefined, size = 128): string | u
   }
 }
 
-/** Send a base64 PDF menu to the backend and get structured items back. */
-export async function digitizeMenu(base64Pdf: string): Promise<MenuItem[]> {
+/** POST a digitize request (PDF bytes or a menu URL) and return the items. */
+async function postDigitize(body: { data: string } | { url: string }): Promise<MenuItem[]> {
   const r = await fetch("/api/menu/digitize", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ data: base64Pdf }),
+    body: JSON.stringify(body),
   });
   if (!r.ok) {
-    const body = (await r.json().catch(() => ({}))) as { message?: string };
-    throw new Error(body.message || `digitize failed: ${r.status}`);
+    const err = (await r.json().catch(() => ({}))) as { message?: string };
+    throw new Error(err.message || `digitize failed: ${r.status}`);
   }
   const data = (await r.json()) as { items?: MenuItem[] };
   return data.items ?? [];
+}
+
+/** Digitize an uploaded PDF menu (base64, no data: prefix) into items. */
+export function digitizeMenu(base64Pdf: string): Promise<MenuItem[]> {
+  return postDigitize({ data: base64Pdf });
+}
+
+/** Digitize a menu web page (HTML link) into items via MarkItDown. */
+export function digitizeMenuUrl(url: string): Promise<MenuItem[]> {
+  return postDigitize({ url });
 }
 
 /** Create a Stripe SetupIntent so the restaurant can save a payment method. */

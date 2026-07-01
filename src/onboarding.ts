@@ -11,6 +11,7 @@
 import {
   createSetupIntent,
   digitizeMenu,
+  digitizeMenuUrl,
   faviconLogo,
   getConfig,
   getPaymentMethod,
@@ -426,6 +427,28 @@ export function initOnboarding(): void {
     if (file) void handleMenuPdf(file);
   });
 
+  // Digitize a menu web page (the Link tab) through the same pipeline.
+  byId("digitize-link")?.addEventListener("click", async () => {
+    const url = val("menuUrl");
+    if (!url) {
+      setMenuStatus("Add your menu page URL first.", "error");
+      return;
+    }
+    setMenuStatus("Reading your menu page…", "loading");
+    try {
+      menuItems = await digitizeMenuUrl(url);
+      renderMenuItems();
+      setMenuStatus(
+        menuItems.length
+          ? `Digitized ${menuItems.length} item${menuItems.length === 1 ? "" : "s"}.`
+          : "No items found on that page — try the PDF upload instead.",
+      );
+      save();
+    } catch (err) {
+      setMenuStatus(`Couldn't read that menu: ${String(err)}`, "error");
+    }
+  });
+
   const drop = byId("menu-drop");
   drop?.addEventListener("dragover", (e) => {
     e.preventDefault();
@@ -837,19 +860,21 @@ export function initOnboarding(): void {
         }
         if (manualToggle) manualToggle.hidden = false;
       }
-      // PDF digitization needs MarkItDown on the server — say so, disable drop.
+      // Menu digitization (PDF + link) needs MarkItDown on the server.
       if (!c.menuAiEnabled) {
         const notice = byId("menu-ai-notice");
         if (notice) {
           notice.hidden = false;
           notice.textContent =
-            "PDF menu digitization needs the MarkItDown library on the server (pip install 'markitdown[pdf]'). Use the menu link instead for now.";
+            "Menu digitization needs the MarkItDown library on the server (pip install 'markitdown[pdf]').";
         }
         const dropEl = byId("menu-drop");
         const input = byId<HTMLInputElement>("menu-pdf");
         if (dropEl) dropEl.style.pointerEvents = "none";
         if (dropEl) dropEl.style.opacity = "0.5";
         if (input) input.disabled = true;
+        const linkBtn = byId<HTMLButtonElement>("digitize-link");
+        if (linkBtn) linkBtn.disabled = true;
       } else if (!c.menuLlmEnabled) {
         // MarkItDown works, but no LLM configured — items come from a simpler
         // heuristic parse. Let the user know it's best-effort.

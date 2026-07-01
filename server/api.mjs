@@ -74,6 +74,34 @@ async function pdfToMarkdown(base64) {
   }
 }
 
+/** Fetch a menu web page and convert its HTML to markdown via MarkItDown. */
+async function urlToMarkdown(url) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error("Invalid URL");
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("Only http(s) URLs are supported");
+  }
+  const r = await fetch(url, { redirect: "follow" });
+  if (!r.ok) throw new Error(`Couldn't fetch the page (${r.status})`);
+  const html = await r.text();
+  const dir = await mkdtemp(join(tmpdir(), "tt-menu-"));
+  const file = join(dir, "menu.html");
+  await writeFile(file, html);
+  try {
+    const { stdout } = await execFileP(PYTHON_BIN, ["-c", MARKITDOWN_PY, file], {
+      maxBuffer: 25 * 1024 * 1024,
+    });
+    return stdout;
+  } finally {
+    await unlink(file).catch(() => {});
+    await rmdir(dir).catch(() => {});
+  }
+}
+
 /** Structure menu markdown into items using gpt-oss-120b (agent step). */
 async function structureMenuWithLlm(markdown) {
   const resp = await llm.chat.completions.create({
@@ -322,8 +350,8 @@ export function createApiRouter() {
     }
   });
 
-  // ---- Menu: digitize a PDF into structured items --------------------
-  //  MarkItDown turns the PDF into markdown; gpt-oss-120b (or a heuristic
+  // ---- Menu: digitize a PDF *or* a web page into structured items -----
+  //  MarkItDown turns the PDF/HTML into markdown; gpt-oss-120b (or a heuristic
   //  fallback) turns the markdown into structured {section, name, price} items.
   router.post("/menu/digitize", async (req, res) => {
     if (!(await isMarkitdownReady())) {
@@ -333,10 +361,11 @@ export function createApiRouter() {
       });
     }
     const data = String(req.body?.data || ""); // base64 PDF, no data: prefix
-    if (!data) return res.status(400).json({ error: "missing_pdf" });
+    const url = String(req.body?.url || "").trim(); // menu web page
+    if (!data && !url) return res.status(400).json({ error: "missing_source" });
 
     try {
-      const markdown = await pdfToMarkdown(data);
+      const markdown = data ? await pdfToMarkdown(data) : await urlToMarkdown(url);
       const items = llm
         ? await structureMenuWithLlm(markdown)
         : parseMenuMarkdown(markdown);
