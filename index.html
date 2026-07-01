@@ -79,8 +79,12 @@
             <div id="search-block">
               <div class="field">
                 <label for="place-search">Restaurant name &amp; city</label>
-                <input class="input" type="text" id="place-search"
-                  autocomplete="off" placeholder="e.g. Osteria Nova, Berlin" />
+                <div class="search-row">
+                  <input class="input" type="text" id="place-search"
+                    autocomplete="off" placeholder="e.g. Osteria Nova, Berlin" />
+                  <button type="button" class="btn btn-ink" id="place-search-btn">Search</button>
+                </div>
+                <p class="menu-hint">Enter your name and city, then hit Search.</p>
                 <p class="field-error" data-error-for="place">Please pick your restaurant to continue.</p>
               </div>
               <div class="notice" id="search-notice" hidden></div>

@@ -497,6 +497,22 @@ body {
   margin-bottom: 0;
 }
 
+/* ---- Search ------------------------------------------------------------ */
+
+.search-row {
+  display: flex;
+  gap: 10px;
+}
+
+.search-row .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.search-row .btn {
+  flex: none;
+}
+
 /* ---- Search results ---------------------------------------------------- */
 
 .results {

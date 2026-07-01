@@ -319,11 +319,17 @@ export function initOnboarding(): void {
     }
   }
 
-  let searchTimer = 0;
-  searchInput?.addEventListener("input", () => {
-    window.clearTimeout(searchTimer);
-    const q = searchInput.value.trim();
-    searchTimer = window.setTimeout(() => void runSearch(q), 300);
+  // Search Google only on an explicit trigger (button click or Enter) — never
+  // per keystroke, so we don't hit the Places API on every character.
+  function triggerSearch(): void {
+    void runSearch(searchInput?.value.trim() ?? "");
+  }
+  byId("place-search-btn")?.addEventListener("click", triggerSearch);
+  searchInput?.addEventListener("keydown", (e) => {
+    if ((e as KeyboardEvent).key === "Enter") {
+      e.preventDefault();
+      triggerSearch();
+    }
   });
 
   manualToggle?.addEventListener("click", () => manualProfile(searchInput?.value.trim() ?? ""));
