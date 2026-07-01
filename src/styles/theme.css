@@ -1,0 +1,24 @@
+/*
+ * Risograph theme tokens.
+ * Canonical design tokens from the Trending Table style guide, kept in sync
+ * with the marketing site. A palette or type change happens here and nowhere
+ * else.
+ */
+.theme-risograph {
+  /* Palette */
+  --bg: #f9f6f0;
+  --panel: #ffffff;
+  --ink: #171717;
+  --muted: #6b6b6b;
+  --accent: #ff3d86;
+  --accent-2: #2b55ff;
+  --line: #171717;
+  --on-accent: #ffffff;
+
+  /* Typography */
+  --font: "Hanken Grotesk", system-ui, sans-serif;
+  --font-display: "Syne", sans-serif;
+
+  /* Layout */
+  --maxw: 1200px;
+}

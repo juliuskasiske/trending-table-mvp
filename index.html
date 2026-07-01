@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Get started — Trending Table</title>
+    <meta
+      name="description"
+      content="Register your restaurant on Trending Table and start booking verified local food creators."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Hanken+Grotesk:wght@400;500;600;800&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body class="theme-risograph">
+    <div class="shell">
+      <!-- Top bar -->
+      <header class="topbar">
+        <div class="container topbar-inner">
+          <a href="/" class="brand-logo">trending table<span class="dot">.</span></a>
+          <span class="topbar-tag">Restaurant sign-up</span>
+        </div>
+      </header>
+
+      <!-- Progress -->
+      <div class="container progress" id="progress" hidden>
+        <ol class="progress-steps" id="progress-steps"></ol>
+        <p class="progress-label">
+          Step <b id="progress-current">1</b> of <b id="progress-total">5</b>
+          — <span id="progress-name"></span>
+        </p>
+      </div>
+
+      <!-- Stage -->
+      <main class="container stage">
+        <form id="onboarding" novalidate>
+          <!-- Step 1 — Account -->
+          <section class="step active card" data-step="account" data-name="Create account">
+            <p class="step-eyebrow">Register as a restaurant</p>
+            <h1 class="step-title">Create your account</h1>
+            <p class="step-sub">
+              Skip the ad budget. Book local creators and fill your tables. This
+              is the only thing you'll type by hand — the rest we pull in for you.
+            </p>
+
+            <div class="field">
+              <label for="email">Work email</label>
+              <input class="input" type="email" id="email" name="email"
+                autocomplete="email" placeholder="owner@yourrestaurant.com" required />
+              <p class="field-error" data-error-for="email">Enter a valid email address.</p>
+            </div>
+
+            <div class="field">
+              <label for="password">Password <span class="hint">(min. 8 characters)</span></label>
+              <input class="input" type="password" id="password" name="password"
+                autocomplete="new-password" minlength="8" required />
+              <p class="field-error" data-error-for="password">Use at least 8 characters.</p>
+            </div>
+
+            <div class="actions">
+              <button type="button" class="btn btn-ghost hidden" data-back>Back</button>
+              <button type="button" class="btn btn-primary" data-next>Continue</button>
+            </div>
+          </section>
+
+          <!-- Step 2 — Find restaurant -->
+          <section class="step card" data-step="restaurant" data-name="Find your restaurant">
+            <p class="step-eyebrow">One search, everything filled</p>
+            <h1 class="step-title">Find your restaurant</h1>
+            <p class="step-sub">
+              Search Google and we'll pull in your name, logo, address, rating,
+              category and description automatically. You just confirm.
+            </p>
+
+            <!-- Search -->
+            <div id="search-block">
+              <div class="field">
+                <label for="place-search">Restaurant name &amp; city</label>
+                <input class="input" type="text" id="place-search"
+                  autocomplete="off" placeholder="e.g. Osteria Nova, Berlin" />
+                <p class="field-error" data-error-for="place">Please pick your restaurant to continue.</p>
+              </div>
+              <div class="notice" id="search-notice" hidden></div>
+              <ul class="results" id="search-results"></ul>
+              <button type="button" class="linklike" id="manual-toggle" hidden>
+                Can't find it? Enter details manually
+              </button>
+            </div>
+
+            <!-- Prefilled profile (revealed after a place is chosen) -->
+            <div id="profile-block" hidden>
+              <div class="prefill-banner">
+                <span class="prefill-dot" aria-hidden="true"></span>
+                <span id="prefill-text">Pulled from Google. Edit anything that's off.</span>
+                <button type="button" class="linklike" id="search-again">Search again</button>
+              </div>
+
+              <div class="profile">
+                <div class="profile-head">
+                  <div class="profile-logo" id="p-logo" aria-hidden="true"></div>
+                  <div class="profile-id">
+                    <div class="field mb0">
+                      <label for="p-name">Name</label>
+                      <input class="input" type="text" id="p-name" name="rname" required />
+                    </div>
+                    <div class="stars" id="p-rating"></div>
+                  </div>
+                </div>
+
+                <div class="row">
+                  <div class="field">
+                    <label for="p-category">Category <span class="hint">(Kategorisierung)</span></label>
+                    <input class="input" type="text" id="p-category" name="category" required />
+                  </div>
+                  <div class="field">
+                    <label for="p-website">Website</label>
+                    <input class="input" type="url" id="p-website" name="website"
+                      placeholder="https://…" />
+                  </div>
+                </div>
+
+                <div class="field">
+                  <label for="p-address">Address</label>
+                  <input class="input" type="text" id="p-address" name="address" required />
+                </div>
+
+                <div class="field">
+                  <label for="p-description">Short description <span class="hint">(Kurzbeschreibung)</span></label>
+                  <textarea class="textarea" id="p-description" name="description"
+                    placeholder="One or two lines about your place."></textarea>
+                </div>
+
+                <div class="field mb0">
+                  <label for="p-menu">Menu <span class="hint">(link — items import from here later)</span></label>
+                  <input class="input" type="url" id="p-menu" name="menuUrl"
+                    placeholder="https://…/menu" />
+                </div>
+              </div>
+            </div>
+
+            <div class="actions">
+              <button type="button" class="btn btn-ghost" data-back>Back</button>
+              <button type="button" class="btn btn-primary" data-next>Continue</button>
+            </div>
+          </section>
+
+          <!-- Step 3 — Budget & payment -->
+          <section class="step card" data-step="billing" data-name="Budget &amp; payment">
+            <p class="step-eyebrow">Stay in control</p>
+            <h1 class="step-title">Set your monthly budget</h1>
+            <p class="step-sub">
+              You pay €0.01 per view plus a €50 platform fee. Spend stops the
+              moment you hit your limit — never a euro more.
+            </p>
+
+            <div class="budget">
+              <div class="slider-wrap">
+                <input class="slider" type="range" id="limit" name="limit"
+                  min="100" max="2000" step="50" value="500" />
+                <div class="slider-scale"><span>€100</span><span>€2,000</span></div>
+              </div>
+
+              <div class="budget-figures">
+                <div class="figure accent">
+                  <div class="f-label">Monthly limit</div>
+                  <div class="f-value" id="fig-limit">€500</div>
+                </div>
+                <div class="figure">
+                  <div class="f-label">Est. views / month</div>
+                  <div class="f-value" id="fig-views">45,000</div>
+                </div>
+                <div class="figure">
+                  <div class="f-label">Est. reach value</div>
+                  <div class="f-value" id="fig-cpm">€5 CPM</div>
+                </div>
+              </div>
+
+              <p class="breakdown">
+                At your limit: <b id="bd-fee">€50</b> platform fee +
+                <b id="bd-views">€450</b> in views
+                (<b id="bd-count">45,000</b> views at €0.01 each).
+              </p>
+            </div>
+
+            <div class="pay">
+              <h2 class="pay-title">Payment method <span class="pay-soon">coming soon</span></h2>
+              <div class="notice" id="pay-notice" hidden></div>
+              <!-- Stripe Payment Element mounts here -->
+              <div id="payment-element"></div>
+              <p class="field-error" data-error-for="payment">Please add a payment method to continue.</p>
+              <div class="pay-status" id="pay-status" hidden>
+                <span class="pay-check" aria-hidden="true">✓</span>
+                <span id="pay-status-text">Card saved</span>
+              </div>
+              <button type="button" class="btn btn-ink" id="save-card" hidden>Save card</button>
+            </div>
+
+            <div class="actions">
+              <button type="button" class="btn btn-ghost" data-back>Back</button>
+              <button type="button" class="btn btn-primary" data-next>Continue</button>
+            </div>
+          </section>
+
+          <!-- Step 4 — Content guidelines -->
+          <section class="step card" data-step="guidelines" data-name="Content guidelines">
+            <p class="step-eyebrow">Set the creative brief</p>
+            <h1 class="step-title">Your content guidelines</h1>
+            <p class="step-sub">
+              Tell creators what good looks like. We've pre-picked sensible
+              defaults — adjust, then add anything specific at the bottom.
+            </p>
+
+            <div class="field">
+              <label for="handle">Handle to tag <span class="hint">(optional)</span></label>
+              <input class="input" type="text" id="handle" name="handle" placeholder="@yourrestaurant" />
+            </div>
+
+            <fieldset class="guide-group">
+              <legend>Posts should show</legend>
+              <div class="chips" data-group="show"></div>
+            </fieldset>
+
+            <fieldset class="guide-group">
+              <legend>Every post must</legend>
+              <div class="chips" data-group="mustInclude"></div>
+            </fieldset>
+
+            <fieldset class="guide-group">
+              <legend>Please avoid</legend>
+              <div class="chips" data-group="avoid"></div>
+            </fieldset>
+
+            <div class="field mb0">
+              <label for="notes">Anything else? <span class="hint">(free text)</span></label>
+              <textarea class="textarea" id="notes" name="notes"
+                placeholder="e.g. Our terrace looks best in daylight. Please feature the wood-fired oven."></textarea>
+            </div>
+
+            <div class="actions">
+              <button type="button" class="btn btn-ghost" data-back>Back</button>
+              <button type="button" class="btn btn-primary" data-next>Review</button>
+            </div>
+          </section>
+
+          <!-- Step 5 — Review -->
+          <section class="step card" data-step="review" data-name="Review &amp; confirm">
+            <p class="step-eyebrow">Almost there</p>
+            <h1 class="step-title">Review and confirm</h1>
+            <p class="step-sub">Check the details, then create your restaurant account.</p>
+
+            <div class="review-group">
+              <h3>Account <button type="button" class="edit" data-goto="0">Edit</button></h3>
+              <dl><div class="rrow"><dt>Email</dt><dd id="r-email">—</dd></div></dl>
+            </div>
+
+            <div class="review-group">
+              <h3>Restaurant <button type="button" class="edit" data-goto="1">Edit</button></h3>
+              <dl>
+                <div class="rrow"><dt>Name</dt><dd id="r-name">—</dd></div>
+                <div class="rrow"><dt>Category</dt><dd id="r-category">—</dd></div>
+                <div class="rrow"><dt>Address</dt><dd id="r-address">—</dd></div>
+                <div class="rrow"><dt>Google rating</dt><dd id="r-rating">—</dd></div>
+              </dl>
+            </div>
+
+            <div class="review-group">
+              <h3>Budget &amp; payment <button type="button" class="edit" data-goto="2">Edit</button></h3>
+              <dl>
+                <div class="rrow"><dt>Monthly limit</dt><dd id="r-limit">—</dd></div>
+                <div class="rrow"><dt>Est. views</dt><dd id="r-views">—</dd></div>
+                <div class="rrow"><dt>Payment</dt><dd id="r-payment">—</dd></div>
+              </dl>
+            </div>
+
+            <div class="review-group">
+              <h3>Content guidelines <button type="button" class="edit" data-goto="3">Edit</button></h3>
+              <dl>
+                <div class="rrow"><dt>Show</dt><dd id="r-show">—</dd></div>
+                <div class="rrow"><dt>Must include</dt><dd id="r-must">—</dd></div>
+                <div class="rrow"><dt>Avoid</dt><dd id="r-avoid">—</dd></div>
+              </dl>
+            </div>
+
+            <label class="consent">
+              <input type="checkbox" id="consent" name="consent" required />
+              <span>
+                I agree to the <a href="#" tabindex="-1">Terms</a> and
+                <a href="#" tabindex="-1">Privacy Policy</a>, and to a €50 monthly
+                platform fee plus €0.01 per view while my account is active.
+              </span>
+            </label>
+            <p class="field-error" data-error-for="consent" style="margin-top: 8px">
+              Please accept the terms to continue.
+            </p>
+
+            <div class="actions">
+              <button type="button" class="btn btn-ghost" data-back>Back</button>
+              <button type="submit" class="btn btn-primary" data-submit>Create account</button>
+            </div>
+          </section>
+
+          <!-- Success -->
+          <section class="step card success" data-step="done" data-name="Done">
+            <div class="badge" aria-hidden="true">
+              <svg width="34" height="34" viewBox="0 0 24 24" fill="none"
+                stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 6 9 17l-5-5" />
+              </svg>
+            </div>
+            <h2>You're in, <span id="done-name">friend</span>.</h2>
+            <p>
+              Your restaurant account is ready. We're matching verified local
+              creators to your guidelines — you'll get your first picks by email
+              at <b id="done-email">your inbox</b>.
+            </p>
+            <button type="button" class="btn btn-primary" id="restart">Start another restaurant</button>
+          </section>
+        </form>
+      </main>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

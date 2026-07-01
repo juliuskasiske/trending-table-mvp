@@ -1,0 +1,32 @@
+{
+  "name": "trending-table-mvp",
+  "version": "0.1.0",
+  "description": "Trending Table MVP — restaurant onboarding flow. Risograph-themed, TypeScript + Vite.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5174 --strictPort",
+    "build": "tsc && vite build",
+    "start": "node server/index.mjs",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "trending-table",
+    "onboarding",
+    "restaurants",
+    "mvp"
+  ],
+  "author": "Trending Table",
+  "license": "UNLICENSED",
+  "private": true,
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5"
+  },
+  "dependencies": {
+    "@stripe/stripe-js": "^9.8.0",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "stripe": "^22.3.0"
+  }
+}
