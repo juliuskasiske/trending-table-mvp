@@ -229,6 +229,8 @@ export function initOnboarding(): void {
   function revealProfile(): void {
     if (profileBlock) profileBlock.hidden = false;
     if (searchBlock) searchBlock.hidden = true;
+    const addBtn = byId("menu-add"); // allow adding menu items by hand too
+    if (addBtn) addBtn.hidden = false;
     setError("place", false);
   }
 
@@ -363,27 +365,96 @@ export function initOnboarding(): void {
     });
   });
 
+  /**
+   * Render the digitized menu as an editable list: each item's name and price
+   * are inputs bound directly to the item (typing mutates the model, no
+   * re-render, so focus is never lost); each section heading is editable and
+   * renames its whole contiguous group; every row has a remove button.
+   */
   function renderMenuItems(): void {
     const list = byId<HTMLUListElement>("menu-items");
     if (!list) return;
     list.innerHTML = "";
-    let section = "";
+
+    // Group into contiguous runs by section so a heading edit renames the run.
+    const groups: Array<{ section: string; items: MenuItem[] }> = [];
     for (const item of menuItems) {
-      if (item.section && item.section !== section) {
-        section = item.section;
-        const head = document.createElement("li");
-        head.className = "mi-section";
-        head.textContent = section;
-        list.appendChild(head);
-      }
-      const li = document.createElement("li");
-      li.innerHTML =
-        `<span class="mi-name"></span><span class="mi-price"></span>`;
-      li.querySelector(".mi-name")!.textContent = item.name;
-      li.querySelector(".mi-price")!.textContent = item.price ?? "";
-      list.appendChild(li);
+      const sec = item.section ?? "";
+      const last = groups[groups.length - 1];
+      if (last && last.section === sec) last.items.push(item);
+      else groups.push({ section: sec, items: [item] });
     }
+
+    for (const group of groups) {
+      const head = document.createElement("li");
+      head.className = "mi-section-row";
+      const sectionInput = document.createElement("input");
+      sectionInput.className = "input mi-section-input";
+      sectionInput.value = group.section;
+      sectionInput.placeholder = "Section";
+      sectionInput.addEventListener("input", () => {
+        group.items.forEach((it) => (it.section = sectionInput.value));
+        save();
+      });
+      head.appendChild(sectionInput);
+      list.appendChild(head);
+
+      for (const item of group.items) {
+        const row = document.createElement("li");
+        row.className = "mi-row";
+
+        const name = document.createElement("input");
+        name.className = "input mi-name-input";
+        name.value = item.name;
+        name.placeholder = "Item name";
+        name.addEventListener("input", () => {
+          item.name = name.value;
+          save();
+        });
+
+        const price = document.createElement("input");
+        price.className = "input mi-price-input";
+        price.value = item.price ?? "";
+        price.placeholder = "€0,00";
+        price.addEventListener("input", () => {
+          item.price = price.value;
+          save();
+        });
+
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "mi-remove";
+        remove.setAttribute("aria-label", `Remove ${item.name || "item"}`);
+        remove.textContent = "✕";
+        remove.addEventListener("click", () => {
+          const idx = menuItems.indexOf(item);
+          if (idx >= 0) menuItems.splice(idx, 1);
+          renderMenuItems();
+          save();
+        });
+
+        row.append(name, price, remove);
+        list.appendChild(row);
+      }
+    }
+
+    const addBtn = byId("menu-add");
+    if (addBtn) addBtn.hidden = false;
   }
+
+  // Add a blank item (inherits the last item's section) and focus its name.
+  byId("menu-add")?.addEventListener("click", () => {
+    const lastSection = menuItems.length
+      ? menuItems[menuItems.length - 1].section ?? ""
+      : "";
+    menuItems.push({ section: lastSection, name: "", price: "" });
+    renderMenuItems();
+    save();
+    const names = document.querySelectorAll<HTMLInputElement>(
+      "#menu-items .mi-name-input",
+    );
+    names[names.length - 1]?.focus();
+  });
 
   function setMenuStatus(text: string, kind: "" | "loading" | "error" = ""): void {
     const el = byId("menu-status");
@@ -641,7 +712,7 @@ export function initOnboarding(): void {
     put(
       "r-menu",
       menuItems.length
-        ? `${menuItems.length} items (digitized from PDF)`
+        ? `${menuItems.length} menu items`
         : val("menuUrl") || "Added later",
     );
     const { limit: lim, views } = budget();

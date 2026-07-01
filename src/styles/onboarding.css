@@ -750,7 +750,7 @@ body {
   list-style: none;
   margin: 12px 0 0;
   padding: 0;
-  max-height: 220px;
+  max-height: 280px;
   overflow: auto;
   border: 2px solid var(--line);
 }
@@ -759,30 +759,63 @@ body {
   display: none;
 }
 
-.menu-items li {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--line);
-  font-size: 14px;
+/* compact inputs inside the editable list */
+.menu-items .input {
+  padding: 7px 9px;
+  font-size: 13px;
 }
 
-.menu-items li:last-child {
+.menu-items .input:focus {
+  box-shadow: none;
+  border-color: var(--accent);
+}
+
+.mi-section-row {
+  padding: 6px 8px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+
+.mi-section-input {
+  font-weight: 600;
+}
+
+.mi-row {
+  display: grid;
+  grid-template-columns: 1fr 104px 32px;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.mi-row:last-child {
   border-bottom: none;
 }
 
-.menu-items .mi-section {
-  background: var(--bg);
-  font-weight: 600;
-  font-size: 12px;
-  color: var(--muted);
-  justify-content: flex-start;
+.mi-price-input {
+  text-align: right;
 }
 
-.menu-items .mi-price {
-  font-weight: 600;
-  white-space: nowrap;
+.mi-remove {
+  height: 32px;
+  border: 2px solid var(--line);
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.mi-remove:hover {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--ink);
+}
+
+.mi-add {
+  margin-top: 10px;
+  display: inline-block;
 }
 
 /* ---- Payment ----------------------------------------------------------- */
