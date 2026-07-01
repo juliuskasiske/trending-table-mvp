@@ -837,25 +837,35 @@ export function initOnboarding(): void {
         }
         if (manualToggle) manualToggle.hidden = false;
       }
-      // PDF digitization needs an Anthropic key — say so and disable the drop.
+      // PDF digitization needs MarkItDown on the server — say so, disable drop.
       if (!c.menuAiEnabled) {
         const notice = byId("menu-ai-notice");
         if (notice) {
           notice.hidden = false;
           notice.textContent =
-            "PDF menu digitization needs ANTHROPIC_API_KEY. Add it to enable, or use the menu link instead.";
+            "PDF menu digitization needs the MarkItDown library on the server (pip install 'markitdown[pdf]'). Use the menu link instead for now.";
         }
         const dropEl = byId("menu-drop");
         const input = byId<HTMLInputElement>("menu-pdf");
         if (dropEl) dropEl.style.pointerEvents = "none";
         if (dropEl) dropEl.style.opacity = "0.5";
         if (input) input.disabled = true;
+      } else if (!c.menuLlmEnabled) {
+        // MarkItDown works, but no LLM configured — items come from a simpler
+        // heuristic parse. Let the user know it's best-effort.
+        const notice = byId("menu-ai-notice");
+        if (notice) {
+          notice.hidden = false;
+          notice.textContent =
+            "Add LLM_BASE_URL + LLM_API_KEY (gpt-oss-120b) for best results. Without them, items are extracted with a simpler parser.";
+        }
       }
     })
     .catch(() => {
       config = {
         placesEnabled: false,
         menuAiEnabled: false,
+        menuLlmEnabled: false,
         stripeEnabled: false,
         stripePublishableKey: null,
         pricing: { ratePerView: PRICING.ratePerView, platformFee: PRICING.platformFee },

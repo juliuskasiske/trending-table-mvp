@@ -12,40 +12,118 @@
 import { Router } from "express";
 import express from "express";
 import Stripe from "stripe";
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
+import { execFile } from "node:child_process";
+import { writeFile, unlink, mkdtemp, rmdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+
+const execFileP = promisify(execFile);
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const PLACES_KEY = process.env.GOOGLE_MAPS_API_KEY || "";
 const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY || "";
 const STRIPE_PUBLISHABLE = process.env.STRIPE_PUBLISHABLE_KEY || "";
-const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || "";
 
 const stripe = STRIPE_SECRET ? new Stripe(STRIPE_SECRET) : null;
-// Reads ANTHROPIC_API_KEY from the environment; null when unset so the app boots.
-const anthropic = ANTHROPIC_KEY ? new Anthropic() : null;
 
 const PLACES_BASE = "https://places.googleapis.com/v1";
 
-/** JSON Schema for a digitized menu — drives Claude's structured output. */
-const MENU_SCHEMA = {
-  type: "object",
-  properties: {
-    items: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          section: { type: "string" },
-          name: { type: "string" },
-          price: { type: "string" },
-        },
-        required: ["name"],
-        additionalProperties: false,
+/* ---- Menu digitization: MarkItDown (PDF → markdown) + gpt-oss-120b --- */
+
+// Python that runs MarkItDown. Prefer the project venv, else PYTHON_BIN/python3.
+const PYTHON_BIN =
+  process.env.PYTHON_BIN || join(__dirname, "..", ".venv", "bin", "python");
+const MARKITDOWN_PY =
+  "import sys\nfrom markitdown import MarkItDown\nsys.stdout.write(MarkItDown().convert(sys.argv[1]).text_content)";
+
+// OpenAI-compatible LLM for the "agent" step (structuring markdown → items).
+const LLM_BASE_URL = process.env.LLM_BASE_URL || "";
+const LLM_API_KEY = process.env.LLM_API_KEY || "";
+const LLM_MODEL = process.env.LLM_MODEL || "gpt-oss-120b";
+const llm =
+  LLM_BASE_URL && LLM_API_KEY
+    ? new OpenAI({ baseURL: LLM_BASE_URL, apiKey: LLM_API_KEY })
+    : null;
+
+let markitdownReady = null; // cached availability check
+async function isMarkitdownReady() {
+  if (markitdownReady === null) {
+    markitdownReady = execFileP(PYTHON_BIN, ["-c", "import markitdown"])
+      .then(() => true)
+      .catch(() => false);
+  }
+  return markitdownReady;
+}
+
+/** Convert a base64 PDF to markdown text via MarkItDown. */
+async function pdfToMarkdown(base64) {
+  const dir = await mkdtemp(join(tmpdir(), "tt-menu-"));
+  const file = join(dir, "menu.pdf");
+  await writeFile(file, Buffer.from(base64, "base64"));
+  try {
+    const { stdout } = await execFileP(PYTHON_BIN, ["-c", MARKITDOWN_PY, file], {
+      maxBuffer: 25 * 1024 * 1024,
+    });
+    return stdout;
+  } finally {
+    await unlink(file).catch(() => {});
+    await rmdir(dir).catch(() => {});
+  }
+}
+
+/** Structure menu markdown into items using gpt-oss-120b (agent step). */
+async function structureMenuWithLlm(markdown) {
+  const resp = await llm.chat.completions.create({
+    model: LLM_MODEL,
+    temperature: 0,
+    response_format: { type: "json_object" },
+    messages: [
+      {
+        role: "system",
+        content:
+          'You extract restaurant menu items from markdown. Respond with ONLY a JSON object of the form ' +
+          '{"items":[{"section":string,"name":string,"price":string}]}. ' +
+          "Use the price exactly as printed (e.g. €12,50). " +
+          '"section" is the heading the item falls under (e.g. "Starters"). ' +
+          "Omit dish descriptions, allergen notes, and non-item text. Preserve the menu's order.",
       },
-    },
-  },
-  required: ["items"],
-  additionalProperties: false,
-};
+      { role: "user", content: markdown },
+    ],
+  });
+  const text = resp.choices?.[0]?.message?.content ?? "{}";
+  const parsed = JSON.parse(text);
+  return Array.isArray(parsed.items) ? parsed.items : [];
+}
+
+/**
+ * Heuristic fallback when no LLM is configured: pull "Name … price" lines out of
+ * the markdown, tracking the most recent heading as the section.
+ */
+function parseMenuMarkdown(markdown) {
+  const priceRe = /^(.*\S)\s+((?:€|EUR|£|\$)?\s?\d{1,4}(?:[.,]\d{2})?\s?(?:€|EUR)?)\s*$/;
+  const items = [];
+  let section = "";
+  for (const raw of markdown.split(/\r?\n/)) {
+    const line = raw.replace(/\*\*/g, "").trim();
+    if (!line) continue;
+    const heading = line.match(/^#{1,6}\s+(.*)$/);
+    if (heading) {
+      section = heading[1].trim();
+      continue;
+    }
+    const m = line.match(priceRe);
+    if (m && m[1].length > 1) {
+      items.push({ section, name: m[1].trim(), price: m[2].trim() });
+    } else if (line.length < 40 && !/\d/.test(line)) {
+      // short, price-free line → likely a section heading
+      section = line;
+    }
+  }
+  return items;
+}
 
 /** Map a Google `types` array to a friendly primary category + tag list. */
 function classify(types = []) {
@@ -72,10 +150,11 @@ export function createApiRouter() {
   router.use(express.json({ limit: "25mb" }));
 
   // ---- Public config (safe to expose) ---------------------------------
-  router.get("/config", (_req, res) => {
+  router.get("/config", async (_req, res) => {
     res.json({
       placesEnabled: Boolean(PLACES_KEY),
-      menuAiEnabled: Boolean(anthropic),
+      menuAiEnabled: await isMarkitdownReady(), // PDF → markdown available
+      menuLlmEnabled: Boolean(llm), // gpt-oss-120b structuring available
       stripeEnabled: Boolean(stripe),
       stripePublishableKey: STRIPE_PUBLISHABLE || null,
       pricing: { ratePerView: 0.01, platformFee: 50 },
@@ -244,46 +323,24 @@ export function createApiRouter() {
   });
 
   // ---- Menu: digitize a PDF into structured items --------------------
+  //  MarkItDown turns the PDF into markdown; gpt-oss-120b (or a heuristic
+  //  fallback) turns the markdown into structured {section, name, price} items.
   router.post("/menu/digitize", async (req, res) => {
-    if (!anthropic) {
-      return res
-        .status(501)
-        .json({ error: "not_configured", message: "Set ANTHROPIC_API_KEY." });
+    if (!(await isMarkitdownReady())) {
+      return res.status(501).json({
+        error: "not_configured",
+        message: "MarkItDown isn't installed on the server.",
+      });
     }
     const data = String(req.body?.data || ""); // base64 PDF, no data: prefix
     if (!data) return res.status(400).json({ error: "missing_pdf" });
 
     try {
-      const message = await anthropic.messages.create({
-        model: "claude-opus-4-8",
-        max_tokens: 16000,
-        thinking: { type: "adaptive" },
-        output_config: { format: { type: "json_schema", schema: MENU_SCHEMA } },
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "document",
-                source: { type: "base64", media_type: "application/pdf", data },
-              },
-              {
-                type: "text",
-                text:
-                  "This is a restaurant menu. Extract every menu item as structured data. " +
-                  "For each item include its name, its price exactly as printed (e.g. \"€12,50\"), " +
-                  "and the section/heading it appears under (e.g. \"Starters\", \"Pizza\", \"Drinks\"). " +
-                  "Skip descriptions, allergen notes, and non-item text. Preserve the menu's order.",
-              },
-            ],
-          },
-        ],
-      });
-      // With output_config.format the first text block is the JSON payload.
-      const text = message.content.find((b) => b.type === "text")?.text ?? "{}";
-      const parsed = JSON.parse(text);
-      const items = Array.isArray(parsed.items) ? parsed.items : [];
-      res.json({ items, count: items.length });
+      const markdown = await pdfToMarkdown(data);
+      const items = llm
+        ? await structureMenuWithLlm(markdown)
+        : parseMenuMarkdown(markdown);
+      res.json({ items, count: items.length, source: llm ? "llm" : "heuristic" });
     } catch (err) {
       res.status(500).json({ error: "digitize_error", message: String(err) });
     }

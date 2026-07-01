@@ -6,7 +6,8 @@ import type { MenuItem, PlaceDetails, PlaceSuggestion } from "./types.ts";
 
 export interface AppConfig {
   placesEnabled: boolean;
-  menuAiEnabled: boolean;
+  menuAiEnabled: boolean; // MarkItDown available (PDF → markdown)
+  menuLlmEnabled: boolean; // gpt-oss-120b structuring available
   stripeEnabled: boolean;
   stripePublishableKey: string | null;
   pricing: { ratePerView: number; platformFee: number };

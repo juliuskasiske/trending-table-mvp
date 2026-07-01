@@ -13,8 +13,13 @@ for the two integrations that need server-side secrets (**Google Places** and
 
 ```bash
 npm install
-cp .env.example .env     # then fill in your keys (see below)
-npm run dev              # app + API on http://localhost:5173
+cp .env.example .env      # then fill in your keys (see below)
+
+# Menu digitization uses the MarkItDown Python library — set up a local venv:
+python3.12 -m venv .venv
+./.venv/bin/python -m pip install "markitdown[pdf]"
+
+npm run dev               # app + API on http://localhost:5173
 ```
 
 Other scripts:
@@ -36,7 +41,7 @@ npm run typecheck        # type-check only
 | `GOOGLE_MAPS_API_KEY`     | Google Cloud → enable **Places API (New)** → create an API key         |
 | `STRIPE_SECRET_KEY`       | Stripe Dashboard → Developers → API keys (`sk_test_…` to start)        |
 | `STRIPE_PUBLISHABLE_KEY`  | Same page (`pk_test_…`) — sent to the browser to init Stripe.js        |
-| `ANTHROPIC_API_KEY`       | [console.anthropic.com](https://console.anthropic.com/settings/keys) — powers PDF menu digitization |
+| `LLM_BASE_URL` + `LLM_API_KEY` | Any OpenAI-compatible endpoint serving **gpt-oss-120b** (Groq, Together, local vLLM/Ollama…) — structures digitized menus. Optional: a heuristic parser runs without them. |
 
 The secret keys never reach the browser. The frontend reads only what
 `/api/config` exposes (the publishable key + feature flags).
@@ -51,9 +56,11 @@ account  →  find restaurant  →  budget & payment  →  content guidelines  �
 2. **Find your restaurant** — Google Places search. Picking a result prefills
    **name, logo (website favicon / place photo), address, Google rating,
    category and description** — all editable. A menu link is prefilled from the
-   website. Alternatively, **upload a PDF menu** and it's digitized into
-   structured `{section, name, price}` items via Claude. "Enter manually" is the
-   fallback for the profile fields.
+   website. Alternatively, **upload a PDF menu**: [MarkItDown](https://github.com/microsoft/markitdown)
+   converts it to markdown, then **gpt-oss-120b** (via an OpenAI-compatible
+   endpoint) structures it into `{section, name, price}` items — with a heuristic
+   fallback when no LLM is configured. "Enter manually" is the fallback for the
+   profile fields.
 3. **Budget** — a monthly spending-limit slider with live maths
    (**€0.01 / view + €50 fee**). Payment is deferred: when Stripe keys are set,
    this step also shows a **Stripe Payment Element** that saves a card via a
@@ -81,7 +88,7 @@ listed is captured, and the ones that can be are auto-filled:
 | Google rating (average)  | Google Places                                             |
 | Kurzbeschreibung         | Google Places editorial summary (editable)                |
 | Kategorisierung          | Google Places primary type (editable)                     |
-| Menu                     | Website menu link, **or** upload a PDF → digitized into structured items via Claude |
+| Menu                     | Website menu link, **or** upload a PDF → MarkItDown + gpt-oss-120b → structured items |
 | Spending limit           | Budget slider (user)                                      |
 | Payment method           | Stripe SetupIntent (saved card)                           |
 | Content guidelines       | Structured presets + free text (user, with defaults)      |
