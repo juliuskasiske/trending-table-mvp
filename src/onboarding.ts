@@ -695,6 +695,7 @@ export function initOnboarding(): void {
     (Object.keys(GUIDELINE_PRESETS) as Array<keyof typeof GUIDELINE_PRESETS>).forEach((group) => {
       const holder = form!.querySelector<HTMLElement>(`.chips[data-group="${group}"]`);
       if (!holder) return;
+      holder.innerHTML = ""; // idempotent — safe to rebuild on reset
       const preset = defaults[group] as string[];
       for (const label of GUIDELINE_PRESETS[group]) {
         const lbl = document.createElement("label");
@@ -835,7 +836,15 @@ export function initOnboarding(): void {
 
   form.addEventListener("submit", (e) => {
     e.preventDefault();
-    if (!validateStep(index)) return;
+    // Re-validate the whole flow, not just the consent box — you must never
+    // reach "You're in." without a restaurant name/email, no matter how you got
+    // to review. Jump to the first incomplete step instead.
+    for (let i = 0; i < flowCount; i++) {
+      if (!validateStep(i)) {
+        show(i);
+        return;
+      }
+    }
     const submitBtn = form!.querySelector<HTMLButtonElement>("[data-submit]");
     if (submitBtn) {
       submitBtn.disabled = true;
@@ -883,10 +892,116 @@ export function initOnboarding(): void {
     };
   }
 
-  byId("restart")?.addEventListener("click", () => {
-    window.localStorage.removeItem(STORAGE_KEY);
-    window.location.reload();
-  });
+  /** Apply config-driven UI (Places manual fallback, menu notices). */
+  function applyConfigUi(): void {
+    if (!config) return;
+    if (searchNotice) {
+      searchNotice.hidden = config.placesEnabled;
+      if (!config.placesEnabled) {
+        searchNotice.textContent =
+          "Live Google search isn't configured (add GOOGLE_MAPS_API_KEY). Enter your details manually below.";
+      }
+    }
+    if (manualToggle) manualToggle.hidden = config.placesEnabled;
+
+    const notice = byId("menu-ai-notice");
+    const dropEl = byId("menu-drop");
+    const pdfInput = byId<HTMLInputElement>("menu-pdf");
+    const linkBtn = byId<HTMLButtonElement>("digitize-link");
+    if (!config.menuAiEnabled) {
+      if (notice) {
+        notice.hidden = false;
+        notice.textContent =
+          "Menu digitization needs the MarkItDown library on the server (pip install 'markitdown[pdf]').";
+      }
+      if (dropEl) {
+        dropEl.style.pointerEvents = "none";
+        dropEl.style.opacity = "0.5";
+      }
+      if (pdfInput) pdfInput.disabled = true;
+      if (linkBtn) linkBtn.disabled = true;
+    } else {
+      if (dropEl) {
+        dropEl.style.pointerEvents = "";
+        dropEl.style.opacity = "";
+      }
+      if (pdfInput) pdfInput.disabled = false;
+      if (linkBtn) linkBtn.disabled = false;
+      if (notice) {
+        notice.hidden = config.menuLlmEnabled;
+        if (!config.menuLlmEnabled) {
+          notice.textContent =
+            "Add LLM_BASE_URL + LLM_API_KEY (gpt-oss-120b) for best results. Without them, items are extracted with a simpler parser.";
+        }
+      }
+    }
+  }
+
+  /** Wipe everything and return to a clean account step — no page reload. */
+  function resetAll(): void {
+    selected = null;
+    menuItems = [];
+    lastMenuSource = null;
+    payment = { connected: false };
+    stripe = null;
+    elements = null;
+    stripeReady = false;
+
+    form!.reset();
+
+    // Restaurant search / profile back to their initial state.
+    if (profileBlock) profileBlock.hidden = true;
+    if (searchBlock) searchBlock.hidden = false;
+    if (results) results.innerHTML = "";
+    if (searchInput) searchInput.value = "";
+    const logo = byId("p-logo");
+    if (logo) {
+      logo.innerHTML = "";
+      logo.style.background = "";
+      logo.style.color = "";
+    }
+    const rating = byId("p-rating");
+    if (rating) rating.innerHTML = "";
+
+    // Menu UI.
+    renderMenuItems();
+    setMenuStatus("");
+    const addBtn = byId("menu-add");
+    if (addBtn) addBtn.hidden = true;
+    const impBtn = byId("menu-improve");
+    if (impBtn) impBtn.hidden = true;
+    form!.querySelectorAll<HTMLElement>(".menu-tab").forEach((t) =>
+      t.classList.toggle("on", t.dataset.menuTab === "link"),
+    );
+    form!.querySelectorAll<HTMLElement>("[data-menu-panel]").forEach((pane) => {
+      pane.hidden = pane.dataset.menuPanel !== "link";
+    });
+
+    // Payment UI.
+    const payStatus = byId("pay-status");
+    if (payStatus) payStatus.hidden = true;
+    const saveCard = byId("save-card");
+    if (saveCard) saveCard.hidden = true;
+    const payEl = byId("payment-element");
+    if (payEl) {
+      payEl.hidden = false;
+      payEl.innerHTML = "";
+    }
+
+    buildChips(); // guideline chips back to defaults
+    form!.querySelectorAll(".has-error").forEach((f) => f.classList.remove("has-error"));
+
+    try {
+      window.localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+    applyConfigUi();
+    renderBudget();
+    show(0);
+  }
+
+  byId("restart")?.addEventListener("click", resetAll);
 
   /* ---- Boot ------------------------------------------------------------ */
 
@@ -897,41 +1012,7 @@ export function initOnboarding(): void {
   getConfig()
     .then((c) => {
       config = c;
-      // If live search isn't available, offer manual entry up front so the
-      // restaurant step never dead-ends waiting on a keystroke.
-      if (!c.placesEnabled) {
-        if (searchNotice) {
-          searchNotice.hidden = false;
-          searchNotice.textContent =
-            "Live Google search isn't configured (add GOOGLE_MAPS_API_KEY). Enter your details manually below.";
-        }
-        if (manualToggle) manualToggle.hidden = false;
-      }
-      // Menu digitization (PDF + link) needs MarkItDown on the server.
-      if (!c.menuAiEnabled) {
-        const notice = byId("menu-ai-notice");
-        if (notice) {
-          notice.hidden = false;
-          notice.textContent =
-            "Menu digitization needs the MarkItDown library on the server (pip install 'markitdown[pdf]').";
-        }
-        const dropEl = byId("menu-drop");
-        const input = byId<HTMLInputElement>("menu-pdf");
-        if (dropEl) dropEl.style.pointerEvents = "none";
-        if (dropEl) dropEl.style.opacity = "0.5";
-        if (input) input.disabled = true;
-        const linkBtn = byId<HTMLButtonElement>("digitize-link");
-        if (linkBtn) linkBtn.disabled = true;
-      } else if (!c.menuLlmEnabled) {
-        // MarkItDown works, but no LLM configured — items come from a simpler
-        // heuristic parse. Let the user know it's best-effort.
-        const notice = byId("menu-ai-notice");
-        if (notice) {
-          notice.hidden = false;
-          notice.textContent =
-            "Add LLM_BASE_URL + LLM_API_KEY (gpt-oss-120b) for best results. Without them, items are extracted with a simpler parser.";
-        }
-      }
+      applyConfigUi();
     })
     .catch(() => {
       config = {
@@ -942,6 +1023,7 @@ export function initOnboarding(): void {
         stripePublishableKey: null,
         pricing: { ratePerView: PRICING.ratePerView, platformFee: PRICING.platformFee },
       };
+      applyConfigUi();
     });
 
   show(0);
