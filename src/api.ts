@@ -256,10 +256,13 @@ export interface AdminOverview {
   restaurant_funnel: FunnelStage[];
   creator_funnel: FunnelStage[];
   payments: {
-    total_spending_limit: number;
-    active_spending_limit: number;
-    avg_spending_limit: number;
-    est_monthly_fees: number;
+    // All monthly €. spending_limit already includes the €50/mo platform fee.
+    verified_restaurants: number;
+    total_limit_incl_fee: number | string;
+    total_limit_excl_fee: number | string;
+    avg_limit_incl_fee: number | string;
+    est_monthly_fees: number | string;
+    all_restaurants_limit_incl_fee: number | string;
   };
   stats: {
     restaurants_total: number;

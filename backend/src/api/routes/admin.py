@@ -6,6 +6,8 @@ password hashes, session tokens, verification tokens, or encrypted OAuth secrets
 """
 from __future__ import annotations
 
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends
 from psycopg.rows import dict_row
 
@@ -13,6 +15,9 @@ from .. import deps
 from ...db.connection import get_control_connection
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+# €/month platform fee, baked into each restaurant's monthly spending limit.
+PLATFORM_FEE = Decimal("50")
 
 
 @router.get("/overview")
@@ -51,15 +56,28 @@ def overview(_: None = Depends(deps.require_admin)) -> dict:
         multi_owners = cur.fetchone()["n"]
 
         # --- restaurants + payments ---
+        # A restaurant is "verified" (payment-capable) when its owner's email is
+        # confirmed. Only these produce real revenue, so spending limits are
+        # summed over verified restaurants only.
         cur.execute(
             """
-            SELECT count(*)                                            AS total,
-                   count(*) FILTER (WHERE status = 'active')           AS active,
-                   COALESCE(sum(spending_limit_eur), 0)                AS total_limit,
+            WITH rv AS (
+                SELECT r.id, r.status, r.spending_limit_eur,
+                       bool_or(a.email_verified_at IS NOT NULL) AS owner_verified
+                FROM restaurants r
+                LEFT JOIN memberships m ON m.restaurant_id = r.id AND m.role = 'owner'
+                LEFT JOIN accounts a    ON a.id = m.account_id
+                GROUP BY r.id, r.status, r.spending_limit_eur
+            )
+            SELECT count(*)                                                    AS total,
+                   count(*) FILTER (WHERE status = 'active')                   AS active,
+                   count(*) FILTER (WHERE owner_verified)                      AS verified,
+                   COALESCE(sum(spending_limit_eur), 0)                        AS all_limit,
                    COALESCE(sum(spending_limit_eur)
-                            FILTER (WHERE status = 'active'), 0)       AS active_limit,
-                   COALESCE(avg(spending_limit_eur), 0)               AS avg_limit
-            FROM restaurants
+                            FILTER (WHERE owner_verified), 0)                  AS verified_limit,
+                   COALESCE(avg(spending_limit_eur)
+                            FILTER (WHERE owner_verified), 0)                  AS verified_avg
+            FROM rv
             """
         )
         r = cur.fetchone()
@@ -96,10 +114,15 @@ def overview(_: None = Depends(deps.require_admin)) -> dict:
             {"label": "Verified email", "value": c["verified"]},
         ],
         "payments": {
-            "total_spending_limit": r["total_limit"],
-            "active_spending_limit": r["active_limit"],
-            "avg_spending_limit": r["avg_limit"],
-            "est_monthly_fees": r["active"] * 50,  # €50/mo platform fee per active restaurant
+            # All monthly figures. spending_limit already INCLUDES the €50/mo fee.
+            "verified_restaurants": r["verified"],
+            "total_limit_incl_fee": r["verified_limit"],
+            "total_limit_excl_fee": max(
+                Decimal("0"), r["verified_limit"] - r["verified"] * PLATFORM_FEE
+            ),
+            "avg_limit_incl_fee": r["verified_avg"],
+            "est_monthly_fees": r["verified"] * PLATFORM_FEE,
+            "all_restaurants_limit_incl_fee": r["all_limit"],
         },
         "stats": {
             "restaurants_total": r["total"],

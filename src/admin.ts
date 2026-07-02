@@ -65,11 +65,16 @@ const MARKUP = `
         </div>
       </div>
 
-      <h2 class="section-head">Payments</h2>
+      <h2 class="section-head">Payments <span class="section-sub">monthly</span></h2>
       <div class="stat-grid" id="payment-stats"></div>
+      <p class="payment-note" id="payment-note"></p>
 
       <h2 class="section-head">At a glance</h2>
       <div class="stat-grid" id="glance-stats"></div>
+      <div class="status-row">
+        <span class="status-row-label">Restaurants by status</span>
+        <div class="pill-row" id="status-pills"></div>
+      </div>
     </section>
 
     <section class="admin-view" id="view-restaurants" hidden>
@@ -132,23 +137,26 @@ function statCard(v: string | number, label: string, accent = false): string {
   );
 }
 
-/** Horizontal funnel: each stage's bar width is relative to the first stage. */
+/** Centered tapering funnel: each stage is a centered bar, width ∝ the top. */
 function renderFunnel(mount: HTMLElement | null, stages: FunnelStage[]): void {
   if (!mount) return;
   const top = stages[0]?.value || 0;
   mount.innerHTML = stages
     .map((s, i) => {
       const pctOfTop = top ? Math.round((s.value / top) * 100) : 0;
-      const width = top ? Math.max((s.value / top) * 100, s.value > 0 ? 6 : 0) : 0;
-      const drop =
-        i === 0 || !stages[i - 1].value
+      const width = top ? Math.max((s.value / top) * 100, s.value > 0 ? 8 : 3) : 3;
+      const conv =
+        i === stages.length - 1
           ? ""
-          : `<span class="funnel-drop">${Math.round((s.value / stages[i - 1].value) * 100)}% of prev</span>`;
+          : `<div class="funnel-conv">↓ ${
+              s.value ? Math.round((stages[i + 1].value / s.value) * 100) : 0
+            }% continue</div>`;
       return (
         `<div class="funnel-stage">` +
-        `<div class="funnel-top"><span class="funnel-label">${esc(s.label)}</span>` +
-        `<span class="funnel-meta">${esc(s.value)} · ${pctOfTop}%${drop ? " · " + drop : ""}</span></div>` +
-        `<div class="funnel-track"><div class="funnel-bar" style="width:${width}%"></div></div>` +
+        `<div class="funnel-cap"><span class="funnel-label">${esc(s.label)}</span>` +
+        `<span class="funnel-meta">${esc(s.value)} · ${pctOfTop}%</span></div>` +
+        `<div class="funnel-barwrap"><div class="funnel-bar" style="width:${width}%">${esc(s.value)}</div></div>` +
+        conv +
         `</div>`
       );
     })
@@ -159,25 +167,39 @@ function renderOverview(o: AdminOverview): void {
   renderFunnel(byId("rest-funnel"), o.restaurant_funnel);
   renderFunnel(byId("crea-funnel"), o.creator_funnel);
 
+  // Payments — all figures are MONTHLY; the spending limit already includes the
+  // €50/mo platform fee, so we label incl./excl. explicitly.
   const p = o.payments;
   byId("payment-stats")!.innerHTML = [
-    statCard(fmtEur(p.total_spending_limit), "Total spending limit (all restaurants)", true),
-    statCard(fmtEur(p.active_spending_limit), "Spending limit (active only)"),
-    statCard(fmtEur(p.avg_spending_limit), "Avg limit per restaurant"),
-    statCard(fmtEur(p.est_monthly_fees), "Est. monthly platform fees"),
+    statCard(fmtEur(p.total_limit_incl_fee), "Monthly spending limit · verified (incl. platform fee)", true),
+    statCard(fmtEur(p.total_limit_excl_fee), "Monthly ad-view budget · verified (excl. platform fee)"),
+    statCard(fmtEur(p.avg_limit_incl_fee), "Avg monthly limit / verified restaurant (incl. fee)"),
+    statCard(fmtEur(p.est_monthly_fees), `Est. monthly platform fees (${p.verified_restaurants} verified × €50)`),
   ].join("");
+  const note = byId("payment-note");
+  if (note) {
+    note.innerHTML =
+      `“Verified” = the owner's email is confirmed (payment-capable). ` +
+      `All restaurants incl. unverified: <b>${esc(fmtEur(p.all_restaurants_limit_incl_fee))}</b>/mo (incl. fee).`;
+  }
 
   const s = o.stats;
-  const byStatus = Object.entries(s.by_status).map(([k, n]) => `${n} ${k}`).join(" · ") || "—";
   byId("glance-stats")!.innerHTML = [
     statCard(s.restaurants_total, "Restaurants"),
-    statCard(s.restaurants_active, "Active restaurants"),
-    statCard(s.multi_restaurant_owners, "Multi-restaurant owners"),
-    statCard(s.creators_connected, "Creators w/ connected social"),
-    statCard(s.signups_7d, "New accounts · 7d"),
-    statCard(s.signups_30d, "New accounts · 30d"),
-    statCard(byStatus, "Restaurants by status"),
+    statCard(o.creator_funnel[0]?.value ?? 0, "Creators"),
+    statCard(s.multi_restaurant_owners, "Owners with >1 restaurant"),
+    statCard(s.creators_connected, "Creators with a connected social account"),
+    statCard(s.signups_7d, "New accounts · last 7 days"),
+    statCard(s.signups_30d, "New accounts · last 30 days"),
   ].join("");
+
+  const pills = byId("status-pills");
+  if (pills) {
+    const entries = Object.entries(s.by_status);
+    pills.innerHTML = entries.length
+      ? entries.map(([k, n]) => `<span class="pill ${esc(k)}">${esc(n)} ${esc(k)}</span>`).join("")
+      : `<span class="muted">—</span>`;
+  }
 }
 
 function renderRestaurants(rs: AdminRestaurant[], as: AdminAccount[]): void {
