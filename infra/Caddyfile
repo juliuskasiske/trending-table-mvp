@@ -9,8 +9,8 @@
 		reverse_proxy backend:8000
 	}
 
-	# Static SPA. Real files (/, /admin.html, /assets/*) are served directly;
-	# unknown paths fall back to index.html so client routes like /verify work.
+	# Static SPA. Real files (/, /assets/*) are served directly; unknown paths
+	# fall back to index.html so client routes like /admin and /verify work.
 	handle {
 		root * /srv/dist
 		try_files {path} /index.html

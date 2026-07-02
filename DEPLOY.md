@@ -84,7 +84,7 @@ docker compose -f infra/docker-compose.prod.yml logs -f backend
 ```
 
 - App: `https://app.yourdomain.com` → sign up → you get a verification email.
-- **Control tower:** `https://app.yourdomain.com/admin.html` → sign in with an
+- **Control tower:** `https://app.yourdomain.com/admin` → sign in with an
   account whose email is in `ADMIN_EMAILS`.
 
 ## 6. Going through Cloudflare's proxy later (optional)
