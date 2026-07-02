@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .. import config
 from ..db.connection import app_connection, get_control_connection
-from .routes import auth, restaurants
+from .routes import auth, billing, config as config_routes, places, restaurants
 
 app = FastAPI(title="Trending Table API", version="0.1.0")
 
@@ -21,7 +21,10 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(config_routes.router)
+app.include_router(places.router)
 app.include_router(restaurants.router)
+app.include_router(billing.router)
 
 
 def _ping(run) -> str:

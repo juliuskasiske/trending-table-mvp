@@ -7,8 +7,11 @@ from fastapi import APIRouter, Depends
 from psycopg.rows import dict_row
 from pydantic import BaseModel
 
+from fastapi import HTTPException
+
 from .. import deps
 from ...db.connection import app_connection, get_control_connection
+from ...integrations import digitize
 from ...tenancy import provision, repo
 
 router = APIRouter(prefix="/api/restaurants", tags=["restaurants"])
@@ -63,6 +66,12 @@ class GuidelinesIn(BaseModel):
     avoid: list[str] = []
     handle: str | None = None
     notes: str | None = None
+
+
+class DigitizeIn(BaseModel):
+    data: str | None = None      # base64 PDF (no data: prefix)
+    url: str | None = None       # menu web page
+    mode: Literal["fast", "ai"] = "fast"
 
 
 def restaurant_ctx(restaurant_id: int, principal: dict = Depends(deps.require_account)) -> dict:
@@ -138,3 +147,15 @@ def put_guidelines(body: GuidelinesIn, ctx: dict = Depends(restaurant_ctx)) -> d
     with app_connection(rid) as conn:
         repo.upsert_guidelines(conn, rid, body.model_dump())
     return {"ok": True}
+
+
+@router.post("/{restaurant_id}/menu/digitize")
+def digitize_menu(body: DigitizeIn, ctx: dict = Depends(restaurant_ctx)) -> dict:
+    """Digitize a PDF or menu URL into items (does not save — client PUTs /menu)."""
+    if not body.data and not body.url:
+        raise HTTPException(status_code=400, detail="Provide a PDF (data) or a url.")
+    try:
+        items, source = digitize.digitize(data=body.data, url=body.url, mode=body.mode)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Couldn't digitize this menu: {exc}")
+    return {"items": items, "count": len(items), "source": source}
