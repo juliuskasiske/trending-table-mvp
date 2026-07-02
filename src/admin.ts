@@ -4,6 +4,7 @@
  * bearer token); the backend gates every /api/admin/* call by ADMIN_EMAILS.
  */
 import "./styles/theme.css";
+import "./styles/onboarding.css"; // shared shell/topbar/card/input/button styles
 import "./styles/admin.css";
 import {
   getAdminAccounts,
