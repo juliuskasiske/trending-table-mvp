@@ -5,28 +5,32 @@ the restaurant for as little as possible: they search Google once and we pull in
 name, logo, address, rating, category and description automatically — they just
 confirm, set a budget, save a card, and pick content guidelines.
 
-Built with **TypeScript + Vite** on the front end, a small **Express** backend
-for the two integrations that need server-side secrets (**Google Places** and
-**Stripe**), and the in-house **Risograph** design system.
+Built with **TypeScript + Vite** on the front end and the in-house **Risograph**
+design system. The API is the production **FastAPI + Postgres** backend in
+[`backend/`](backend/README.md) — the SPA persists everything (accounts, the
+restaurant tenant, menu, guidelines, budget) there. In dev, Vite proxies `/api`
+to it.
 
 ## Getting started
 
 ```bash
+# 1) Backend (FastAPI + Postgres) — see backend/README.md
+cd backend
+python3.12 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
+cp .env.example .env                            # keys already point at localhost:5432
+./.venv/bin/python -m src.db.migrate            # create DBs + apply schema
+./.venv/bin/uvicorn src.api.app:app --port 8000 --reload
+
+# 2) Frontend (Vite) — in another shell
+cd ..
 npm install
-cp .env.example .env      # then fill in your keys (see below)
-
-# Menu digitization uses the MarkItDown Python library — set up a local venv:
-python3.12 -m venv .venv
-./.venv/bin/python -m pip install "markitdown[pdf]"
-
-npm run dev               # app + API on http://localhost:5173
+npm run dev                                     # http://localhost:5174 (proxies /api → :8000)
 ```
 
 Other scripts:
 
 ```bash
 npm run build            # type-check + static build into dist/
-npm start                # run the production server (serves dist/ + /api)
 npm run typecheck        # type-check only
 ```
 

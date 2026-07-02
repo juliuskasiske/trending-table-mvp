@@ -149,6 +149,15 @@ def put_guidelines(body: GuidelinesIn, ctx: dict = Depends(restaurant_ctx)) -> d
     return {"ok": True}
 
 
+@router.post("/{restaurant_id}/activate")
+def activate(ctx: dict = Depends(restaurant_ctx)) -> dict:
+    """Finalize onboarding — mark the restaurant active."""
+    with get_control_connection() as conn, conn.cursor() as cur:
+        cur.execute("UPDATE restaurants SET status = 'active' WHERE id = %s", (ctx["restaurant_id"],))
+        conn.commit()
+    return {"ok": True, "status": "active"}
+
+
 @router.post("/{restaurant_id}/menu/digitize")
 def digitize_menu(body: DigitizeIn, ctx: dict = Depends(restaurant_ctx)) -> dict:
     """Digitize a PDF or menu URL into items (does not save — client PUTs /menu)."""

@@ -12,6 +12,7 @@ export interface MenuItem {
   name: string;
   price?: string;
   section?: string;
+  source?: "llm" | "heuristic" | "manual" | string;
 }
 
 /** A search hit from Google Places (New) Text Search. */

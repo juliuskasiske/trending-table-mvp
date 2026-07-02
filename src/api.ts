@@ -1,116 +1,207 @@
 /**
- * Frontend API client — thin wrappers over the backend endpoints, plus a
- * couple of pure helpers (favicon logo, star markup) used by the UI.
+ * Frontend API client — wrappers over the FastAPI backend (same-origin via the
+ * Vite dev proxy). All requests send cookies (the JWT session).
  */
 import type { MenuItem, PlaceDetails, PlaceSuggestion } from "./types.ts";
 
 export interface AppConfig {
   placesEnabled: boolean;
-  menuAiEnabled: boolean; // MarkItDown available (PDF → markdown)
-  menuLlmEnabled: boolean; // gpt-oss-120b structuring available
+  menuAiEnabled: boolean;
+  menuLlmEnabled: boolean;
   stripeEnabled: boolean;
   stripePublishableKey: string | null;
-  pricing: { ratePerView: number; platformFee: number };
+  pricing: { ratePerView: number; platformFee: number; creatorPerView?: number };
 }
 
-let configCache: AppConfig | null = null;
+export interface Principal {
+  id: number;
+  email: string;
+  role: "account" | "creator";
+  display_name: string | null;
+  email_verified: boolean;
+}
 
+/** Thin fetch wrapper: JSON in/out, cookies included, errors carry the detail. */
+async function api<T>(path: string, opts: RequestInit & { json?: unknown } = {}): Promise<T> {
+  const { json, headers, ...rest } = opts;
+  const r = await fetch(path, {
+    credentials: "include",
+    headers: { ...(json !== undefined ? { "Content-Type": "application/json" } : {}), ...headers },
+    body: json !== undefined ? JSON.stringify(json) : rest.body,
+    ...rest,
+  });
+  if (!r.ok) {
+    const detail = (await r.json().catch(() => ({}))) as { detail?: string };
+    const err = new Error(detail.detail || `${path} failed: ${r.status}`) as Error & { status?: number };
+    err.status = r.status;
+    throw err;
+  }
+  if (r.status === 204) return undefined as T;
+  return (await r.json()) as T;
+}
+
+/* ---- config -------------------------------------------------------------- */
+
+let configCache: AppConfig | null = null;
 export async function getConfig(): Promise<AppConfig> {
   if (configCache) return configCache;
-  const r = await fetch("/api/config");
-  configCache = (await r.json()) as AppConfig;
+  configCache = await api<AppConfig>("/api/config");
   return configCache;
 }
 
-/** Search Google Places for restaurants. Returns [] when not configured. */
+/* ---- auth ---------------------------------------------------------------- */
+
+export function signup(email: string, password: string, role: "account" | "creator" = "account"):
+  Promise<Principal & { dev_verify_token?: string }> {
+  return api("/api/auth/signup", { method: "POST", json: { email, password, role } });
+}
+
+export function login(email: string, password: string, role: "account" | "creator" = "account"):
+  Promise<Principal> {
+  return api("/api/auth/login", { method: "POST", json: { email, password, role } });
+}
+
+export function logout(): Promise<{ ok: boolean }> {
+  return api("/api/auth/logout", { method: "POST" });
+}
+
+export async function getMe(): Promise<Principal | null> {
+  try {
+    return await api<Principal>("/api/auth/me");
+  } catch {
+    return null;
+  }
+}
+
+export function verifyEmail(token: string): Promise<{ ok: boolean }> {
+  return api(`/api/auth/verify?token=${encodeURIComponent(token)}`);
+}
+
+export function resendVerification(): Promise<{ ok: boolean; dev_verify_token?: string }> {
+  return api("/api/auth/resend-verification", { method: "POST" });
+}
+
+/* ---- places -------------------------------------------------------------- */
+
 export async function searchPlaces(query: string): Promise<PlaceSuggestion[]> {
-  const r = await fetch(`/api/places/search?q=${encodeURIComponent(query)}`);
-  if (!r.ok) return [];
-  const data = (await r.json()) as { results?: PlaceSuggestion[] };
-  return data.results ?? [];
+  try {
+    const data = await api<{ results?: PlaceSuggestion[] }>(
+      `/api/places/search?q=${encodeURIComponent(query)}`,
+    );
+    return data.results ?? [];
+  } catch {
+    return [];
+  }
 }
 
-/** Fetch full details for a selected place. */
-export async function getPlaceDetails(placeId: string): Promise<PlaceDetails> {
-  const r = await fetch(`/api/places/details?id=${encodeURIComponent(placeId)}`);
-  if (!r.ok) throw new Error(`details failed: ${r.status}`);
-  return (await r.json()) as PlaceDetails;
+export function getPlaceDetails(placeId: string): Promise<PlaceDetails> {
+  return api<PlaceDetails>(`/api/places/details?id=${encodeURIComponent(placeId)}`);
 }
 
-/** URL for a Google place photo, proxied so the API key stays server-side. */
 export function placePhotoUrl(photoName: string, width = 320): string {
   return `/api/places/photo?name=${encodeURIComponent(photoName)}&w=${width}`;
 }
 
-/** Best-effort logo: the website's favicon via Google's favicon service. */
 export function faviconLogo(website: string | undefined, size = 128): string | undefined {
   if (!website) return undefined;
   try {
-    const host = new URL(website).hostname;
-    return `https://www.google.com/s2/favicons?domain=${host}&sz=${size}`;
+    return `https://www.google.com/s2/favicons?domain=${new URL(website).hostname}&sz=${size}`;
   } catch {
     return undefined;
   }
 }
 
-/** Where the menu bytes/markdown come from. */
+/* ---- restaurants (tenant CRUD) ------------------------------------------- */
+
+export interface RestaurantProfileInput {
+  name?: string;
+  place_id?: string;
+  address?: string;
+  city?: string;
+  category?: string;
+  tags?: string[];
+  google_rating?: number;
+  google_reviews?: number;
+  description?: string;
+  website?: string;
+  logo_url?: string;
+  photo_ref?: string;
+  price_level?: string;
+}
+
+export interface RestaurantSummary {
+  id: number;
+  name: string;
+  status: string;
+  spending_limit_eur: number | null;
+  role: string;
+}
+
+export function listRestaurants(): Promise<{ restaurants: RestaurantSummary[] }> {
+  return api("/api/restaurants");
+}
+
+export function createRestaurant(profile: RestaurantProfileInput & { name: string }):
+  Promise<{ id: number; name: string; status: string }> {
+  return api("/api/restaurants", { method: "POST", json: profile });
+}
+
+export function putProfile(id: number, profile: RestaurantProfileInput): Promise<{ ok: boolean }> {
+  return api(`/api/restaurants/${id}/profile`, { method: "PUT", json: profile });
+}
+
+export function putMenu(id: number, items: MenuItem[]): Promise<{ ok: boolean; count: number }> {
+  const payload = items.map((i) => ({
+    section: i.section ?? null,
+    name: i.name,
+    price: i.price ?? null,
+    source: (["llm", "heuristic", "manual"].includes(String(i.source)) ? i.source : "manual"),
+  }));
+  return api(`/api/restaurants/${id}/menu`, { method: "PUT", json: { items: payload } });
+}
+
+export function putGuidelines(
+  id: number,
+  g: { show: string[]; must_include: string[]; avoid: string[]; handle?: string; notes?: string },
+): Promise<{ ok: boolean }> {
+  return api(`/api/restaurants/${id}/guidelines`, { method: "PUT", json: g });
+}
+
+export function putBilling(id: number, spending_limit_eur: number): Promise<{ ok: boolean }> {
+  return api(`/api/restaurants/${id}/billing`, { method: "PUT", json: { spending_limit_eur } });
+}
+
+export function activateRestaurant(id: number): Promise<{ ok: boolean; status: string }> {
+  return api(`/api/restaurants/${id}/activate`, { method: "POST" });
+}
+
+/* ---- menu digitization (auth-only; not restaurant-scoped) ---------------- */
+
 export type MenuSource = { data: string } | { url: string };
 
-/**
- * POST a digitize request and return the items. `mode` defaults to the instant
- * heuristic; pass "ai" to run the (slower) gpt-oss structuring.
- */
 async function postDigitize(source: MenuSource, mode: "fast" | "ai" = "fast"): Promise<MenuItem[]> {
-  const r = await fetch("/api/menu/digitize", {
+  const data = await api<{ items?: MenuItem[] }>("/api/menu/digitize", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...source, mode }),
+    json: { ...source, mode },
   });
-  if (!r.ok) {
-    const err = (await r.json().catch(() => ({}))) as { message?: string };
-    throw new Error(err.message || `digitize failed: ${r.status}`);
-  }
-  const data = (await r.json()) as { items?: MenuItem[] };
   return data.items ?? [];
 }
 
-/** Digitize an uploaded PDF menu (base64, no data: prefix) — fast heuristic. */
 export function digitizeMenu(base64Pdf: string): Promise<MenuItem[]> {
   return postDigitize({ data: base64Pdf });
 }
 
-/** Digitize a menu web page (HTML link) — fast heuristic. */
 export function digitizeMenuUrl(url: string): Promise<MenuItem[]> {
   return postDigitize({ url });
 }
 
-/** Re-run digitization through gpt-oss-120b for cleaner results (slower). */
 export function improveMenuWithAi(source: MenuSource): Promise<MenuItem[]> {
   return postDigitize(source, "ai");
 }
 
-/** Create a Stripe SetupIntent so the restaurant can save a payment method. */
-export async function createSetupIntent(
-  email: string,
-  name: string,
-): Promise<{ clientSecret: string; customerId: string }> {
-  const r = await fetch("/api/stripe/setup-intent", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, name }),
-  });
-  if (!r.ok) {
-    const body = (await r.json().catch(() => ({}))) as { message?: string };
-    throw new Error(body.message || `setup-intent failed: ${r.status}`);
-  }
-  return (await r.json()) as { clientSecret: string; customerId: string };
-}
+/* ---- stripe (only used when configured) ---------------------------------- */
 
-/** Look up the saved payment method to display brand + last4. */
-export async function getPaymentMethod(
-  id: string,
-): Promise<{ paymentMethodId: string; brand: string; last4: string }> {
-  const r = await fetch(`/api/stripe/payment-method?id=${encodeURIComponent(id)}`);
-  if (!r.ok) throw new Error(`payment-method failed: ${r.status}`);
-  return (await r.json()) as { paymentMethodId: string; brand: string; last4: string };
+export function createSetupIntent(restaurantId: number):
+  Promise<{ clientSecret: string; publishableKey: string | null }> {
+  return api(`/api/restaurants/${restaurantId}/billing/setup-intent`, { method: "POST" });
 }

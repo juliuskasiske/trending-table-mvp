@@ -12,6 +12,7 @@ from .routes import (
     campaigns,
     config as config_routes,
     creator,
+    menu,
     metering,
     places,
     restaurants,
@@ -36,6 +37,7 @@ app.include_router(restaurants.router)
 app.include_router(billing.router)
 app.include_router(campaigns.router)
 app.include_router(creator.router)
+app.include_router(menu.router)
 app.include_router(metering.router)
 
 

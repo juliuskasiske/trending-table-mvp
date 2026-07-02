@@ -9,18 +9,27 @@
  * rest is budget, a saved card, and a mostly-prefilled creative brief.
  */
 import {
+  activateRestaurant,
+  createRestaurant,
   createSetupIntent,
   digitizeMenu,
   digitizeMenuUrl,
   faviconLogo,
   getConfig,
-  getPaymentMethod,
+  getMe,
   getPlaceDetails,
   improveMenuWithAi,
+  login,
   placePhotoUrl,
+  putBilling,
+  putGuidelines,
+  putMenu,
+  putProfile,
   searchPlaces,
+  signup,
   type AppConfig,
   type MenuSource,
+  type RestaurantProfileInput,
 } from "./api.ts";
 import {
   GUIDELINE_PRESETS,
@@ -30,7 +39,6 @@ import {
   type MenuItem,
   type PaymentInfo,
   type PlaceDetails,
-  type RestaurantProfile,
 } from "./types.ts";
 import { loadStripe, type Stripe, type StripeElements } from "@stripe/stripe-js";
 
@@ -65,6 +73,9 @@ export function initOnboarding(): void {
   let stripe: Stripe | null = null;
   let elements: StripeElements | null = null;
   let stripeReady = false;
+  let restaurantId: number | null = null; // the provisioned tenant
+  let authed = false; // a session exists (signed up or logged in)
+  let principalEmail = ""; // the logged-in account's email
 
   const byId = <T extends HTMLElement = HTMLElement>(id: string) =>
     document.getElementById(id) as T | null;
@@ -617,9 +628,10 @@ export function initOnboarding(): void {
     }
 
     try {
+      if (restaurantId == null) throw new Error("Finish the restaurant step first.");
       stripe = await loadStripe(config.stripePublishableKey);
       if (!stripe) throw new Error("Stripe.js failed to load");
-      const { clientSecret } = await createSetupIntent(val("email"), val("rname"));
+      const { clientSecret } = await createSetupIntent(restaurantId);
       elements = stripe.elements({ clientSecret, appearance: { theme: "flat" } });
       const paymentEl = elements.create("payment");
       paymentEl.mount("#payment-element");
@@ -662,13 +674,6 @@ export function initOnboarding(): void {
     }
     const pmId = String(setupIntent?.payment_method ?? "");
     payment = { connected: true, paymentMethodId: pmId };
-    try {
-      const pm = await getPaymentMethod(pmId);
-      payment.brand = pm.brand;
-      payment.last4 = pm.last4;
-    } catch {
-      /* display without brand/last4 */
-    }
     showPaymentSaved();
   });
 
@@ -767,29 +772,112 @@ export function initOnboarding(): void {
 
   /* ---- Persistence ----------------------------------------------------- */
 
+  // Persistence now happens server-side at each step boundary (persist*), so the
+  // former localStorage draft is a no-op — kept as the hook the edit handlers
+  // already call.
   function save(): void {
-    const data: Record<string, unknown> = {
-      selected,
-      menuItems,
-      guidelines: guidelines(),
+    /* no-op */
+  }
+
+  /* ---- Server persistence (per step) ----------------------------------- */
+
+  function profileInput(): RestaurantProfileInput {
+    return {
+      name: val("rname"),
+      place_id: selected?.placeId,
+      address: val("address") || undefined,
+      category: val("category") || undefined,
+      tags: selected?.tags,
+      google_rating: selected?.rating,
+      google_reviews: selected?.reviews,
+      description: val("description") || undefined,
+      website: val("website") || undefined,
+      logo_url: selected?.website ? faviconLogo(selected.website) : undefined,
+      photo_ref: selected?.photoName,
     };
-    for (const n of [
-      "email",
-      "rname",
-      "category",
-      "address",
-      "description",
-      "website",
-      "menuUrl",
-      "limit",
-    ] as const) {
-      data[n] = val(n);
-    }
-    data.profileShown = !byId("profile-block")?.hidden;
+  }
+
+  async function persistAccount(): Promise<void> {
+    const email = val("email");
+    const password = (form!.elements.namedItem("password") as HTMLInputElement).value;
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    } catch {
-      /* non-fatal */
+      const p = await signup(email, password, "account");
+      authed = true;
+      principalEmail = p.email;
+    } catch (err) {
+      if ((err as { status?: number }).status === 409) {
+        const p = await login(email, password, "account"); // email exists → log in
+        authed = true;
+        principalEmail = p.email;
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  async function persistRestaurant(): Promise<void> {
+    const profile = profileInput();
+    if (restaurantId == null) {
+      const r = await createRestaurant({ ...profile, name: profile.name || "My restaurant" });
+      restaurantId = r.id;
+    } else {
+      await putProfile(restaurantId, profile);
+    }
+    await putMenu(restaurantId, menuItems);
+  }
+
+  async function persistBilling(): Promise<void> {
+    if (restaurantId != null) await putBilling(restaurantId, budget().limit);
+  }
+
+  async function persistGuidelines(): Promise<void> {
+    if (restaurantId == null) return;
+    const g = guidelines();
+    await putGuidelines(restaurantId, {
+      show: g.show,
+      must_include: g.mustInclude,
+      avoid: g.avoid,
+      handle: g.handle || undefined,
+      notes: g.notes || undefined,
+    });
+  }
+
+  function stepError(kind: string | undefined, err: unknown): void {
+    const msg = (err as Error)?.message || "Something went wrong. Please try again.";
+    if (kind === "account") {
+      const el = form!.querySelector<HTMLElement>('[data-error-for="password"]');
+      if (el) el.textContent = msg;
+      setError("password", true);
+    } else {
+      const notice = byId("menu-ai-notice");
+      // fall back to a visible message; for restaurant step reuse the menu notice
+      if (kind === "restaurant" && notice) {
+        notice.hidden = false;
+        notice.className = "notice error";
+        notice.textContent = msg;
+      } else {
+        window.alert(msg);
+      }
+    }
+  }
+
+  async function handleNext(): Promise<void> {
+    if (!validateStep(index)) return;
+    const kind = steps[index].dataset.step;
+    const nextBtn = steps[index].querySelector<HTMLButtonElement>("[data-next]");
+    if (nextBtn) nextBtn.disabled = true;
+    try {
+      if (kind === "account") await persistAccount();
+      else if (kind === "restaurant") await persistRestaurant();
+      else if (kind === "billing") await persistBilling();
+      else if (kind === "guidelines") await persistGuidelines();
+      const target = index + 1;
+      if (steps[target]?.dataset.step === "review") renderReview();
+      show(target);
+    } catch (err) {
+      stepError(kind, err);
+    } finally {
+      if (nextBtn) nextBtn.disabled = false;
     }
   }
 
@@ -810,11 +898,7 @@ export function initOnboarding(): void {
   form.addEventListener("click", (e) => {
     const t = e.target as HTMLElement;
     if (t.closest("[data-next]")) {
-      if (!validateStep(index)) return;
-      save();
-      const target = index + 1;
-      if (steps[target]?.dataset.step === "review") renderReview();
-      show(target);
+      void handleNext();
     } else if (t.closest("[data-back]")) {
       show(Math.max(0, index - 1));
     } else if (t.closest<HTMLElement>("[data-goto]")) {
@@ -836,10 +920,9 @@ export function initOnboarding(): void {
 
   form.addEventListener("submit", (e) => {
     e.preventDefault();
-    // Re-validate the whole flow, not just the consent box — you must never
-    // reach "You're in." without a restaurant name/email, no matter how you got
-    // to review. Jump to the first incomplete step instead.
-    for (let i = 0; i < flowCount; i++) {
+    // Re-validate the whole flow (skip the account step for an already-signed-in
+    // user). Never reach "You're in." without the required fields.
+    for (let i = authed ? 1 : 0; i < flowCount; i++) {
       if (!validateStep(i)) {
         show(i);
         return;
@@ -850,47 +933,30 @@ export function initOnboarding(): void {
       submitBtn.disabled = true;
       submitBtn.textContent = "Creating account…";
     }
-    const profile = assembleProfile();
-    // No persistence backend yet — this is where the account POST would go.
-    console.info("[trending-table] restaurant profile:", profile);
-
-    window.setTimeout(() => {
-      const doneTitle = byId("done-title");
-      const doneEmail = byId("done-email");
-      // Greet by restaurant name when we have it; otherwise a clean "You're in."
-      // (never a placeholder). The account itself is keyed to the email below.
-      const name = profile.name.trim();
-      if (doneTitle) doneTitle.textContent = name ? `You're in, ${name}.` : "You're in.";
-      if (doneEmail) doneEmail.textContent = profile.email;
-      show(doneIndex);
-      if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.textContent = "Create account";
+    void (async () => {
+      try {
+        if (restaurantId == null) {
+          show(1); // safety: no restaurant provisioned yet
+          return;
+        }
+        await persistGuidelines(); // ensure the latest brief is saved
+        await activateRestaurant(restaurantId);
+        const name = val("rname").trim();
+        const doneTitle = byId("done-title");
+        const doneEmail = byId("done-email");
+        if (doneTitle) doneTitle.textContent = name ? `You're in, ${name}.` : "You're in.";
+        if (doneEmail) doneEmail.textContent = principalEmail || val("email");
+        show(doneIndex);
+      } catch (err) {
+        stepError("review", err);
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "Create account";
+        }
       }
-    }, 600);
+    })();
   });
-
-  function assembleProfile(): RestaurantProfile {
-    return {
-      email: val("email"),
-      placeId: selected?.placeId,
-      name: val("rname"),
-      address: val("address"),
-      category: val("category"),
-      tags: selected?.tags ?? [],
-      rating: selected?.rating,
-      reviews: selected?.reviews,
-      description: val("description"),
-      website: val("website") || undefined,
-      logoUrl: selected?.website ? faviconLogo(selected.website) : undefined,
-      photoName: selected?.photoName,
-      menu: menuItems,
-      menuUrl: val("menuUrl") || undefined,
-      spendingLimit: budget().limit,
-      payment,
-      guidelines: guidelines(),
-    };
-  }
 
   /** Apply config-driven UI (Places manual fallback, menu notices). */
   function applyConfigUi(): void {
@@ -946,6 +1012,7 @@ export function initOnboarding(): void {
     stripe = null;
     elements = null;
     stripeReady = false;
+    restaurantId = null; // a new restaurant (new tenant) under the same account
 
     form!.reset();
 
@@ -998,7 +1065,7 @@ export function initOnboarding(): void {
     }
     applyConfigUi();
     renderBudget();
-    show(0);
+    show(authed ? 1 : 0); // signed-in users skip straight to a new restaurant
   }
 
   byId("restart")?.addEventListener("click", resetAll);
@@ -1009,12 +1076,10 @@ export function initOnboarding(): void {
   restore(); // clears any stale draft — every visit starts fresh
   renderBudget();
 
-  getConfig()
-    .then((c) => {
-      config = c;
-      applyConfigUi();
-    })
-    .catch(() => {
+  void (async () => {
+    try {
+      config = await getConfig();
+    } catch {
       config = {
         placesEnabled: false,
         menuAiEnabled: false,
@@ -1023,10 +1088,16 @@ export function initOnboarding(): void {
         stripePublishableKey: null,
         pricing: { ratePerView: PRICING.ratePerView, platformFee: PRICING.platformFee },
       };
-      applyConfigUi();
-    });
-
-  show(0);
+    }
+    applyConfigUi();
+    // Returning, signed-in accounts skip the signup step and go add a restaurant.
+    const me = await getMe();
+    if (me && me.role === "account") {
+      authed = true;
+      principalEmail = me.email;
+    }
+    show(authed ? 1 : 0);
+  })();
 }
 
 /* ---- helpers ----------------------------------------------------------- */

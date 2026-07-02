@@ -1,23 +1,20 @@
-import { defineConfig, type PluginOption } from "vite";
-import "dotenv/config";
-import { createApiApp } from "./server/api.mjs";
+import { defineConfig } from "vite";
 
-// Mounts the Express API router onto Vite's dev server so `npm run dev` serves
-// both the app and /api from one process — no separate backend to start.
-function apiMiddleware(): PluginOption {
-  return {
-    name: "trending-table-api",
-    configureServer(server) {
-      server.middlewares.use("/api", createApiApp());
-    },
-  };
-}
-
-// Trending Table MVP — the restaurant onboarding flow. Vite serves it in dev
-// and bundles a static build into dist/ for deployment (served by server/index.mjs).
+// Trending Table SPA. The API is the FastAPI backend (mvp/backend) — in dev,
+// Vite proxies /api to it so the browser sees one origin (cookies just work).
+// Start the backend with: cd backend && ./.venv/bin/uvicorn src.api.app:app --port 8000
 export default defineConfig({
   root: ".",
-  plugins: [apiMiddleware()],
+  server: {
+    port: 5174,
+    strictPort: true,
+    proxy: {
+      "/api": {
+        target: "http://127.0.0.1:8000",
+        changeOrigin: true,
+      },
+    },
+  },
   build: {
     outDir: "dist",
     emptyOutDir: true,
