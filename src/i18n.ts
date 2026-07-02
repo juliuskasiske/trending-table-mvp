@@ -83,6 +83,12 @@ const en: Dict = {
   "pay.title": 'Payment method <span class="pay-soon">coming soon</span>',
   "pay.err": "Please add a payment method to continue.",
   "pay.statusText": "Card saved",
+  "billing.cadence.label": "Billing cycle",
+  "billing.cadence.monthly": "Monthly",
+  "billing.cadence.annual": "Annual",
+  "billing.cadence.monthlyNote": "€50/month platform fee. Per-view spend is always billed as used.",
+  "billing.cadence.annualNote":
+    "Platform fee billed yearly: {discounted}/year instead of {full} — you save {savings} (20%). Per-view spend stays pay-as-you-go.",
 
   // Step 4 — guidelines
   "guidelines.eyebrow": "Set the creative brief",
@@ -114,7 +120,10 @@ const en: Dict = {
   "review.menu": "Menu",
   "review.limit": "Monthly limit",
   "review.views": "Est. views",
+  "review.billing": "Billing cycle",
   "review.payment": "Payment",
+  "review.cycle.monthly": "Monthly — {fee}/month",
+  "review.cycle.annual": "Annual — {discounted}/year (20% off)",
   "review.show": "Show",
   "review.must": "Must include",
   "review.avoid": "Avoid",
@@ -289,6 +298,12 @@ const de: Dict = {
   "pay.title": 'Zahlungsmethode <span class="pay-soon">bald verfügbar</span>',
   "pay.err": "Bitte füge eine Zahlungsmethode hinzu, um fortzufahren.",
   "pay.statusText": "Karte gespeichert",
+  "billing.cadence.label": "Abrechnungszeitraum",
+  "billing.cadence.monthly": "Monatlich",
+  "billing.cadence.annual": "Jährlich",
+  "billing.cadence.monthlyNote": "50 €/Monat Plattformgebühr. Views werden immer nach Verbrauch abgerechnet.",
+  "billing.cadence.annualNote":
+    "Plattformgebühr jährlich abgerechnet: {discounted}/Jahr statt {full} — du sparst {savings} (20 %). Views bleiben nutzungsbasiert.",
 
   "guidelines.eyebrow": "Leg das Kreativ-Briefing fest",
   "guidelines.title": "Deine Content-Richtlinien",
@@ -318,7 +333,10 @@ const de: Dict = {
   "review.menu": "Speisekarte",
   "review.limit": "Monatslimit",
   "review.views": "Geschätzte Views",
+  "review.billing": "Abrechnungszeitraum",
   "review.payment": "Zahlung",
+  "review.cycle.monthly": "Monatlich — {fee}/Monat",
+  "review.cycle.annual": "Jährlich — {discounted}/Jahr (20 % Rabatt)",
   "review.show": "Zeigen",
   "review.must": "Muss enthalten",
   "review.avoid": "Vermeiden",

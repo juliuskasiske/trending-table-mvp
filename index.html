@@ -234,6 +234,18 @@
             </div>
 
             <div class="pay">
+              <div class="cadence">
+                <span class="cadence-label" data-i18n="billing.cadence.label">Billing cycle</span>
+                <div class="cadence-toggle" id="cadence-toggle" role="group" aria-label="Billing cycle">
+                  <button type="button" data-cadence="monthly" class="on" data-i18n="billing.cadence.monthly">Monthly</button>
+                  <button type="button" data-cadence="annual">
+                    <span data-i18n="billing.cadence.annual">Annual</span>
+                    <span class="save-badge">−20%</span>
+                  </button>
+                </div>
+                <p class="cadence-note" id="cadence-note"></p>
+              </div>
+
               <h2 class="pay-title" data-i18n-html="pay.title">Payment method <span class="pay-soon">coming soon</span></h2>
               <div class="notice" id="pay-notice" hidden></div>
               <!-- Stripe Payment Element mounts here -->
@@ -322,6 +334,7 @@
               <dl>
                 <div class="rrow"><dt data-i18n="review.limit">Monthly limit</dt><dd id="r-limit">—</dd></div>
                 <div class="rrow"><dt data-i18n="review.views">Est. views</dt><dd id="r-views">—</dd></div>
+                <div class="rrow"><dt data-i18n="review.billing">Billing cycle</dt><dd id="r-billing">—</dd></div>
                 <div class="rrow"><dt data-i18n="review.payment">Payment</dt><dd id="r-payment">—</dd></div>
               </dl>
             </div>

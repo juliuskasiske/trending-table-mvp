@@ -110,6 +110,75 @@ body {
   color: var(--ink);
 }
 
+/* Billing-cycle (monthly / annual) toggle */
+.cadence {
+  margin-bottom: 24px;
+}
+
+.cadence-label {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.cadence-toggle {
+  display: inline-flex;
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.cadence-toggle button {
+  appearance: none;
+  border: 0;
+  background: var(--panel);
+  color: var(--muted);
+  font: 600 14px/1 var(--font);
+  padding: 10px 16px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cadence-toggle button + button {
+  border-left: 2px solid var(--line);
+}
+
+.cadence-toggle button.on {
+  background: var(--ink);
+  color: var(--on-accent);
+}
+
+.cadence-toggle button:not(.on):hover {
+  color: var(--ink);
+}
+
+.save-badge {
+  font: 700 11px/1 var(--font);
+  color: var(--accent);
+  border: 1.5px solid var(--accent);
+  border-radius: 999px;
+  padding: 3px 6px;
+}
+
+.cadence-toggle button.on .save-badge {
+  color: var(--on-accent);
+  border-color: var(--on-accent);
+}
+
+.cadence-note {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.cadence-note.annual {
+  color: var(--ink);
+  font-weight: 600;
+}
+
 /* ---- Progress ---------------------------------------------------------- */
 
 .progress {

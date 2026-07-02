@@ -79,6 +79,7 @@ export function initOnboarding(): void {
   let authed = false; // a session exists (signed up or logged in)
   let principalEmail = ""; // the logged-in account's email
   let doneName = ""; // restaurant name shown on the success screen
+  let cadence: "monthly" | "annual" = "monthly"; // platform-fee billing cycle
   let configLoaded = false; // did /api/config actually load (vs backend down)?
 
   const byId = <T extends HTMLElement = HTMLElement>(id: string) =>
@@ -641,6 +642,48 @@ export function initOnboarding(): void {
     save();
   });
 
+  /* ---- Billing cycle (monthly vs annual platform fee) ------------------ */
+
+  const ANNUAL_DISCOUNT = 0.2; // 20% off the platform fee for annual billing
+
+  /** The annualised platform fee, before and after the 20% discount. */
+  function annualFee(): { full: number; discounted: number; savings: number } {
+    const full = PRICING.platformFee * 12;
+    const discounted = full * (1 - ANNUAL_DISCOUNT);
+    return { full, discounted, savings: full - discounted };
+  }
+
+  function renderCadence(): void {
+    const toggle = byId("cadence-toggle");
+    toggle?.querySelectorAll<HTMLButtonElement>("button[data-cadence]").forEach((b) => {
+      const on = b.dataset.cadence === cadence;
+      b.classList.toggle("on", on);
+      b.setAttribute("aria-pressed", String(on));
+    });
+    const note = byId("cadence-note");
+    if (!note) return;
+    if (cadence === "annual") {
+      const { full, discounted, savings } = annualFee();
+      note.textContent = t("billing.cadence.annualNote", {
+        full: eur(full),
+        discounted: eur(discounted),
+        savings: eur(savings),
+      });
+      note.classList.add("annual");
+    } else {
+      note.textContent = t("billing.cadence.monthlyNote");
+      note.classList.remove("annual");
+    }
+  }
+
+  byId("cadence-toggle")?.addEventListener("click", (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-cadence]");
+    if (!btn) return;
+    cadence = btn.dataset.cadence === "annual" ? "annual" : "monthly";
+    renderCadence();
+    save();
+  });
+
   /* ---- Stripe ---------------------------------------------------------- */
 
   async function ensureStripe(): Promise<void> {
@@ -786,6 +829,12 @@ export function initOnboarding(): void {
     const { limit: lim, views } = budget();
     put("r-limit", t("review.limitMonth", { v: eur(lim) }));
     put("r-views", t("review.viewsMonth", { v: nf.format(views) }));
+    put(
+      "r-billing",
+      cadence === "annual"
+        ? t("review.cycle.annual", { discounted: eur(annualFee().discounted) })
+        : t("review.cycle.monthly", { fee: eur(PRICING.platformFee) }),
+    );
     put(
       "r-payment",
       payment.connected
@@ -1095,8 +1144,10 @@ export function initOnboarding(): void {
     } catch {
       /* ignore */
     }
+    cadence = "monthly";
     applyConfigUi();
     renderBudget();
+    renderCadence();
     show(authed ? 1 : 0); // signed-in users skip straight to a new restaurant
   }
 
@@ -1117,6 +1168,7 @@ export function initOnboarding(): void {
       if (label) label.textContent = tChip(value);
     });
     renderBudget();
+    renderCadence();
     applyConfigUi();
     if (!profileBlock?.hidden) {
       const banner = byId("prefill-text");
@@ -1138,6 +1190,7 @@ export function initOnboarding(): void {
   buildChips();
   restore(); // clears any stale draft — every visit starts fresh
   renderBudget();
+  renderCadence();
 
   void (async () => {
     try {
