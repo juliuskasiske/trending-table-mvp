@@ -72,6 +72,7 @@ def overview(_: None = Depends(deps.require_admin)) -> dict:
             SELECT count(*)                                                        AS total,
                    count(*) FILTER (WHERE status = 'active')                       AS active,
                    count(*) FILTER (WHERE owner_active)                            AS with_active_account,
+                   count(*) FILTER (WHERE owner_active AND owner_verified)         AS active_verified,
                    count(*) FILTER (WHERE owner_verified)                          AS verified,
                    COALESCE(sum(spending_limit_eur), 0)                            AS all_limit,
                    COALESCE(sum(spending_limit_eur)
@@ -107,7 +108,7 @@ def overview(_: None = Depends(deps.require_admin)) -> dict:
             {"label": "Accounts", "value": a["total"]},
             {"label": "Restaurants created", "value": r["total"]},
             {"label": "Restaurants with active accounts", "value": r["with_active_account"]},
-            {"label": "Restaurants with verified accounts", "value": r["verified"]},
+            {"label": "Restaurants with active + verified accounts", "value": r["active_verified"]},
         ],
         "creator_funnel": [
             {"label": "Accounts signed up", "value": c["total"]},
