@@ -51,10 +51,29 @@ def control_url() -> str:
 
 
 def app_url() -> str:
+    """Owner connection to tt_app — used by migrations (DDL), NOT at runtime."""
     url = os.environ.get("APP_DATABASE_URL")
     if not url:
         raise RuntimeError("APP_DATABASE_URL is not set (see .env.example).")
     return url
+
+
+def app_rw_url() -> str:
+    """Runtime connection to tt_app as the restricted role tt_app_rw.
+
+    RLS is bypassed by superusers/owners, so all *runtime* tenant queries must
+    use this non-owner role. Defaults to the app URL with the user swapped to
+    ``tt_app_rw`` when ``APP_RW_DATABASE_URL`` isn't set explicitly.
+    """
+    explicit = os.environ.get("APP_RW_DATABASE_URL")
+    if explicit:
+        return explicit
+    parts = urlsplit(app_url())
+    host = parts.hostname or "localhost"
+    netloc = f"tt_app_rw:tt_app_rw@{host}"
+    if parts.port:
+        netloc += f":{parts.port}"
+    return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
 
 
 def maintenance_url() -> str:
@@ -86,7 +105,7 @@ def app_connection(tenant_id: int | None = None) -> Iterator[psycopg.Connection]
     sees that restaurant's rows. Always use this (never a bare connect) for
     tenant data, so isolation can't be forgotten.
     """
-    conn = psycopg.connect(app_url())
+    conn = psycopg.connect(app_rw_url())
     try:
         if tenant_id is not None:
             with conn.cursor() as cur:

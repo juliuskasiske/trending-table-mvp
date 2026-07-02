@@ -41,3 +41,31 @@ def require_verified(request: Request) -> dict:
     if not principal["email_verified"]:
         raise HTTPException(status_code=403, detail="Please verify your email first.")
     return principal
+
+
+def require_account(request: Request) -> dict:
+    """The principal must be a restaurant-side account (not a creator)."""
+    principal = current_principal(request)
+    if principal["role"] != "account":
+        raise HTTPException(status_code=403, detail="Restaurant accounts only.")
+    return principal
+
+
+def require_creator(request: Request) -> dict:
+    principal = current_principal(request)
+    if principal["role"] != "creator":
+        raise HTTPException(status_code=403, detail="Creator accounts only.")
+    return principal
+
+
+def assert_membership(account_id: int, restaurant_id: int) -> str:
+    """Return the account's role on the restaurant, or 404 if not a member."""
+    with get_control_connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT role FROM memberships WHERE account_id = %s AND restaurant_id = %s",
+            (account_id, restaurant_id),
+        )
+        row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Restaurant not found.")
+    return row[0]
