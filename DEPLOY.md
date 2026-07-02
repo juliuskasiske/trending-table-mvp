@@ -50,7 +50,8 @@ Edit **`backend/.env.prod`**:
   python3 -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())"  # -> APP_SECRET_KEY
   ```
 - `APP_BASE_URL=https://app.yourdomain.com`
-- `ADMIN_EMAILS=you@yourdomain.com` (your control-tower login)
+- `ADMIN_KEY=...` — a long random string; this is the single key you enter at
+  `/admin` (there is no email/account login).
 - **SMTP** — fill in a provider so verification emails actually send (Resend,
   Postmark, Mailgun, SES, or a Gmail app password). Leave `SMTP_HOST` blank and
   emails are only logged.
@@ -84,8 +85,7 @@ docker compose -f infra/docker-compose.prod.yml logs -f backend
 ```
 
 - App: `https://app.yourdomain.com` → sign up → you get a verification email.
-- **Control tower:** `https://app.yourdomain.com/admin` → sign in with an
-  account whose email is in `ADMIN_EMAILS`.
+- **Control tower:** `https://app.yourdomain.com/admin` → enter your `ADMIN_KEY`.
 
 ## 6. Going through Cloudflare's proxy later (optional)
 

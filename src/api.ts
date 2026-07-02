@@ -19,7 +19,6 @@ export interface Principal {
   role: "account" | "creator";
   display_name: string | null;
   email_verified: boolean;
-  is_admin?: boolean;
 }
 
 /**
@@ -282,8 +281,37 @@ export interface AdminCreator {
   created_at: string;
 }
 
-export const getAdminOverview = () => api<AdminOverview>("/api/admin/overview");
+// Control-tower access is a single key (no account), sent as X-Admin-Key and
+// kept in localStorage so it persists across reloads.
+const ADMIN_KEY_STORAGE = "tt_admin_key";
+let adminKey: string | null = (() => {
+  try {
+    return window.localStorage.getItem(ADMIN_KEY_STORAGE);
+  } catch {
+    return null;
+  }
+})();
+
+export function setAdminKey(key: string | null): void {
+  adminKey = key;
+  try {
+    if (key) window.localStorage.setItem(ADMIN_KEY_STORAGE, key);
+    else window.localStorage.removeItem(ADMIN_KEY_STORAGE);
+  } catch {
+    /* ignore */
+  }
+}
+
+export const getAdminKey = (): string | null => adminKey;
+
+const adminHeaders = (): Record<string, string> =>
+  adminKey ? { "X-Admin-Key": adminKey } : {};
+
+export const getAdminOverview = () =>
+  api<AdminOverview>("/api/admin/overview", { headers: adminHeaders() });
 export const getAdminRestaurants = () =>
-  api<{ restaurants: AdminRestaurant[] }>("/api/admin/restaurants");
-export const getAdminAccounts = () => api<{ accounts: AdminAccount[] }>("/api/admin/accounts");
-export const getAdminCreators = () => api<{ creators: AdminCreator[] }>("/api/admin/creators");
+  api<{ restaurants: AdminRestaurant[] }>("/api/admin/restaurants", { headers: adminHeaders() });
+export const getAdminAccounts = () =>
+  api<{ accounts: AdminAccount[] }>("/api/admin/accounts", { headers: adminHeaders() });
+export const getAdminCreators = () =>
+  api<{ creators: AdminCreator[] }>("/api/admin/creators", { headers: adminHeaders() });

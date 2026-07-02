@@ -1,8 +1,8 @@
 """Owner 'control tower': read-only reporting over the control database.
 
-Every endpoint is gated by ``deps.require_admin`` (the account's email must be
-in ADMIN_EMAILS). Only non-sensitive columns are exposed — never password
-hashes, session tokens, verification tokens, or encrypted OAuth secrets.
+Every endpoint is gated by ``deps.require_admin`` (a single ADMIN_KEY sent in
+the X-Admin-Key header). Only non-sensitive columns are exposed — never
+password hashes, session tokens, verification tokens, or encrypted OAuth secrets.
 """
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
 @router.get("/overview")
-def overview(_: dict = Depends(deps.require_admin)) -> dict:
+def overview(_: None = Depends(deps.require_admin)) -> dict:
     """Top-line funnel metrics for the whole platform."""
     with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
@@ -53,7 +53,7 @@ def overview(_: dict = Depends(deps.require_admin)) -> dict:
 
 
 @router.get("/restaurants")
-def restaurants(_: dict = Depends(deps.require_admin)) -> dict:
+def restaurants(_: None = Depends(deps.require_admin)) -> dict:
     """Every restaurant onboarded, with its owner email(s) and budget."""
     with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
@@ -75,7 +75,7 @@ def restaurants(_: dict = Depends(deps.require_admin)) -> dict:
 
 
 @router.get("/accounts")
-def accounts(_: dict = Depends(deps.require_admin)) -> dict:
+def accounts(_: None = Depends(deps.require_admin)) -> dict:
     """Every restaurant-side account, with verification state and restaurant count."""
     with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
@@ -95,7 +95,7 @@ def accounts(_: dict = Depends(deps.require_admin)) -> dict:
 
 
 @router.get("/creators")
-def creators(_: dict = Depends(deps.require_admin)) -> dict:
+def creators(_: None = Depends(deps.require_admin)) -> dict:
     """Every creator-side account."""
     with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         cur.execute(

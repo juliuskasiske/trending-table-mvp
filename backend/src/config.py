@@ -38,11 +38,6 @@ SMTP_SSL = _bool("SMTP_SSL", False)  # implicit TLS on 465
 MAIL_FROM = os.environ.get("MAIL_FROM", "no-reply@trendingtable.local")
 MAIL_FROM_NAME = os.environ.get("MAIL_FROM_NAME", "Trending Table")
 
-# Owner "control tower" access: comma-separated emails granted admin.
-ADMIN_EMAILS = {
-    e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").split(",") if e.strip()
-}
-
-
-def is_admin_email(email: str | None) -> bool:
-    return bool(email) and email.strip().lower() in ADMIN_EMAILS
+# Owner "control tower" access: a single secret key entered on /admin. Set it
+# in .env; unset means the control tower is disabled.
+ADMIN_KEY = os.environ.get("ADMIN_KEY", "")

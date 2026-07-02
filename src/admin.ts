@@ -12,11 +12,10 @@ import "./styles/admin.css";
 import {
   getAdminAccounts,
   getAdminCreators,
+  getAdminKey,
   getAdminOverview,
   getAdminRestaurants,
-  getMe,
-  login,
-  logout,
+  setAdminKey,
   type AdminAccount,
   type AdminCreator,
   type AdminRestaurant,
@@ -35,19 +34,15 @@ const MARKUP = `
   </header>
   <main class="container admin-stage">
     <section class="card admin-login" id="admin-login" hidden>
-      <h1 class="step-title">Owner sign-in</h1>
-      <p class="step-sub">Sign in with an owner account to view the control tower.</p>
+      <h1 class="step-title">Enter access key</h1>
+      <p class="step-sub">The control tower is protected by a single owner key.</p>
       <div class="field">
-        <label for="a-email">Email</label>
-        <input class="input" type="email" id="a-email" autocomplete="email" />
-      </div>
-      <div class="field">
-        <label for="a-password">Password</label>
-        <input class="input" type="password" id="a-password" autocomplete="current-password" />
+        <label for="a-key">Access key</label>
+        <input class="input" type="password" id="a-key" autocomplete="off" autofocus />
       </div>
       <p class="admin-error" id="admin-login-error" hidden></p>
       <div class="actions">
-        <button type="button" class="btn btn-primary" id="admin-login-btn">Sign in</button>
+        <button type="button" class="btn btn-primary" id="admin-login-btn">Unlock</button>
       </div>
     </section>
     <section class="admin-dash" id="admin-dash" hidden>
@@ -144,12 +139,12 @@ function renderStats(o: Awaited<ReturnType<typeof getAdminOverview>>): void {
   if (note && byStatus) note.textContent = `(${byStatus})`;
 }
 
-async function loadDashboard(email: string): Promise<void> {
+async function loadDashboard(): Promise<void> {
   byId("admin-login")!.hidden = true;
   byId("admin-dash")!.hidden = false;
   byId("admin-logout")!.hidden = false;
   const who = byId("admin-whoami");
-  if (who) who.textContent = `Signed in as ${email}`;
+  if (who) who.textContent = "Owner access";
 
   const [overview, restaurants, accounts, creators] = await Promise.all([
     getAdminOverview(),
@@ -219,32 +214,32 @@ function showLogin(message?: string): void {
   }
 }
 
+async function unlock(key: string): Promise<void> {
+  setAdminKey(key);
+  try {
+    await loadDashboard();
+  } catch (err) {
+    setAdminKey(null);
+    const status = (err as { status?: number }).status;
+    showLogin(status === 403 ? "That key is not valid." : "Couldn't load the control tower.");
+  }
+}
+
 function wire(): void {
-  byId("admin-login-btn")?.addEventListener("click", async () => {
-    const email = byId<HTMLInputElement>("a-email")!.value.trim();
-    const password = byId<HTMLInputElement>("a-password")!.value;
-    try {
-      const p = await login(email, password, "account");
-      if (!p.is_admin) {
-        showLogin("That account doesn't have control-tower access.");
-        return;
-      }
-      await loadDashboard(p.email);
-    } catch (err) {
-      showLogin((err as Error)?.message || "Sign-in failed.");
-    }
+  const keyInput = byId<HTMLInputElement>("a-key");
+  byId("admin-login-btn")?.addEventListener("click", () => void unlock(keyInput!.value.trim()));
+  keyInput?.addEventListener("keydown", (e) => {
+    if ((e as KeyboardEvent).key === "Enter") void unlock(keyInput.value.trim());
   });
 
-  byId("admin-logout")?.addEventListener("click", async () => {
-    await logout();
+  byId("admin-logout")?.addEventListener("click", () => {
+    setAdminKey(null);
     showLogin();
   });
 
-  void (async () => {
-    const me = await getMe();
-    if (me?.is_admin) await loadDashboard(me.email).catch(() => showLogin("Couldn't load the dashboard."));
-    else showLogin(me ? "That account doesn't have control-tower access." : undefined);
-  })();
+  // Already have a stored key? Try it; otherwise show the key prompt.
+  if (getAdminKey()) void loadDashboard().catch(() => showLogin());
+  else showLogin();
 }
 
 /** Render the control tower into the page and wire it up (called by the router). */
