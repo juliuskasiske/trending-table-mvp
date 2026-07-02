@@ -12,8 +12,14 @@ _ALG = "HS256"
 
 
 def issue_session(response: Response, *, subject_type: str, subject_id: int,
-                  email_verified: bool) -> None:
-    """Set the session cookie for a principal (account | creator)."""
+                  email_verified: bool) -> str:
+    """Set the session cookie for a principal and return the raw token.
+
+    The token is also returned so callers can send it in the response body; the
+    frontend echoes it back as an ``Authorization: Bearer`` header. This keeps
+    auth working in browsers that refuse to persist the cookie (e.g. Safari on
+    the bare ``localhost`` hostname), where the httponly cookie alone is unused.
+    """
     now = datetime.now(timezone.utc)
     payload = {
         "sub": str(subject_id),
@@ -32,11 +38,23 @@ def issue_session(response: Response, *, subject_type: str, subject_id: int,
         max_age=config.SESSION_TTL_HOURS * 3600,
         path="/",
     )
+    return token
+
+
+def _token_from_request(request: Request) -> str | None:
+    """The session token from the cookie, or an ``Authorization: Bearer`` header."""
+    token = request.cookies.get(config.COOKIE_NAME)
+    if token:
+        return token
+    auth = request.headers.get("authorization") or request.headers.get("Authorization")
+    if auth and auth.lower().startswith("bearer "):
+        return auth[7:].strip() or None
+    return None
 
 
 def read_session(request: Request) -> dict | None:
-    """Decode the session cookie, or None if missing/invalid/expired."""
-    token = request.cookies.get(config.COOKIE_NAME)
+    """Decode the session token (cookie or Bearer header); None if missing/invalid."""
+    token = _token_from_request(request)
     if not token:
         return None
     try:

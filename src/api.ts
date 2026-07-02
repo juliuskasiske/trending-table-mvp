@@ -21,12 +21,41 @@ export interface Principal {
   email_verified: boolean;
 }
 
-/** Thin fetch wrapper: JSON in/out, cookies included, errors carry the detail. */
+/**
+ * Session token. We keep the httponly cookie (browsers that store it send it
+ * automatically), but ALSO carry the token in an `Authorization: Bearer` header
+ * so auth works in browsers that refuse to persist the cookie — notably Safari
+ * on the bare `localhost` hostname. The token is echoed by signup/login.
+ */
+const TOKEN_KEY = "tt_token";
+let authToken: string | null = (() => {
+  try {
+    return window.localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+})();
+
+export function setAuthToken(token: string | null): void {
+  authToken = token;
+  try {
+    if (token) window.localStorage.setItem(TOKEN_KEY, token);
+    else window.localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* ignore storage failures (private mode) — in-memory token still works */
+  }
+}
+
+/** Thin fetch wrapper: JSON in/out, cookie + bearer token, errors carry the detail. */
 async function api<T>(path: string, opts: RequestInit & { json?: unknown } = {}): Promise<T> {
   const { json, headers, ...rest } = opts;
   const r = await fetch(path, {
     credentials: "include",
-    headers: { ...(json !== undefined ? { "Content-Type": "application/json" } : {}), ...headers },
+    headers: {
+      ...(json !== undefined ? { "Content-Type": "application/json" } : {}),
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      ...headers,
+    },
     body: json !== undefined ? JSON.stringify(json) : rest.body,
     ...rest,
   });
@@ -51,18 +80,30 @@ export async function getConfig(): Promise<AppConfig> {
 
 /* ---- auth ---------------------------------------------------------------- */
 
-export function signup(email: string, password: string, role: "account" | "creator" = "account"):
+export async function signup(email: string, password: string, role: "account" | "creator" = "account"):
   Promise<Principal & { dev_verify_token?: string }> {
-  return api("/api/auth/signup", { method: "POST", json: { email, password, role } });
+  const p = await api<Principal & { token?: string; dev_verify_token?: string }>(
+    "/api/auth/signup", { method: "POST", json: { email, password, role } },
+  );
+  if (p.token) setAuthToken(p.token);
+  return p;
 }
 
-export function login(email: string, password: string, role: "account" | "creator" = "account"):
+export async function login(email: string, password: string, role: "account" | "creator" = "account"):
   Promise<Principal> {
-  return api("/api/auth/login", { method: "POST", json: { email, password, role } });
+  const p = await api<Principal & { token?: string }>(
+    "/api/auth/login", { method: "POST", json: { email, password, role } },
+  );
+  if (p.token) setAuthToken(p.token);
+  return p;
 }
 
-export function logout(): Promise<{ ok: boolean }> {
-  return api("/api/auth/logout", { method: "POST" });
+export async function logout(): Promise<{ ok: boolean }> {
+  try {
+    return await api("/api/auth/logout", { method: "POST" });
+  } finally {
+    setAuthToken(null);
+  }
 }
 
 export async function getMe(): Promise<Principal | null> {

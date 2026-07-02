@@ -52,9 +52,14 @@ def signup(body: SignupIn, response: Response) -> dict:
         audit.record(conn, "signup", actor=body.email, **_audit_kwargs(body.role, row["id"]))
 
     email_mod.send_verification(body.email, raw)
-    sessions.issue_session(response, subject_type=body.role, subject_id=row["id"], email_verified=False)
+    token = sessions.issue_session(
+        response, subject_type=body.role, subject_id=row["id"], email_verified=False
+    )
 
-    out = {"id": row["id"], "email": row["email"], "role": body.role, "email_verified": False}
+    out = {
+        "id": row["id"], "email": row["email"], "role": body.role,
+        "email_verified": False, "token": token,
+    }
     if config.IS_DEV:
         out["dev_verify_token"] = raw  # dev-only convenience for testing
     return out
@@ -77,8 +82,13 @@ def login(body: LoginIn, response: Response) -> dict:
         store.reset_failed_login(conn, body.role, row["id"])
 
     verified = row.get("email_verified_at") is not None
-    sessions.issue_session(response, subject_type=body.role, subject_id=row["id"], email_verified=verified)
-    return {"id": row["id"], "email": row["email"], "role": body.role, "email_verified": verified}
+    token = sessions.issue_session(
+        response, subject_type=body.role, subject_id=row["id"], email_verified=verified
+    )
+    return {
+        "id": row["id"], "email": row["email"], "role": body.role,
+        "email_verified": verified, "token": token,
+    }
 
 
 @router.post("/logout")
