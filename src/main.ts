@@ -5,10 +5,16 @@
  */
 import "./styles/theme.css";
 import "./styles/onboarding.css";
+import { initI18n } from "./i18n.ts";
 import { initOnboarding } from "./onboarding.ts";
 
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", initOnboarding, { once: true });
-} else {
+function boot(): void {
+  initI18n(); // translate static markup + wire the EN/DE toggle first
   initOnboarding();
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", boot, { once: true });
+} else {
+  boot();
 }

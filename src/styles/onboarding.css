@@ -67,9 +67,47 @@ body {
   color: var(--accent);
 }
 
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
 .topbar-tag {
   font-size: 13px;
   color: var(--muted);
+}
+
+/* EN / DE language toggle */
+.lang-toggle {
+  display: inline-flex;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.lang-toggle button {
+  appearance: none;
+  border: 0;
+  background: var(--panel);
+  color: var(--muted);
+  font: 600 12px/1 var(--font);
+  letter-spacing: 0.02em;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.lang-toggle button + button {
+  border-left: 2px solid var(--line);
+}
+
+.lang-toggle button.on {
+  background: var(--ink);
+  color: var(--on-accent);
+}
+
+.lang-toggle button:not(.on):hover {
+  color: var(--ink);
 }
 
 /* ---- Progress ---------------------------------------------------------- */

@@ -122,5 +122,7 @@ src/
 
 - **Progress persists** to `localStorage` so a refresh mid-flow keeps input.
 - Pricing constants live in [`src/types.ts`](src/types.ts) (`PRICING`).
-- Copy is English-only for now (the marketing site is EN/DE); the same
-  `data-i18n` approach can be dropped in later.
+- Copy is **English + German**, toggled from the top bar (EN / DE). Static
+  markup carries `data-i18n` keys and the controller's dynamic strings go
+  through `t()`; all translations live in [`src/i18n.ts`](src/i18n.ts). The
+  choice persists to `localStorage` and defaults to the browser language.

@@ -41,12 +41,14 @@ import {
   type PlaceDetails,
 } from "./types.ts";
 import { loadStripe, type Stripe, type StripeElements } from "@stripe/stripe-js";
+import { getLang, onLangChange, t, tChip } from "./i18n.ts";
 
 const STORAGE_KEY = "tt-onboarding";
 
-const nf = new Intl.NumberFormat("en-US");
+const locale = () => (getLang() === "de" ? "de-DE" : "en-US");
+const nf = { format: (n: number) => new Intl.NumberFormat(locale()).format(n) };
 const eur = (n: number) =>
-  "€" + new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(n);
+  "€" + new Intl.NumberFormat(locale(), { maximumFractionDigits: 0 }).format(n);
 
 export function initOnboarding(): void {
   const form = document.querySelector<HTMLFormElement>("#onboarding");
@@ -76,6 +78,7 @@ export function initOnboarding(): void {
   let restaurantId: number | null = null; // the provisioned tenant
   let authed = false; // a session exists (signed up or logged in)
   let principalEmail = ""; // the logged-in account's email
+  let doneName = ""; // restaurant name shown on the success screen
   let configLoaded = false; // did /api/config actually load (vs backend down)?
 
   const byId = <T extends HTMLElement = HTMLElement>(id: string) =>
@@ -104,7 +107,7 @@ export function initOnboarding(): void {
         });
       }
       if (progressCurrent) progressCurrent.textContent = String(index + 1);
-      if (progressName) progressName.textContent = steps[index].dataset.name ?? "";
+      if (progressName) progressName.textContent = t(`stepname.${steps[index].dataset.step}`);
     }
 
     if (steps[index].dataset.step === "billing") ensureStripe();
@@ -226,14 +229,14 @@ export function initOnboarding(): void {
     const el = byId("p-rating");
     if (!el) return;
     if (!rating) {
-      el.innerHTML = `<span class="muted">No Google rating yet</span>`;
+      el.innerHTML = `<span class="muted">${escapeHtml(t("stars.none"))}</span>`;
       return;
     }
     const full = Math.round(rating);
     const stars = "★★★★★".slice(0, full) + "☆☆☆☆☆".slice(0, 5 - full);
     el.innerHTML =
       `<span class="star">${stars}</span> ${rating.toFixed(1)}` +
-      (reviews ? ` <span class="muted">· ${nf.format(reviews)} reviews</span>` : "");
+      (reviews ? ` <span class="muted">· ${escapeHtml(t("stars.reviews", { n: nf.format(reviews) }))}</span>` : "");
   }
 
   function fill(id: string, value: string): void {
@@ -252,7 +255,7 @@ export function initOnboarding(): void {
   function applyPlace(d: PlaceDetails): void {
     selected = d;
     const banner = byId("prefill-text");
-    if (banner) banner.textContent = "Pulled from Google. Edit anything that's off.";
+    if (banner) banner.textContent = t("restaurant.prefill.pulled");
     fill("p-name", d.name);
     fill("p-category", d.category);
     fill("p-address", d.address);
@@ -268,7 +271,7 @@ export function initOnboarding(): void {
   function manualProfile(prefName = ""): void {
     selected = null;
     const banner = byId("prefill-text");
-    if (banner) banner.textContent = "Enter your details — you can refine them anytime.";
+    if (banner) banner.textContent = t("restaurant.prefill.manual");
     fill("p-name", prefName);
     fill("p-category", "");
     fill("p-address", "");
@@ -291,20 +294,18 @@ export function initOnboarding(): void {
     if (!results || !config) return;
     if (!config.placesEnabled) {
       setSearchNotice(
-        configLoaded
-          ? "Live Google search isn't configured (add GOOGLE_MAPS_API_KEY). You can enter details manually."
-          : "Can't reach the server. Start the backend (uvicorn on :8000) and reload — or enter details manually.",
+        configLoaded ? t("search.placesOff") : t("search.serverDown"),
         configLoaded ? "" : "error",
       );
       if (manualToggle) manualToggle.hidden = false;
       return;
     }
     if (q.length < 2) {
-      setSearchNotice("Type your restaurant name and city, then hit Search.");
+      setSearchNotice(t("search.typePrompt"));
       results.innerHTML = "";
       return;
     }
-    setSearchNotice("Searching…");
+    setSearchNotice(t("search.searching"));
     let hits: Awaited<ReturnType<typeof searchPlaces>> | null = null;
     let searchErr: { status?: number } | null = null;
     try {
@@ -319,19 +320,16 @@ export function initOnboarding(): void {
       if (searchErr.status === 401) {
         authed = false;
         show(0);
-        stepError("account", new Error("Please sign in again to continue — your session wasn't active."));
+        stepError("account", new Error(t("search.sessionLost")));
         return;
       }
-      setSearchNotice(
-        "Couldn't reach search — make sure the backend is running (uvicorn on :8000). You can enter details manually.",
-        "error",
-      );
+      setSearchNotice(t("search.unreachable"), "error");
       if (manualToggle) manualToggle.hidden = false;
       return;
     }
     if (hits === null) hits = [];
     if (!hits.length) {
-      setSearchNotice(`No matches for “${q}”. Check the spelling, or enter details manually.`);
+      setSearchNotice(t("search.noMatches", { q }));
       if (manualToggle) manualToggle.hidden = false;
       return;
     }
@@ -348,7 +346,7 @@ export function initOnboarding(): void {
           ? `<span class="r-rating"><span class="star">★</span> ${h.rating.toFixed(1)}</span>`
           : "");
       btn.addEventListener("click", async () => {
-        btn.textContent = "Loading…";
+        btn.textContent = t("result.loading");
         try {
           const d = await getPlaceDetails(h.placeId);
           applyPlace(d);
@@ -360,7 +358,7 @@ export function initOnboarding(): void {
             address: h.address,
             rating: h.rating,
             reviews: h.reviews,
-            category: h.primaryType || "Restaurant",
+            category: h.primaryType || t("place.defaultCategory"),
             tags: [],
             description: "",
           });
@@ -441,7 +439,7 @@ export function initOnboarding(): void {
       const sectionInput = document.createElement("input");
       sectionInput.className = "input mi-section-input";
       sectionInput.value = group.section;
-      sectionInput.placeholder = "Section";
+      sectionInput.placeholder = t("menu.section.ph");
       sectionInput.addEventListener("input", () => {
         group.items.forEach((it) => (it.section = sectionInput.value));
         save();
@@ -456,7 +454,7 @@ export function initOnboarding(): void {
         const name = document.createElement("input");
         name.className = "input mi-name-input";
         name.value = item.name;
-        name.placeholder = "Item name";
+        name.placeholder = t("menu.item.ph");
         name.addEventListener("input", () => {
           item.name = name.value;
           save();
@@ -474,7 +472,7 @@ export function initOnboarding(): void {
         const remove = document.createElement("button");
         remove.type = "button";
         remove.className = "mi-remove";
-        remove.setAttribute("aria-label", `Remove ${item.name || "item"}`);
+        remove.setAttribute("aria-label", t("menu.remove", { name: item.name || t("menu.item.fallback") }));
         remove.textContent = "✕";
         remove.addEventListener("click", () => {
           const idx = menuItems.indexOf(item);
@@ -527,26 +525,28 @@ export function initOnboarding(): void {
     });
   }
 
+  /** "Read N items…" or the empty-result hint, given a fallback message. */
+  function menuReadStatus(emptyKey: string): string {
+    if (!menuItems.length) return t(emptyKey);
+    return t(menuItems.length === 1 ? "menu.readOne" : "menu.readMany", { n: menuItems.length });
+  }
+
   async function handleMenuPdf(file: File): Promise<void> {
     if (file.type !== "application/pdf") {
-      setMenuStatus("Please choose a PDF file.", "error");
+      setMenuStatus(t("menu.choosePdf"), "error");
       return;
     }
-    setMenuStatus(`Reading “${file.name}”…`, "loading");
+    setMenuStatus(t("menu.readingFile", { name: file.name }), "loading");
     try {
       const base64 = await fileToBase64(file);
       lastMenuSource = { data: base64 };
       menuItems = await digitizeMenu(base64);
       renderMenuItems();
-      setMenuStatus(
-        menuItems.length
-          ? `Read ${menuItems.length} item${menuItems.length === 1 ? "" : "s"}. Edit below, or improve with AI.`
-          : "No items found — try improving with AI, or a clearer PDF.",
-      );
+      setMenuStatus(menuReadStatus("menu.noItemsPdf"));
       revealImprove();
       save();
     } catch (err) {
-      setMenuStatus(`Couldn't read this menu: ${String(err)}`, "error");
+      setMenuStatus(t("menu.readErr", { err: String(err) }), "error");
     }
   }
 
@@ -560,14 +560,14 @@ export function initOnboarding(): void {
     if (!lastMenuSource) return;
     const btn = byId<HTMLButtonElement>("menu-improve");
     if (btn) btn.disabled = true;
-    setMenuStatus("Improving with AI… this can take a few seconds.", "loading");
+    setMenuStatus(t("menu.improving"), "loading");
     try {
       menuItems = await improveMenuWithAi(lastMenuSource);
       renderMenuItems();
-      setMenuStatus(`Improved — ${menuItems.length} items.`);
+      setMenuStatus(t("menu.improved", { n: menuItems.length }));
       save();
     } catch (err) {
-      setMenuStatus(`AI cleanup failed: ${String(err)}`, "error");
+      setMenuStatus(t("menu.aiFailed", { err: String(err) }), "error");
     } finally {
       if (btn) btn.disabled = false;
     }
@@ -583,23 +583,19 @@ export function initOnboarding(): void {
   byId("digitize-link")?.addEventListener("click", async () => {
     const url = val("menuUrl");
     if (!url) {
-      setMenuStatus("Add your menu page URL first.", "error");
+      setMenuStatus(t("menu.addUrlFirst"), "error");
       return;
     }
-    setMenuStatus("Reading your menu page…", "loading");
+    setMenuStatus(t("menu.reading"), "loading");
     try {
       lastMenuSource = { url };
       menuItems = await digitizeMenuUrl(url);
       renderMenuItems();
-      setMenuStatus(
-        menuItems.length
-          ? `Read ${menuItems.length} item${menuItems.length === 1 ? "" : "s"}. Edit below, or improve with AI.`
-          : "No items found — try improving with AI, or the PDF upload.",
-      );
+      setMenuStatus(menuReadStatus("menu.noItemsLink"));
       revealImprove();
       save();
     } catch (err) {
-      setMenuStatus(`Couldn't read that menu: ${String(err)}`, "error");
+      setMenuStatus(t("menu.readErr2", { err: String(err) }), "error");
     }
   });
 
@@ -656,17 +652,16 @@ export function initOnboarding(): void {
     if (!config.stripeEnabled || !config.stripePublishableKey) {
       if (notice) {
         notice.hidden = false;
-        notice.textContent =
-          "No card needed to sign up — we'll ask for a payment method before your first campaign goes live.";
+        notice.textContent = t("pay.noCard");
       }
       stripeReady = true;
       return;
     }
 
     try {
-      if (restaurantId == null) throw new Error("Finish the restaurant step first.");
+      if (restaurantId == null) throw new Error(t("pay.finishRestaurant"));
       stripe = await loadStripe(config.stripePublishableKey);
-      if (!stripe) throw new Error("Stripe.js failed to load");
+      if (!stripe) throw new Error(t("pay.stripeLoadFail"));
       const { clientSecret } = await createSetupIntent(restaurantId);
       elements = stripe.elements({ clientSecret, appearance: { theme: "flat" } });
       const paymentEl = elements.create("payment");
@@ -677,7 +672,7 @@ export function initOnboarding(): void {
       if (notice) {
         notice.hidden = false;
         notice.className = "notice error";
-        notice.textContent = `Couldn't start Stripe: ${String(err)}`;
+        notice.textContent = t("pay.stripeStartErr", { err: String(err) });
       }
       stripeReady = true;
     }
@@ -689,7 +684,7 @@ export function initOnboarding(): void {
     const notice = byId("pay-notice");
     if (saveBtn) {
       saveBtn.disabled = true;
-      saveBtn.textContent = "Saving…";
+      saveBtn.textContent = t("pay.saving");
     }
     const { error, setupIntent } = await stripe.confirmSetup({
       elements,
@@ -700,11 +695,11 @@ export function initOnboarding(): void {
       if (notice) {
         notice.hidden = false;
         notice.className = "notice error";
-        notice.textContent = error.message ?? "Card could not be saved.";
+        notice.textContent = error.message ?? t("pay.cardNotSaved");
       }
       if (saveBtn) {
         saveBtn.disabled = false;
-        saveBtn.textContent = "Save card";
+        saveBtn.textContent = t("btn.saveCard");
       }
       return;
     }
@@ -720,8 +715,8 @@ export function initOnboarding(): void {
     const saveBtn = byId("save-card");
     if (statusText) {
       statusText.textContent = payment.last4
-        ? `${(payment.brand ?? "card").toUpperCase()} •••• ${payment.last4} saved`
-        : "Payment method saved";
+        ? t("pay.savedCard", { brand: (payment.brand ?? "card").toUpperCase(), last4: payment.last4 })
+        : t("pay.saved");
     }
     if (status) status.hidden = false;
     if (el) el.hidden = true;
@@ -742,9 +737,10 @@ export function initOnboarding(): void {
         const lbl = document.createElement("label");
         const on = preset.includes(label);
         lbl.className = "chip" + (on ? " on" : "");
+        // The English label is the stable stored value; the visible text is translated.
         lbl.innerHTML =
           `<input type="checkbox" value="${escapeHtml(label)}" ${on ? "checked" : ""}>` +
-          `<span class="box">✓</span>${escapeHtml(label)}`;
+          `<span class="box">✓</span><span class="chip-label">${escapeHtml(tChip(label))}</span>`;
         const input = lbl.querySelector("input")!;
         input.addEventListener("change", () => {
           lbl.classList.toggle("on", input.checked);
@@ -784,26 +780,27 @@ export function initOnboarding(): void {
     put(
       "r-menu",
       menuItems.length
-        ? `${menuItems.length} menu items`
-        : val("menuUrl") || "Added later",
+        ? t("review.menuItems", { n: menuItems.length })
+        : val("menuUrl") || t("review.addedLater"),
     );
     const { limit: lim, views } = budget();
-    put("r-limit", `${eur(lim)} / month`);
-    put("r-views", `~${nf.format(views)} / month`);
+    put("r-limit", t("review.limitMonth", { v: eur(lim) }));
+    put("r-views", t("review.viewsMonth", { v: nf.format(views) }));
     put(
       "r-payment",
       payment.connected
         ? payment.last4
           ? `${(payment.brand ?? "card").toUpperCase()} •••• ${payment.last4}`
-          : "Card saved"
+          : t("review.cardSaved")
         : config?.stripeEnabled
-          ? "Not added"
-          : "Added before launch",
+          ? t("review.notAdded")
+          : t("review.addedBeforeLaunch"),
     );
     const g = guidelines();
-    put("r-show", g.show.join(", "));
-    put("r-must", g.mustInclude.join(", "));
-    put("r-avoid", g.avoid.join(", ") || "None");
+    const joinChips = (vals: string[]) => vals.map(tChip).join(", ");
+    put("r-show", joinChips(g.show));
+    put("r-must", joinChips(g.mustInclude));
+    put("r-avoid", joinChips(g.avoid) || t("review.none"));
   }
 
   /* ---- Persistence ----------------------------------------------------- */
@@ -879,7 +876,7 @@ export function initOnboarding(): void {
   }
 
   function stepError(kind: string | undefined, err: unknown): void {
-    const msg = (err as Error)?.message || "Something went wrong. Please try again.";
+    const msg = (err as Error)?.message || t("error.generic");
     if (kind === "account") {
       const el = form!.querySelector<HTMLElement>('[data-error-for="password"]');
       if (el) el.textContent = msg;
@@ -967,7 +964,7 @@ export function initOnboarding(): void {
     const submitBtn = form!.querySelector<HTMLButtonElement>("[data-submit]");
     if (submitBtn) {
       submitBtn.disabled = true;
-      submitBtn.textContent = "Creating account…";
+      submitBtn.textContent = t("submit.creating");
     }
     void (async () => {
       try {
@@ -980,7 +977,8 @@ export function initOnboarding(): void {
         const name = val("rname").trim();
         const doneTitle = byId("done-title");
         const doneEmail = byId("done-email");
-        if (doneTitle) doneTitle.textContent = name ? `You're in, ${name}.` : "You're in.";
+        doneName = name; // remembered so a language switch re-renders the title
+        if (doneTitle) doneTitle.textContent = name ? t("done.titleName", { name }) : t("done.title");
         if (doneEmail) doneEmail.textContent = principalEmail || val("email");
         show(doneIndex);
       } catch (err) {
@@ -988,7 +986,7 @@ export function initOnboarding(): void {
       } finally {
         if (submitBtn) {
           submitBtn.disabled = false;
-          submitBtn.textContent = "Create account";
+          submitBtn.textContent = t("btn.createAccount");
         }
       }
     })();
@@ -1001,9 +999,7 @@ export function initOnboarding(): void {
       searchNotice.hidden = config.placesEnabled;
       searchNotice.className = config.placesEnabled || configLoaded ? "notice" : "notice error";
       if (!config.placesEnabled) {
-        searchNotice.textContent = configLoaded
-          ? "Live Google search isn't configured (add GOOGLE_MAPS_API_KEY). Enter your details manually below."
-          : "Can't reach the server. Start the backend (uvicorn on :8000) and reload — or enter details manually.";
+        searchNotice.textContent = configLoaded ? t("search.placesOffBelow") : t("search.serverDown");
       }
     }
     if (manualToggle) manualToggle.hidden = config.placesEnabled;
@@ -1015,8 +1011,7 @@ export function initOnboarding(): void {
     if (!config.menuAiEnabled) {
       if (notice) {
         notice.hidden = false;
-        notice.textContent =
-          "Menu digitization needs the MarkItDown library on the server (pip install 'markitdown[pdf]').";
+        notice.textContent = t("config.menuNeedsMarkItDown");
       }
       if (dropEl) {
         dropEl.style.pointerEvents = "none";
@@ -1034,8 +1029,7 @@ export function initOnboarding(): void {
       if (notice) {
         notice.hidden = config.menuLlmEnabled;
         if (!config.menuLlmEnabled) {
-          notice.textContent =
-            "Add LLM_BASE_URL + LLM_API_KEY (gpt-oss-120b) for best results. Without them, items are extracted with a simpler parser.";
+          notice.textContent = t("config.menuAddLlm");
         }
       }
     }
@@ -1107,6 +1101,37 @@ export function initOnboarding(): void {
   }
 
   byId("restart")?.addEventListener("click", resetAll);
+
+  /* ---- Language switch ------------------------------------------------- */
+
+  // applyStatic() (in i18n.setLang) handles all [data-i18n] markup; here we
+  // re-render the controller-driven bits that hold dynamic or interpolated copy.
+  onLangChange(() => {
+    if (progressName && index < flowCount) {
+      progressName.textContent = t(`stepname.${steps[index].dataset.step}`);
+    }
+    // Chip labels: keep the checked state (value is the stable English key).
+    form.querySelectorAll<HTMLElement>(".chip").forEach((chip) => {
+      const value = chip.querySelector<HTMLInputElement>("input")?.value ?? "";
+      const label = chip.querySelector<HTMLElement>(".chip-label");
+      if (label) label.textContent = tChip(value);
+    });
+    renderBudget();
+    applyConfigUi();
+    if (!profileBlock?.hidden) {
+      const banner = byId("prefill-text");
+      if (banner) banner.textContent = t(selected ? "restaurant.prefill.pulled" : "restaurant.prefill.manual");
+      renderStars(selected?.rating, selected?.reviews);
+      renderMenuItems();
+    }
+    if (steps[index].dataset.step === "review") renderReview();
+    if (index === doneIndex) {
+      const doneTitle = byId("done-title");
+      if (doneTitle) doneTitle.textContent = doneName ? t("done.titleName", { name: doneName }) : t("done.title");
+      const doneEmail = byId("done-email"); // applyStatic reset it to the placeholder
+      if (doneEmail && principalEmail) doneEmail.textContent = principalEmail;
+    }
+  });
 
   /* ---- Boot ------------------------------------------------------------ */
 
