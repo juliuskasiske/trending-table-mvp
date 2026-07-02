@@ -4,6 +4,16 @@
 {$SITE_ADDRESS} {
 	encode zstd gzip
 
+	# Security headers (HSTS assumes HTTPS via the auto cert).
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "geolocation=(), microphone=(), camera=()"
+		-Server
+	}
+
 	# API -> FastAPI backend (same origin, so cookies + bearer both work).
 	handle /api/* {
 		reverse_proxy backend:8000

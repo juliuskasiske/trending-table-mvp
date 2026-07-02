@@ -18,11 +18,13 @@ from __future__ import annotations
 import pathlib
 import shutil
 import subprocess
+from urllib.parse import urlsplit
 
 import psycopg
 from psycopg import sql
 
 from .connection import (
+    app_rw_url,
     app_url,
     control_url,
     database_name,
@@ -59,13 +61,21 @@ def ensure_databases() -> None:
                 # DDL can't take bind params — quote the identifier safely.
                 cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name)))
                 print(f"  database {name}: created")
+        # The RLS role's password comes from APP_RW_DATABASE_URL (a strong value
+        # in prod; defaults to 'tt_app_rw' for local dev). Kept in sync on re-run.
+        rw_password = urlsplit(app_rw_url()).password or APP_RW_ROLE
         cur.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (APP_RW_ROLE,))
         if cur.fetchone():
-            print(f"  role {APP_RW_ROLE}: exists")
+            cur.execute(
+                sql.SQL("ALTER ROLE {} LOGIN PASSWORD {}").format(
+                    sql.Identifier(APP_RW_ROLE), sql.Literal(rw_password)
+                )
+            )
+            print(f"  role {APP_RW_ROLE}: exists (password synced)")
         else:
             cur.execute(
                 sql.SQL("CREATE ROLE {} LOGIN PASSWORD {}").format(
-                    sql.Identifier(APP_RW_ROLE), sql.Literal(APP_RW_ROLE)
+                    sql.Identifier(APP_RW_ROLE), sql.Literal(rw_password)
                 )
             )
             print(f"  role {APP_RW_ROLE}: created")

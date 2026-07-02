@@ -41,3 +41,41 @@ MAIL_FROM_NAME = os.environ.get("MAIL_FROM_NAME", "Trending Table")
 # Owner "control tower" access: a single secret key entered on /admin. Set it
 # in .env; unset means the control tower is disabled.
 ADMIN_KEY = os.environ.get("ADMIN_KEY", "")
+
+_INSECURE_SESSION_DEFAULTS = {"dev-insecure-secret-change-me", "dev-session-secret-change-me"}
+
+
+def validate_production_config() -> None:
+    """Refuse to boot a production deploy with weak or missing secrets.
+
+    Production is signalled by COOKIE_SECURE=1 (HTTPS). Fails closed so a
+    misconfigured deploy crashes loudly instead of running insecurely.
+    """
+    if IS_DEV:
+        return
+    problems: list[str] = []
+
+    if (not SESSION_SECRET or SESSION_SECRET in _INSECURE_SESSION_DEFAULTS
+            or len(SESSION_SECRET) < 32):
+        problems.append("SESSION_SECRET must be a strong random value (>= 32 chars).")
+
+    key = os.environ.get("APP_SECRET_KEY", "")
+    if not key:
+        problems.append("APP_SECRET_KEY (Fernet key) must be set.")
+    else:
+        try:
+            from cryptography.fernet import Fernet
+            Fernet(key.encode() if isinstance(key, str) else key)
+        except Exception:
+            problems.append("APP_SECRET_KEY is not a valid Fernet key.")
+
+    if ADMIN_KEY and len(ADMIN_KEY) < 16:
+        problems.append("ADMIN_KEY should be at least 16 characters (or unset to disable).")
+
+    if APP_BASE_URL.startswith("http://"):
+        problems.append("APP_BASE_URL should be https:// in production.")
+
+    if problems:
+        raise RuntimeError(
+            "Refusing to start — insecure production config:\n  - " + "\n  - ".join(problems)
+        )

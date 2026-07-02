@@ -14,6 +14,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# Drop root: run as an unprivileged user (the app writes nothing to disk).
+RUN useradd --create-home --uid 10001 appuser && chown -R appuser /app
+USER appuser
+
 EXPOSE 8000
 
 # Apply migrations (idempotent: creates DBs + tt_app_rw role, runs pending SQL),

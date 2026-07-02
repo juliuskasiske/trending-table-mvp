@@ -19,6 +19,9 @@ from .routes import (
     restaurants,
 )
 
+# Fail closed on weak/missing secrets before the app serves any request (prod).
+config.validate_production_config()
+
 app = FastAPI(title="Trending Table API", version="0.1.0")
 
 # The SPA (Vite) calls the API with cookies. In dev it may hit :8000 directly;
