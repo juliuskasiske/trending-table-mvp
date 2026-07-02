@@ -177,3 +177,99 @@ CREATE TABLE IF NOT EXISTS posts (
 );
 CREATE INDEX IF NOT EXISTS posts_restaurant_idx ON posts (restaurant_id);
 CREATE INDEX IF NOT EXISTS posts_creator_idx    ON posts (creator_id);
+
+-- ============================================================================
+-- Metrics + view-based billing
+-- ============================================================================
+
+-- Cumulative metric snapshots pulled from IG/TikTok, one row per poll. Columns
+-- are nullable because platforms differ (TikTok has no saves/reach). Billing
+-- reads the latest `views` and charges the delta since posts.billed_views.
+CREATE TABLE IF NOT EXISTS post_metrics (
+    id          BIGSERIAL PRIMARY KEY,
+    post_id     BIGINT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+    captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    views       BIGINT,
+    likes       BIGINT,
+    comments    BIGINT,
+    shares      BIGINT,
+    saves       BIGINT,
+    reach       BIGINT,
+    impressions BIGINT,
+    source      JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+CREATE INDEX IF NOT EXISTS post_metrics_post_idx ON post_metrics (post_id, captured_at DESC);
+
+-- Append-only customer billing ledger. `view` rows are derived from metric
+-- deltas at €0.01; the €50/mo platform fee is the Stripe subscription base.
+CREATE TABLE IF NOT EXISTS usage_events (
+    id                     BIGSERIAL PRIMARY KEY,
+    restaurant_id          BIGINT NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+    post_id                BIGINT REFERENCES posts(id) ON DELETE SET NULL,
+    occurred_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    kind                   TEXT NOT NULL CHECK (kind IN ('view', 'platform_fee', 'adjustment')),
+    quantity               BIGINT NOT NULL DEFAULT 0,
+    unit_price_eur         NUMERIC(12, 6) NOT NULL DEFAULT 0,
+    amount_eur             NUMERIC(14, 4) NOT NULL DEFAULT 0,
+    currency               TEXT NOT NULL DEFAULT 'EUR',
+    stripe_usage_record_id TEXT,
+    meta                   JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+CREATE INDEX IF NOT EXISTS usage_events_restaurant_idx ON usage_events (restaurant_id, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS usage_events_post_idx       ON usage_events (post_id);
+
+-- The creator's cut: €0.002/view (20% of the restaurant's €0.01).
+CREATE TABLE IF NOT EXISTS creator_earnings (
+    id         BIGSERIAL PRIMARY KEY,
+    creator_id BIGINT NOT NULL REFERENCES creators(id) ON DELETE CASCADE,
+    post_id    BIGINT REFERENCES posts(id) ON DELETE SET NULL,
+    period     TEXT,                                     -- e.g. '2026-07'
+    views      BIGINT NOT NULL DEFAULT 0,
+    amount_eur NUMERIC(14, 4) NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS creator_earnings_creator_idx ON creator_earnings (creator_id, created_at DESC);
+
+-- Aggregated creator payouts per period (Stripe Connect execution: later phase).
+CREATE TABLE IF NOT EXISTS payouts (
+    id                 BIGSERIAL PRIMARY KEY,
+    creator_id         BIGINT NOT NULL REFERENCES creators(id) ON DELETE CASCADE,
+    period             TEXT NOT NULL,
+    amount_eur         NUMERIC(14, 4) NOT NULL DEFAULT 0,
+    status             TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'paid', 'failed')),
+    stripe_transfer_id TEXT,
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Internal cost metering for the menu-digitization LLM calls (reused from Iota).
+CREATE TABLE IF NOT EXISTS llm_model_prices (
+    id                    BIGSERIAL PRIMARY KEY,
+    model                 TEXT NOT NULL,
+    currency              TEXT NOT NULL DEFAULT 'USD',
+    input_price_per_mtok  NUMERIC(20, 10) NOT NULL,
+    output_price_per_mtok NUMERIC(20, 10) NOT NULL,
+    effective_from        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (model, effective_from)
+);
+
+CREATE TABLE IF NOT EXISTS llm_usage_events (
+    id                BIGSERIAL PRIMARY KEY,
+    account_id        BIGINT REFERENCES accounts(id) ON DELETE SET NULL,
+    restaurant_id     BIGINT REFERENCES restaurants(id) ON DELETE SET NULL,
+    occurred_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    model             TEXT NOT NULL,
+    request_kind      TEXT,
+    prompt_tokens     INTEGER NOT NULL DEFAULT 0,
+    completion_tokens INTEGER NOT NULL DEFAULT 0,
+    total_cost        NUMERIC(20, 10) NOT NULL DEFAULT 0,
+    meta              JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+
+-- Each restaurant's spend in the current calendar month.
+CREATE OR REPLACE VIEW restaurant_month_spend AS
+SELECT r.id AS restaurant_id,
+       COALESCE(SUM(u.amount_eur) FILTER (WHERE u.occurred_at >= date_trunc('month', NOW())), 0)
+           AS month_spend_eur
+FROM restaurants r
+LEFT JOIN usage_events u ON u.restaurant_id = r.id
+GROUP BY r.id;
