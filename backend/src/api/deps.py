@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from fastapi import HTTPException, Request
 
+from .. import config
 from ..auth import store
 from ..auth.sessions import read_session
 from ..db.connection import get_control_connection
@@ -32,7 +33,16 @@ def current_principal(request: Request) -> dict:
         "role": role,
         "display_name": row.get("display_name"),
         "email_verified": row.get("email_verified_at") is not None,
+        "is_admin": role == "account" and config.is_admin_email(row["email"]),
     }
+
+
+def require_admin(request: Request) -> dict:
+    """Owner-only 'control tower' access — the account's email is in ADMIN_EMAILS."""
+    principal = current_principal(request)
+    if not principal.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access only.")
+    return principal
 
 
 def require_verified(request: Request) -> dict:

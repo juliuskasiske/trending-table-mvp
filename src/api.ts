@@ -19,6 +19,7 @@ export interface Principal {
   role: "account" | "creator";
   display_name: string | null;
   email_verified: boolean;
+  is_admin?: boolean;
 }
 
 /**
@@ -244,3 +245,45 @@ export function createSetupIntent(restaurantId: number):
   Promise<{ clientSecret: string; publishableKey: string | null }> {
   return api(`/api/restaurants/${restaurantId}/billing/setup-intent`, { method: "POST" });
 }
+
+/* ---- admin (control tower) ----------------------------------------------- */
+
+export interface AdminOverview {
+  accounts: { total: number; verified: number; last_7d: number; last_30d: number };
+  restaurants: { total: number; active: number; by_status: Record<string, number> };
+  creators: { total: number; verified: number };
+}
+
+export interface AdminRestaurant {
+  id: number;
+  name: string;
+  status: string;
+  spending_limit_eur: number | string | null;
+  created_at: string;
+  member_count: number;
+  owner_emails: string;
+}
+
+export interface AdminAccount {
+  id: number;
+  email: string;
+  display_name: string | null;
+  email_verified: boolean;
+  created_at: string;
+  restaurant_count: number;
+}
+
+export interface AdminCreator {
+  id: number;
+  email: string;
+  display_name: string | null;
+  status: string;
+  email_verified: boolean;
+  created_at: string;
+}
+
+export const getAdminOverview = () => api<AdminOverview>("/api/admin/overview");
+export const getAdminRestaurants = () =>
+  api<{ restaurants: AdminRestaurant[] }>("/api/admin/restaurants");
+export const getAdminAccounts = () => api<{ accounts: AdminAccount[] }>("/api/admin/accounts");
+export const getAdminCreators = () => api<{ creators: AdminCreator[] }>("/api/admin/creators");

@@ -19,5 +19,12 @@ export default defineConfig({
     outDir: "dist",
     emptyOutDir: true,
     target: "es2022",
+    rollupOptions: {
+      input: {
+        // Onboarding SPA (/) and the owner control tower (/admin.html).
+        main: "index.html",
+        admin: "admin.html",
+      },
+    },
   },
 });

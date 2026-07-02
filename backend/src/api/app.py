@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .. import config
 from ..db.connection import app_connection, get_control_connection
 from .routes import (
+    admin,
     auth,
     billing,
     campaigns,
@@ -39,6 +40,7 @@ app.include_router(campaigns.router)
 app.include_router(creator.router)
 app.include_router(menu.router)
 app.include_router(metering.router)
+app.include_router(admin.router)
 
 
 def _ping(run) -> str:
