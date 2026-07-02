@@ -1,0 +1,19 @@
+# SITE_ADDRESS is your hostname, e.g. app.yourdomain.com (auto-HTTPS via
+# Let's Encrypt when DNS points here and ports 80/443 are open). For a quick
+# no-TLS test set SITE_ADDRESS=:80.
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	# API -> FastAPI backend (same origin, so cookies + bearer both work).
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+
+	# Static SPA. Real files (/, /admin.html, /assets/*) are served directly;
+	# unknown paths fall back to index.html so client routes like /verify work.
+	handle {
+		root * /srv/dist
+		try_files {path} /index.html
+		file_server
+	}
+}

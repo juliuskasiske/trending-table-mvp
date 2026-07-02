@@ -1,0 +1,58 @@
+# Production stack for a single Hetzner box.
+#   db      — Postgres, data on the attached volume (PGDATA_DIR)
+#   backend — FastAPI (runs migrations on start, then uvicorn)
+#   web     — Caddy: serves the built SPA + reverse-proxies /api + auto-HTTPS
+#
+# Compose vars (POSTGRES_*, SITE_ADDRESS, PGDATA_DIR) come from infra/.env.
+# App config comes from backend/.env.prod. Run from the mvp/ directory:
+#   docker compose -f infra/docker-compose.prod.yml up -d --build
+name: trending-table
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tt_owner}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/.env}
+      POSTGRES_DB: postgres
+    volumes:
+      # Postgres data lives on the attached Hetzner Volume, not the box disk.
+      - ${PGDATA_DIR:-/mnt/pgdata}:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tt_owner} -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    # No published ports: the DB is only reachable on the internal network.
+
+  backend:
+    build:
+      context: ../backend
+    restart: unless-stopped
+    env_file: ../backend/.env.prod
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "8000"
+
+  web:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.web
+    restart: unless-stopped
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in infra/.env}
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

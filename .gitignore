@@ -12,10 +12,13 @@ dist/
 *.log
 npm-debug.log*
 
-# Environment
+# Environment (secrets). Keep the *.example templates tracked.
 .env
 .env.local
 .env.*.local
+.env.prod
+!.env.example
+!.env.prod.example
 
 # Editor / OS
 .DS_Store
