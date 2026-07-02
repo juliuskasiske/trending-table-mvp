@@ -168,19 +168,21 @@ function renderOverview(o: AdminOverview): void {
   renderFunnel(byId("crea-funnel"), o.creator_funnel);
 
   // Payments — all figures are MONTHLY; the spending limit already includes the
-  // €50/mo platform fee, so we label incl./excl. explicitly.
+  // €50/mo platform fee, so we label incl./excl. explicitly. Only "verified"
+  // restaurants (owner email confirmed) are payment-capable.
   const p = o.payments;
   byId("payment-stats")!.innerHTML = [
-    statCard(fmtEur(p.total_limit_incl_fee), "Monthly spending limit · verified (incl. platform fee)", true),
-    statCard(fmtEur(p.total_limit_excl_fee), "Monthly ad-view budget · verified (excl. platform fee)"),
-    statCard(fmtEur(p.avg_limit_incl_fee), "Avg monthly limit / verified restaurant (incl. fee)"),
-    statCard(fmtEur(p.est_monthly_fees), `Est. monthly platform fees (${p.verified_restaurants} verified × €50)`),
+    statCard(fmtEur(p.all_restaurants_limit_incl_fee), "Monthly limit · all restaurants (incl. platform fee)", true),
+    statCard(`${p.verified_restaurants} / ${o.stats.restaurants_total}`, "Verified restaurants (payment-capable)"),
+    statCard(fmtEur(p.total_limit_incl_fee), "Monthly limit · verified only (incl. fee)"),
+    statCard(fmtEur(p.est_monthly_fees), `Est. monthly platform fees · verified (${p.verified_restaurants} × €50)`),
   ].join("");
   const note = byId("payment-note");
   if (note) {
     note.innerHTML =
-      `“Verified” = the owner's email is confirmed (payment-capable). ` +
-      `All restaurants incl. unverified: <b>${esc(fmtEur(p.all_restaurants_limit_incl_fee))}</b>/mo (incl. fee).`;
+      `“Verified” = the owner's email is confirmed, so only these are payment-capable. ` +
+      `Figures are monthly; the spending limit includes the €50/mo platform fee ` +
+      `(verified ad-view budget excl. fee: <b>${esc(fmtEur(p.total_limit_excl_fee))}</b>).`;
   }
 
   const s = o.stats;

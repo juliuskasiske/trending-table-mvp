@@ -36,18 +36,6 @@ def overview(_: None = Depends(deps.require_admin)) -> dict:
         )
         a = cur.fetchone()
 
-        cur.execute("SELECT count(DISTINCT account_id) AS n FROM memberships")
-        with_restaurant = cur.fetchone()["n"]
-
-        cur.execute(
-            """
-            SELECT count(DISTINCT m.account_id) AS n
-            FROM memberships m JOIN restaurants r ON r.id = m.restaurant_id
-            WHERE r.status = 'active'
-            """
-        )
-        with_active = cur.fetchone()["n"]
-
         cur.execute(
             "SELECT count(*) AS n FROM ("
             "  SELECT account_id FROM memberships GROUP BY account_id HAVING count(*) > 1"
@@ -103,14 +91,14 @@ def overview(_: None = Depends(deps.require_admin)) -> dict:
 
     return {
         "restaurant_funnel": [
-            {"label": "Signed up", "value": a["total"]},
-            {"label": "Created a restaurant", "value": with_restaurant},
-            {"label": "Has an active restaurant", "value": with_active},
-            {"label": "Verified email", "value": a["verified"]},
+            {"label": "Accounts signed up", "value": a["total"]},
+            {"label": "Restaurants created", "value": r["total"]},
+            {"label": "Active restaurants (onboarding done)", "value": r["active"]},
+            {"label": "Verified restaurants (owner email confirmed)", "value": r["verified"]},
         ],
         "creator_funnel": [
-            {"label": "Signed up", "value": c["total"]},
-            {"label": "Active", "value": c["active"]},
+            {"label": "Accounts signed up", "value": c["total"]},
+            {"label": "Connected a social account", "value": creators_connected},
             {"label": "Verified email", "value": c["verified"]},
         ],
         "payments": {
