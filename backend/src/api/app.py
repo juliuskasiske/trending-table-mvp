@@ -1,11 +1,26 @@
-"""Trending Table API (FastAPI). Phase 1: liveness + DB connectivity."""
+"""Trending Table API (FastAPI)."""
 from __future__ import annotations
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
+from .. import config
 from ..db.connection import app_connection, get_control_connection
+from .routes import auth
 
 app = FastAPI(title="Trending Table API", version="0.1.0")
+
+# The SPA (Vite) calls the API with cookies. In dev it may hit :8000 directly;
+# in prod it's same-origin behind a proxy. Allow the configured SPA origin.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[config.APP_BASE_URL],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(auth.router)
 
 
 def _ping(run) -> str:

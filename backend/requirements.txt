@@ -1,6 +1,10 @@
-# Trending Table backend — Phase 1 core (grows per phase).
+# Trending Table backend (grows per phase).
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
 psycopg[binary]==3.2.3
 python-dotenv==1.0.1
 pydantic==2.10.4
+# Phase 2 — auth
+argon2-cffi==23.1.0
+pyjwt==2.10.1
+email-validator==2.2.0
