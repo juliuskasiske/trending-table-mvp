@@ -447,8 +447,8 @@ function detectInitial(): Lang {
   } catch {
     /* ignore */
   }
-  const nav = (navigator.language || "en").toLowerCase();
-  return nav.startsWith("de") ? "de" : "en";
+  // German is the default; a saved choice above always wins.
+  return "de";
 }
 
 let current: Lang = detectInitial();
