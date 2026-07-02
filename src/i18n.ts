@@ -214,6 +214,9 @@ const en: Dict = {
   "config.menuAddLlm":
     "Add LLM_BASE_URL + LLM_API_KEY (gpt-oss-120b) for best results. Without them, items are extracted with a simpler parser.",
   "error.generic": "Something went wrong. Please try again.",
+  "verify.ok": "Email confirmed — you're all set.",
+  "verify.fail": "That verification link is invalid or has expired.",
+  "verify.sent": "We sent a confirmation link to {email}. Check your inbox to verify your account.",
 
   // Guideline chip labels (also used as stable stored values)
   "chip.Signature dishes": "Signature dishes",
@@ -420,6 +423,9 @@ const de: Dict = {
   "config.menuAddLlm":
     "Füg LLM_BASE_URL + LLM_API_KEY (gpt-oss-120b) für beste Ergebnisse hinzu. Ohne sie werden Gerichte mit einem einfacheren Parser extrahiert.",
   "error.generic": "Etwas ist schiefgelaufen. Bitte versuch es erneut.",
+  "verify.ok": "E-Mail bestätigt — alles erledigt.",
+  "verify.fail": "Dieser Bestätigungslink ist ungültig oder abgelaufen.",
+  "verify.sent": "Wir haben einen Bestätigungslink an {email} gesendet. Prüf dein Postfach, um dein Konto zu bestätigen.",
 
   "chip.Signature dishes": "Signature-Gerichte",
   "chip.Interior & atmosphere": "Interieur & Atmosphäre",

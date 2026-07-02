@@ -27,6 +27,7 @@ import {
   putProfile,
   searchPlaces,
   signup,
+  verifyEmail,
   type AppConfig,
   type MenuSource,
   type RestaurantProfileInput,
@@ -84,6 +85,15 @@ export function initOnboarding(): void {
 
   const byId = <T extends HTMLElement = HTMLElement>(id: string) =>
     document.getElementById(id) as T | null;
+
+  /** Top-of-page banner for email-verification feedback. */
+  function showBanner(text: string, kind: "ok" | "error" = "ok"): void {
+    const el = byId("verify-banner");
+    if (!el) return;
+    el.hidden = false;
+    el.className = "verify-banner " + kind;
+    el.textContent = text;
+  }
 
   // Progress segments
   if (progressSteps) {
@@ -886,6 +896,7 @@ export function initOnboarding(): void {
       const p = await signup(email, password, "account");
       authed = true;
       principalEmail = p.email;
+      showBanner(t("verify.sent", { email: p.email }), "ok");
     } catch (err) {
       if ((err as { status?: number }).status === 409) {
         const p = await login(email, password, "account"); // email exists → log in
@@ -1207,6 +1218,20 @@ export function initOnboarding(): void {
       };
     }
     applyConfigUi();
+
+    // Email verification: the link in the email is APP_BASE_URL/verify?token=…,
+    // which loads this SPA. Consume the token, show the result, and clean the URL.
+    const token = new URLSearchParams(window.location.search).get("token");
+    if (token) {
+      try {
+        await verifyEmail(token);
+        showBanner(t("verify.ok"), "ok");
+      } catch {
+        showBanner(t("verify.fail"), "error");
+      }
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+
     // Returning, signed-in accounts skip the signup step and go add a restaurant.
     const me = await getMe();
     if (me && me.role === "account") {
