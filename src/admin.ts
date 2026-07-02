@@ -208,10 +208,11 @@ function renderRestaurants(rs: AdminRestaurant[], as: AdminAccount[]): void {
   byId("rest-count")!.textContent = `· ${rs.length}`;
   renderTable(
     byId("rest-table"),
-    ["ID", "Name", "Status", "Owner", "Members", "Monthly limit", "Created"],
+    ["ID", "Name", "Status", "Owner", "Owner verified", "Members", "Monthly limit", "Created"],
     rs.map((x) => [
       esc(x.id), esc(x.name || "—"), statusPill(x.status), esc(x.owner_emails || "—"),
-      esc(x.member_count), fmtEur(x.spending_limit_eur), esc(fmtDate(x.created_at)),
+      boolPill(x.owner_verified), esc(x.member_count), fmtEur(x.spending_limit_eur),
+      esc(fmtDate(x.created_at)),
     ]),
   );
 

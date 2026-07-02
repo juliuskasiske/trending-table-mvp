@@ -49,23 +49,36 @@ def overview(_: None = Depends(deps.require_admin)) -> dict:
         # summed over verified restaurants only.
         cur.execute(
             """
-            WITH rv AS (
+            WITH owner_flags AS (
+                -- Per account: is it "active" (has taken a restaurant live) and
+                -- is its email verified?
+                SELECT a.id                                    AS account_id,
+                       (a.email_verified_at IS NOT NULL)       AS acct_verified,
+                       bool_or(r2.status = 'active')           AS acct_active
+                FROM accounts a
+                LEFT JOIN memberships m2 ON m2.account_id = a.id AND m2.role = 'owner'
+                LEFT JOIN restaurants r2 ON r2.id = m2.restaurant_id
+                GROUP BY a.id
+            ),
+            rest AS (
                 SELECT r.id, r.status, r.spending_limit_eur,
-                       bool_or(a.email_verified_at IS NOT NULL) AS owner_verified
+                       bool_or(f.acct_verified) AS owner_verified,
+                       bool_or(f.acct_active)   AS owner_active
                 FROM restaurants r
-                LEFT JOIN memberships m ON m.restaurant_id = r.id AND m.role = 'owner'
-                LEFT JOIN accounts a    ON a.id = m.account_id
+                LEFT JOIN memberships m  ON m.restaurant_id = r.id AND m.role = 'owner'
+                LEFT JOIN owner_flags f   ON f.account_id = m.account_id
                 GROUP BY r.id, r.status, r.spending_limit_eur
             )
-            SELECT count(*)                                                    AS total,
-                   count(*) FILTER (WHERE status = 'active')                   AS active,
-                   count(*) FILTER (WHERE owner_verified)                      AS verified,
-                   COALESCE(sum(spending_limit_eur), 0)                        AS all_limit,
+            SELECT count(*)                                                        AS total,
+                   count(*) FILTER (WHERE status = 'active')                       AS active,
+                   count(*) FILTER (WHERE owner_active)                            AS with_active_account,
+                   count(*) FILTER (WHERE owner_verified)                          AS verified,
+                   COALESCE(sum(spending_limit_eur), 0)                            AS all_limit,
                    COALESCE(sum(spending_limit_eur)
-                            FILTER (WHERE owner_verified), 0)                  AS verified_limit,
+                            FILTER (WHERE owner_verified), 0)                      AS verified_limit,
                    COALESCE(avg(spending_limit_eur)
-                            FILTER (WHERE owner_verified), 0)                  AS verified_avg
-            FROM rv
+                            FILTER (WHERE owner_verified), 0)                      AS verified_avg
+            FROM rest
             """
         )
         r = cur.fetchone()
@@ -91,10 +104,10 @@ def overview(_: None = Depends(deps.require_admin)) -> dict:
 
     return {
         "restaurant_funnel": [
-            {"label": "Accounts signed up", "value": a["total"]},
+            {"label": "Accounts", "value": a["total"]},
             {"label": "Restaurants created", "value": r["total"]},
-            {"label": "Active restaurants (onboarding done)", "value": r["active"]},
-            {"label": "Verified restaurants (owner email confirmed)", "value": r["verified"]},
+            {"label": "Restaurants with active accounts", "value": r["with_active_account"]},
+            {"label": "Restaurants with verified accounts", "value": r["verified"]},
         ],
         "creator_funnel": [
             {"label": "Accounts signed up", "value": c["total"]},
@@ -134,7 +147,9 @@ def restaurants(_: None = Depends(deps.require_admin)) -> dict:
                    count(m.account_id)                                              AS member_count,
                    coalesce(
                        string_agg(DISTINCT a.email, ', ' ORDER BY a.email)
-                       FILTER (WHERE m.role = 'owner'), '')                          AS owner_emails
+                       FILTER (WHERE m.role = 'owner'), '')                          AS owner_emails,
+                   COALESCE(bool_or(a.email_verified_at IS NOT NULL)
+                            FILTER (WHERE m.role = 'owner'), false)                  AS owner_verified
             FROM restaurants r
             LEFT JOIN memberships m ON m.restaurant_id = r.id
             LEFT JOIN accounts a    ON a.id = m.account_id

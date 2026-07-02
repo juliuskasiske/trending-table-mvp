@@ -283,6 +283,7 @@ export interface AdminRestaurant {
   created_at: string;
   member_count: number;
   owner_emails: string;
+  owner_verified: boolean;
 }
 
 export interface AdminAccount {
