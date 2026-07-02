@@ -84,14 +84,12 @@ export function resendVerification(): Promise<{ ok: boolean; dev_verify_token?: 
 /* ---- places -------------------------------------------------------------- */
 
 export async function searchPlaces(query: string): Promise<PlaceSuggestion[]> {
-  try {
-    const data = await api<{ results?: PlaceSuggestion[] }>(
-      `/api/places/search?q=${encodeURIComponent(query)}`,
-    );
-    return data.results ?? [];
-  } catch {
-    return [];
-  }
+  // Let errors propagate so the UI can distinguish "no matches" from
+  // "backend unreachable / not signed in".
+  const data = await api<{ results?: PlaceSuggestion[] }>(
+    `/api/places/search?q=${encodeURIComponent(query)}`,
+  );
+  return data.results ?? [];
 }
 
 export function getPlaceDetails(placeId: string): Promise<PlaceDetails> {

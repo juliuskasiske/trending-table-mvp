@@ -76,6 +76,7 @@ export function initOnboarding(): void {
   let restaurantId: number | null = null; // the provisioned tenant
   let authed = false; // a session exists (signed up or logged in)
   let principalEmail = ""; // the logged-in account's email
+  let configLoaded = false; // did /api/config actually load (vs backend down)?
 
   const byId = <T extends HTMLElement = HTMLElement>(id: string) =>
     document.getElementById(id) as T | null;
@@ -279,27 +280,47 @@ export function initOnboarding(): void {
     revealProfile();
   }
 
+  function setSearchNotice(text: string, kind: "" | "error" = ""): void {
+    if (!searchNotice) return;
+    searchNotice.hidden = text === "";
+    searchNotice.className = "notice" + (kind ? ` ${kind}` : "");
+    searchNotice.textContent = text;
+  }
+
   async function runSearch(q: string): Promise<void> {
     if (!results || !config) return;
     if (!config.placesEnabled) {
-      if (searchNotice) {
-        searchNotice.hidden = false;
-        searchNotice.textContent =
-          "Live Google search isn't configured (add GOOGLE_MAPS_API_KEY). You can enter details manually.";
-      }
+      setSearchNotice(
+        configLoaded
+          ? "Live Google search isn't configured (add GOOGLE_MAPS_API_KEY). You can enter details manually."
+          : "Can't reach the server. Start the backend (uvicorn on :8000) and reload — or enter details manually.",
+        configLoaded ? "" : "error",
+      );
       if (manualToggle) manualToggle.hidden = false;
       return;
     }
     if (q.length < 2) {
+      setSearchNotice("Type your restaurant name and city, then hit Search.");
       results.innerHTML = "";
       return;
     }
-    const hits = await searchPlaces(q);
+    setSearchNotice("Searching…");
+    const hits = await searchPlaces(q).catch(() => null);
     results.innerHTML = "";
-    if (!hits.length) {
+    if (hits === null) {
+      setSearchNotice(
+        "Couldn't reach search — make sure you're signed in and the backend is running. You can enter details manually.",
+        "error",
+      );
       if (manualToggle) manualToggle.hidden = false;
       return;
     }
+    if (!hits.length) {
+      setSearchNotice(`No matches for “${q}”. Check the spelling, or enter details manually.`);
+      if (manualToggle) manualToggle.hidden = false;
+      return;
+    }
+    setSearchNotice("");
     for (const h of hits) {
       const li = document.createElement("li");
       const btn = document.createElement("button");
@@ -963,9 +984,11 @@ export function initOnboarding(): void {
     if (!config) return;
     if (searchNotice) {
       searchNotice.hidden = config.placesEnabled;
+      searchNotice.className = config.placesEnabled || configLoaded ? "notice" : "notice error";
       if (!config.placesEnabled) {
-        searchNotice.textContent =
-          "Live Google search isn't configured (add GOOGLE_MAPS_API_KEY). Enter your details manually below.";
+        searchNotice.textContent = configLoaded
+          ? "Live Google search isn't configured (add GOOGLE_MAPS_API_KEY). Enter your details manually below."
+          : "Can't reach the server. Start the backend (uvicorn on :8000) and reload — or enter details manually.";
       }
     }
     if (manualToggle) manualToggle.hidden = config.placesEnabled;
@@ -1079,6 +1102,7 @@ export function initOnboarding(): void {
   void (async () => {
     try {
       config = await getConfig();
+      configLoaded = true;
     } catch {
       config = {
         placesEnabled: false,
