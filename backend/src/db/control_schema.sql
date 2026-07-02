@@ -101,3 +101,79 @@ CREATE TABLE IF NOT EXISTS audit_log (
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS audit_log_created_idx ON audit_log (created_at DESC);
+
+-- ============================================================================
+-- Creator profiles & social connections
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS creator_profiles (
+    creator_id    BIGINT PRIMARY KEY REFERENCES creators(id) ON DELETE CASCADE,
+    bio           TEXT,
+    city          TEXT,
+    categories    TEXT[] NOT NULL DEFAULT '{}',
+    languages     TEXT[] NOT NULL DEFAULT '{}',
+    avatar_url    TEXT,
+    base_rate_eur NUMERIC(12, 2),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- A creator's connected Instagram/TikTok account. OAuth tokens are ENCRYPTED at
+-- rest (Fernet / APP_SECRET_KEY) — a DB dump reveals no usable credential.
+CREATE TABLE IF NOT EXISTS social_accounts (
+    id                BIGSERIAL PRIMARY KEY,
+    creator_id        BIGINT NOT NULL REFERENCES creators(id) ON DELETE CASCADE,
+    platform          TEXT NOT NULL CHECK (platform IN ('instagram', 'tiktok')),
+    handle            TEXT,
+    platform_user_id  TEXT,
+    follower_count    INTEGER,
+    access_token_enc  TEXT,
+    refresh_token_enc TEXT,
+    token_expires_at  TIMESTAMPTZ,
+    scopes            TEXT[] NOT NULL DEFAULT '{}',
+    status            TEXT NOT NULL DEFAULT 'connected'
+                      CHECK (status IN ('connected', 'expired', 'revoked')),
+    connected_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (creator_id, platform)
+);
+CREATE INDEX IF NOT EXISTS social_accounts_creator_idx ON social_accounts (creator_id);
+
+-- ============================================================================
+-- Marketplace graph (creator ↔ restaurant)
+-- ============================================================================
+
+-- A booking/agreement: restaurant engaged creator. `brief` snapshots the
+-- guidelines at booking time so later edits don't rewrite history.
+CREATE TABLE IF NOT EXISTS campaigns (
+    id              BIGSERIAL PRIMARY KEY,
+    restaurant_id   BIGINT NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+    creator_id      BIGINT NOT NULL REFERENCES creators(id) ON DELETE CASCADE,
+    status          TEXT NOT NULL DEFAULT 'proposed'
+                    CHECK (status IN ('proposed', 'accepted', 'live', 'completed', 'cancelled')),
+    brief           JSONB NOT NULL DEFAULT '{}'::jsonb,
+    agreed_rate_eur NUMERIC(12, 2),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS campaigns_restaurant_idx ON campaigns (restaurant_id);
+CREATE INDEX IF NOT EXISTS campaigns_creator_idx    ON campaigns (creator_id);
+
+-- THE billable unit: one creator post about a restaurant. The restaurant pays
+-- for views on posts tied to it. billed_views is the high-water mark already
+-- charged (see Phase 6 metering). Creators submit posts by pasting the URL.
+CREATE TABLE IF NOT EXISTS posts (
+    id               BIGSERIAL PRIMARY KEY,
+    campaign_id      BIGINT REFERENCES campaigns(id) ON DELETE SET NULL,
+    restaurant_id    BIGINT NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+    creator_id       BIGINT NOT NULL REFERENCES creators(id) ON DELETE CASCADE,
+    platform         TEXT NOT NULL CHECK (platform IN ('instagram', 'tiktok')),
+    platform_post_id TEXT,
+    permalink        TEXT,
+    caption          TEXT,
+    posted_at        TIMESTAMPTZ,
+    status           TEXT NOT NULL DEFAULT 'live'
+                     CHECK (status IN ('detected', 'live', 'removed')),
+    billed_views     BIGINT NOT NULL DEFAULT 0,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (platform, platform_post_id)
+);
+CREATE INDEX IF NOT EXISTS posts_restaurant_idx ON posts (restaurant_id);
+CREATE INDEX IF NOT EXISTS posts_creator_idx    ON posts (creator_id);

@@ -13,3 +13,5 @@ httpx==0.28.1
 stripe==11.4.1
 openai==1.59.6
 markitdown[pdf]==0.1.6
+# Phase 5 — creator/social
+cryptography==44.0.0
