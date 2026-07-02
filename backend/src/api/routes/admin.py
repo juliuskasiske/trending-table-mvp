@@ -72,13 +72,13 @@ def overview(_: None = Depends(deps.require_admin)) -> dict:
             SELECT count(*)                                                        AS total,
                    count(*) FILTER (WHERE status = 'active')                       AS active,
                    count(*) FILTER (WHERE owner_active)                            AS with_active_account,
-                   count(*) FILTER (WHERE owner_active AND owner_verified)         AS active_verified,
-                   count(*) FILTER (WHERE owner_verified)                          AS verified,
+                   -- "payment-capable" = live restaurant AND owner email confirmed
+                   count(*) FILTER (WHERE owner_active AND owner_verified)         AS payable,
                    COALESCE(sum(spending_limit_eur), 0)                            AS all_limit,
                    COALESCE(sum(spending_limit_eur)
-                            FILTER (WHERE owner_verified), 0)                      AS verified_limit,
+                            FILTER (WHERE owner_active AND owner_verified), 0)     AS payable_limit,
                    COALESCE(avg(spending_limit_eur)
-                            FILTER (WHERE owner_verified), 0)                      AS verified_avg
+                            FILTER (WHERE owner_active AND owner_verified), 0)     AS payable_avg
             FROM rest
             """
         )
@@ -108,7 +108,7 @@ def overview(_: None = Depends(deps.require_admin)) -> dict:
             {"label": "Accounts", "value": a["total"]},
             {"label": "Restaurants created", "value": r["total"]},
             {"label": "Restaurants with active accounts", "value": r["with_active_account"]},
-            {"label": "Restaurants with active + verified accounts", "value": r["active_verified"]},
+            {"label": "Restaurants with active + verified accounts", "value": r["payable"]},
         ],
         "creator_funnel": [
             {"label": "Accounts signed up", "value": c["total"]},
@@ -116,14 +116,15 @@ def overview(_: None = Depends(deps.require_admin)) -> dict:
             {"label": "Verified email", "value": c["verified"]},
         ],
         "payments": {
+            # "Payment-capable" = active (live) AND owner email verified.
             # All monthly figures. spending_limit already INCLUDES the €50/mo fee.
-            "verified_restaurants": r["verified"],
-            "total_limit_incl_fee": r["verified_limit"],
+            "verified_restaurants": r["payable"],
+            "total_limit_incl_fee": r["payable_limit"],
             "total_limit_excl_fee": max(
-                Decimal("0"), r["verified_limit"] - r["verified"] * PLATFORM_FEE
+                Decimal("0"), r["payable_limit"] - r["payable"] * PLATFORM_FEE
             ),
-            "avg_limit_incl_fee": r["verified_avg"],
-            "est_monthly_fees": r["verified"] * PLATFORM_FEE,
+            "avg_limit_incl_fee": r["payable_avg"],
+            "est_monthly_fees": r["payable"] * PLATFORM_FEE,
             "all_restaurants_limit_incl_fee": r["all_limit"],
         },
         "stats": {
