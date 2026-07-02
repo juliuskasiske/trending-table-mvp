@@ -1,5 +1,10 @@
 /* Control tower — owner-only dashboard. Reuses the Risograph tokens. */
 
+/* Use the full screen width (onboarding caps .container at 720px). */
+.admin-page .container {
+  max-width: none;
+}
+
 .admin-stage {
   padding: 32px 0 80px;
 }
@@ -77,7 +82,7 @@
 .table-wrap {
   border: 2px solid var(--line);
   border-radius: 12px;
-  overflow: auto;
+  overflow: hidden; /* full-width table wraps instead of scrolling sideways */
   background: var(--panel);
 }
 
@@ -85,6 +90,7 @@ table.admin {
   width: 100%;
   border-collapse: collapse;
   font-size: 14px;
+  table-layout: auto;
 }
 
 table.admin th,
@@ -92,7 +98,16 @@ table.admin td {
   text-align: left;
   padding: 10px 14px;
   border-bottom: 1px solid #e6e2da;
+  white-space: normal;      /* allow wrapping — no horizontal scroll */
+  overflow-wrap: anywhere;  /* long emails/URLs break instead of overflowing */
+  vertical-align: top;
+}
+
+/* Keep the numeric/short columns from wrapping awkwardly. */
+table.admin td:first-child,
+table.admin th:first-child {
   white-space: nowrap;
+  color: var(--muted);
 }
 
 table.admin th {

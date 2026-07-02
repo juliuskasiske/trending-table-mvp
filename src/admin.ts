@@ -175,13 +175,17 @@ async function loadDashboard(): Promise<void> {
   byId("acct-count")!.textContent = `· ${a.length}`;
   renderTable(
     byId("acct-table"),
-    ["ID", "Email", "Name", "Verified", "Restaurants", "Registered"],
+    ["ID", "Email", "Name", "Verified", "Restaurants created", "Registered"],
     a.map((x: AdminAccount) => [
       esc(x.id),
       esc(x.email),
       esc(x.display_name || "—"),
       boolPill(x.email_verified),
-      esc(x.restaurant_count),
+      x.restaurants
+        ? esc(x.restaurants)
+        : x.restaurant_count
+          ? `<span class="muted">${x.restaurant_count} (unnamed)</span>`
+          : `<span class="muted">—</span>`,
       esc(fmtDate(x.created_at)),
     ]),
   );
@@ -245,7 +249,7 @@ function wire(): void {
 /** Render the control tower into the page and wire it up (called by the router). */
 export function initAdmin(): void {
   document.title = "Control tower — Trending Table";
-  document.body.className = "theme-risograph";
+  document.body.className = "theme-risograph admin-page";
   document.body.innerHTML = MARKUP;
   wire();
 }

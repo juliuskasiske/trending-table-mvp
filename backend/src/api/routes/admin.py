@@ -83,9 +83,13 @@ def accounts(_: None = Depends(deps.require_admin)) -> dict:
             SELECT a.id, a.email, a.display_name,
                    (a.email_verified_at IS NOT NULL) AS email_verified,
                    a.created_at,
-                   count(m.restaurant_id)            AS restaurant_count
+                   count(m.restaurant_id)            AS restaurant_count,
+                   coalesce(
+                       string_agg(DISTINCT r.name, ', ' ORDER BY r.name)
+                       FILTER (WHERE r.id IS NOT NULL AND r.name <> ''), '')  AS restaurants
             FROM accounts a
-            LEFT JOIN memberships m ON m.account_id = a.id
+            LEFT JOIN memberships m  ON m.account_id = a.id
+            LEFT JOIN restaurants r  ON r.id = m.restaurant_id
             GROUP BY a.id
             ORDER BY a.created_at DESC
             LIMIT 1000

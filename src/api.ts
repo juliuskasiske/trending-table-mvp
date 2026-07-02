@@ -270,6 +270,7 @@ export interface AdminAccount {
   email_verified: boolean;
   created_at: string;
   restaurant_count: number;
+  restaurants: string; // comma-separated names of restaurants this account created
 }
 
 export interface AdminCreator {
