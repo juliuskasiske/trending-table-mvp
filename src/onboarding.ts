@@ -305,16 +305,31 @@ export function initOnboarding(): void {
       return;
     }
     setSearchNotice("Searching…");
-    const hits = await searchPlaces(q).catch(() => null);
+    let hits: Awaited<ReturnType<typeof searchPlaces>> | null = null;
+    let searchErr: { status?: number } | null = null;
+    try {
+      hits = await searchPlaces(q);
+    } catch (err) {
+      searchErr = err as { status?: number };
+    }
     results.innerHTML = "";
-    if (hits === null) {
+    if (searchErr) {
+      // 401 => the session was lost (e.g. the browser dropped the cookie and we
+      // have no token). Send them back to sign in, which re-issues a token.
+      if (searchErr.status === 401) {
+        authed = false;
+        show(0);
+        stepError("account", new Error("Please sign in again to continue — your session wasn't active."));
+        return;
+      }
       setSearchNotice(
-        "Couldn't reach search — make sure you're signed in and the backend is running. You can enter details manually.",
+        "Couldn't reach search — make sure the backend is running (uvicorn on :8000). You can enter details manually.",
         "error",
       );
       if (manualToggle) manualToggle.hidden = false;
       return;
     }
+    if (hits === null) hits = [];
     if (!hits.length) {
       setSearchNotice(`No matches for “${q}”. Check the spelling, or enter details manually.`);
       if (manualToggle) manualToggle.hidden = false;
