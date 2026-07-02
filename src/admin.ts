@@ -1,10 +1,8 @@
 /**
  * Control tower — owner-only dashboard over the control database.
  *
- * This is an in-app route (`/admin`), not a static page: the main SPA lazy-
- * imports this module when the path is /admin and calls initAdmin(), which
- * renders the dashboard into the page. Auth reuses the normal session (cookie +
- * bearer token); the backend gates every /api/admin/* call by ADMIN_EMAILS.
+ * In-app route (`/admin`), lazy-loaded by the SPA. Layout: a left nav toggling
+ * Overview / Restaurants / Creators. Access is a single ADMIN_KEY (X-Admin-Key).
  */
 import "./styles/theme.css";
 import "./styles/onboarding.css"; // shared shell/topbar/card/input/button styles
@@ -18,49 +16,72 @@ import {
   setAdminKey,
   type AdminAccount,
   type AdminCreator,
+  type AdminOverview,
   type AdminRestaurant,
+  type FunnelStage,
 } from "./api.ts";
 
+type View = "overview" | "restaurants" | "creators";
+
 const MARKUP = `
-<div class="shell">
-  <header class="topbar">
-    <div class="container topbar-inner">
-      <a href="/" class="brand-logo">trending table<span class="dot">.</span></a>
-      <div class="topbar-right">
-        <span class="topbar-tag">Control tower</span>
-        <button type="button" class="linklike" id="admin-logout" hidden>Sign out</button>
-      </div>
+<div class="admin-login-wrap" id="admin-login" hidden>
+  <section class="card admin-login">
+    <h1 class="step-title">Enter access key</h1>
+    <p class="step-sub">The control tower is protected by a single owner key.</p>
+    <div class="field">
+      <label for="a-key">Access key</label>
+      <input class="input" type="password" id="a-key" autocomplete="off" autofocus />
     </div>
-  </header>
-  <main class="container admin-stage">
-    <section class="card admin-login" id="admin-login" hidden>
-      <h1 class="step-title">Enter access key</h1>
-      <p class="step-sub">The control tower is protected by a single owner key.</p>
-      <div class="field">
-        <label for="a-key">Access key</label>
-        <input class="input" type="password" id="a-key" autocomplete="off" autofocus />
+    <p class="admin-error" id="admin-login-error" hidden></p>
+    <div class="actions">
+      <button type="button" class="btn btn-primary" id="admin-login-btn">Unlock</button>
+    </div>
+  </section>
+</div>
+
+<div class="admin-app" id="admin-app" hidden>
+  <aside class="admin-nav">
+    <a href="/" class="brand-logo">trending table<span class="dot">.</span></a>
+    <p class="admin-nav-tag">Control tower</p>
+    <nav class="admin-nav-list">
+      <button type="button" class="nav-item on" data-view="overview">Overview</button>
+      <button type="button" class="nav-item" data-view="restaurants">Restaurants</button>
+      <button type="button" class="nav-item" data-view="creators">Creators</button>
+    </nav>
+    <button type="button" class="linklike admin-signout" id="admin-logout">Sign out</button>
+  </aside>
+
+  <main class="admin-main">
+    <section class="admin-view" id="view-overview">
+      <h1 class="admin-title">Overview</h1>
+      <div class="funnel-grid">
+        <div class="panel">
+          <h2>Restaurant funnel</h2>
+          <div id="rest-funnel"></div>
+        </div>
+        <div class="panel">
+          <h2>Creator funnel</h2>
+          <div id="crea-funnel"></div>
+        </div>
       </div>
-      <p class="admin-error" id="admin-login-error" hidden></p>
-      <div class="actions">
-        <button type="button" class="btn btn-primary" id="admin-login-btn">Unlock</button>
-      </div>
+
+      <h2 class="section-head">Payments</h2>
+      <div class="stat-grid" id="payment-stats"></div>
+
+      <h2 class="section-head">At a glance</h2>
+      <div class="stat-grid" id="glance-stats"></div>
     </section>
-    <section class="admin-dash" id="admin-dash" hidden>
-      <h1 class="admin-title">Control tower</h1>
-      <p class="admin-sub" id="admin-whoami"></p>
-      <div class="stat-grid" id="admin-stats"></div>
-      <div class="admin-section">
-        <h2>Restaurants <span class="count" id="rest-count"></span></h2>
-        <div class="table-wrap" id="rest-table"></div>
-      </div>
-      <div class="admin-section">
-        <h2>Accounts <span class="count" id="acct-count"></span></h2>
-        <div class="table-wrap" id="acct-table"></div>
-      </div>
-      <div class="admin-section">
-        <h2>Creators <span class="count" id="crea-count"></span></h2>
-        <div class="table-wrap" id="crea-table"></div>
-      </div>
+
+    <section class="admin-view" id="view-restaurants" hidden>
+      <h1 class="admin-title">Restaurants <span class="count" id="rest-count"></span></h1>
+      <div class="table-wrap" id="rest-table"></div>
+      <h2 class="section-head">Accounts <span class="count" id="acct-count"></span></h2>
+      <div class="table-wrap" id="acct-table"></div>
+    </section>
+
+    <section class="admin-view" id="view-creators" hidden>
+      <h1 class="admin-title">Creators <span class="count" id="crea-count"></span></h1>
+      <div class="table-wrap" id="crea-table"></div>
     </section>
   </main>
 </div>`;
@@ -79,29 +100,20 @@ function fmtDate(iso: string): string {
   return Number.isNaN(d.getTime())
     ? "—"
     : d.toLocaleString(undefined, {
-        year: "numeric",
-        month: "short",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
+        year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit",
       });
 }
 
 function fmtEur(v: number | string | null): string {
   if (v === null || v === undefined || v === "") return "—";
   const n = typeof v === "string" ? parseFloat(v) : v;
-  return Number.isFinite(n) ? "€" + new Intl.NumberFormat().format(n) : "—";
+  return Number.isFinite(n) ? "€" + new Intl.NumberFormat().format(Math.round(n)) : "—";
 }
 
-function statusPill(status: string): string {
-  return `<span class="pill ${esc(status)}">${esc(status)}</span>`;
-}
+const statusPill = (s: string) => `<span class="pill ${esc(s)}">${esc(s)}</span>`;
+const boolPill = (v: boolean) =>
+  v ? `<span class="pill yes">verified</span>` : `<span class="pill no">unverified</span>`;
 
-function boolPill(v: boolean): string {
-  return v ? `<span class="pill yes">verified</span>` : `<span class="pill no">unverified</span>`;
-}
-
-/** Build a <table> from a header list and pre-rendered HTML cells. */
 function renderTable(mount: HTMLElement | null, headers: string[], rows: string[][]): void {
   if (!mount) return;
   if (!rows.length) {
@@ -113,74 +125,78 @@ function renderTable(mount: HTMLElement | null, headers: string[], rows: string[
   mount.innerHTML = `<table class="admin"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
 }
 
-function renderStats(o: Awaited<ReturnType<typeof getAdminOverview>>): void {
-  const grid = byId("admin-stats");
-  if (!grid) return;
-  const byStatus = Object.entries(o.restaurants.by_status)
-    .map(([s, n]) => `${n} ${s}`)
-    .join(" · ");
-  const cards: Array<{ v: string | number; l: string; accent?: boolean }> = [
-    { v: o.restaurants.total, l: "Restaurants", accent: true },
-    { v: o.restaurants.active, l: "Active restaurants" },
-    { v: o.accounts.total, l: "Accounts" },
-    { v: o.accounts.verified, l: "Verified accounts" },
-    { v: o.accounts.last_7d, l: "New accounts · 7d" },
-    { v: o.accounts.last_30d, l: "New accounts · 30d" },
-    { v: o.creators.total, l: "Creators" },
-  ];
-  grid.innerHTML = cards
-    .map(
-      (c) =>
-        `<div class="stat${c.accent ? " accent" : ""}"><div class="v">${esc(c.v)}</div>` +
-        `<div class="l">${esc(c.l)}</div></div>`,
-    )
-    .join("");
-  const note = byId("rest-count");
-  if (note && byStatus) note.textContent = `(${byStatus})`;
+function statCard(v: string | number, label: string, accent = false): string {
+  return (
+    `<div class="stat${accent ? " accent" : ""}"><div class="v">${esc(v)}</div>` +
+    `<div class="l">${esc(label)}</div></div>`
+  );
 }
 
-async function loadDashboard(): Promise<void> {
-  byId("admin-login")!.hidden = true;
-  byId("admin-dash")!.hidden = false;
-  byId("admin-logout")!.hidden = false;
-  const who = byId("admin-whoami");
-  if (who) who.textContent = "Owner access";
+/** Horizontal funnel: each stage's bar width is relative to the first stage. */
+function renderFunnel(mount: HTMLElement | null, stages: FunnelStage[]): void {
+  if (!mount) return;
+  const top = stages[0]?.value || 0;
+  mount.innerHTML = stages
+    .map((s, i) => {
+      const pctOfTop = top ? Math.round((s.value / top) * 100) : 0;
+      const width = top ? Math.max((s.value / top) * 100, s.value > 0 ? 6 : 0) : 0;
+      const drop =
+        i === 0 || !stages[i - 1].value
+          ? ""
+          : `<span class="funnel-drop">${Math.round((s.value / stages[i - 1].value) * 100)}% of prev</span>`;
+      return (
+        `<div class="funnel-stage">` +
+        `<div class="funnel-top"><span class="funnel-label">${esc(s.label)}</span>` +
+        `<span class="funnel-meta">${esc(s.value)} · ${pctOfTop}%${drop ? " · " + drop : ""}</span></div>` +
+        `<div class="funnel-track"><div class="funnel-bar" style="width:${width}%"></div></div>` +
+        `</div>`
+      );
+    })
+    .join("");
+}
 
-  const [overview, restaurants, accounts, creators] = await Promise.all([
-    getAdminOverview(),
-    getAdminRestaurants(),
-    getAdminAccounts(),
-    getAdminCreators(),
-  ]);
+function renderOverview(o: AdminOverview): void {
+  renderFunnel(byId("rest-funnel"), o.restaurant_funnel);
+  renderFunnel(byId("crea-funnel"), o.creator_funnel);
 
-  renderStats(overview);
+  const p = o.payments;
+  byId("payment-stats")!.innerHTML = [
+    statCard(fmtEur(p.total_spending_limit), "Total spending limit (all restaurants)", true),
+    statCard(fmtEur(p.active_spending_limit), "Spending limit (active only)"),
+    statCard(fmtEur(p.avg_spending_limit), "Avg limit per restaurant"),
+    statCard(fmtEur(p.est_monthly_fees), "Est. monthly platform fees"),
+  ].join("");
 
-  const r = restaurants.restaurants;
-  byId("rest-count")!.textContent = `· ${r.length}`;
+  const s = o.stats;
+  const byStatus = Object.entries(s.by_status).map(([k, n]) => `${n} ${k}`).join(" · ") || "—";
+  byId("glance-stats")!.innerHTML = [
+    statCard(s.restaurants_total, "Restaurants"),
+    statCard(s.restaurants_active, "Active restaurants"),
+    statCard(s.multi_restaurant_owners, "Multi-restaurant owners"),
+    statCard(s.creators_connected, "Creators w/ connected social"),
+    statCard(s.signups_7d, "New accounts · 7d"),
+    statCard(s.signups_30d, "New accounts · 30d"),
+    statCard(byStatus, "Restaurants by status"),
+  ].join("");
+}
+
+function renderRestaurants(rs: AdminRestaurant[], as: AdminAccount[]): void {
+  byId("rest-count")!.textContent = `· ${rs.length}`;
   renderTable(
     byId("rest-table"),
     ["ID", "Name", "Status", "Owner", "Members", "Monthly limit", "Created"],
-    r.map((x: AdminRestaurant) => [
-      esc(x.id),
-      esc(x.name || "—"),
-      statusPill(x.status),
-      esc(x.owner_emails || "—"),
-      esc(x.member_count),
-      fmtEur(x.spending_limit_eur),
-      esc(fmtDate(x.created_at)),
+    rs.map((x) => [
+      esc(x.id), esc(x.name || "—"), statusPill(x.status), esc(x.owner_emails || "—"),
+      esc(x.member_count), fmtEur(x.spending_limit_eur), esc(fmtDate(x.created_at)),
     ]),
   );
 
-  const a = accounts.accounts;
-  byId("acct-count")!.textContent = `· ${a.length}`;
+  byId("acct-count")!.textContent = `· ${as.length}`;
   renderTable(
     byId("acct-table"),
     ["ID", "Email", "Name", "Verified", "Restaurants created", "Registered"],
-    a.map((x: AdminAccount) => [
-      esc(x.id),
-      esc(x.email),
-      esc(x.display_name || "—"),
-      boolPill(x.email_verified),
+    as.map((x) => [
+      esc(x.id), esc(x.email), esc(x.display_name || "—"), boolPill(x.email_verified),
       x.restaurants
         ? esc(x.restaurants)
         : x.restaurant_count
@@ -189,36 +205,60 @@ async function loadDashboard(): Promise<void> {
       esc(fmtDate(x.created_at)),
     ]),
   );
+}
 
-  const c = creators.creators;
-  byId("crea-count")!.textContent = `· ${c.length}`;
+function renderCreators(cs: AdminCreator[]): void {
+  byId("crea-count")!.textContent = `· ${cs.length}`;
   renderTable(
     byId("crea-table"),
     ["ID", "Email", "Name", "Status", "Verified", "Registered"],
-    c.map((x: AdminCreator) => [
-      esc(x.id),
-      esc(x.email),
-      esc(x.display_name || "—"),
-      statusPill(x.status),
-      boolPill(x.email_verified),
-      esc(fmtDate(x.created_at)),
+    cs.map((x) => [
+      esc(x.id), esc(x.email), esc(x.display_name || "—"), statusPill(x.status),
+      boolPill(x.email_verified), esc(fmtDate(x.created_at)),
     ]),
   );
 }
 
+function setView(view: View): void {
+  (["overview", "restaurants", "creators"] as View[]).forEach((v) => {
+    const sec = byId(`view-${v}`);
+    if (sec) sec.hidden = v !== view;
+  });
+  document.querySelectorAll<HTMLElement>(".nav-item").forEach((b) => {
+    b.classList.toggle("on", b.dataset.view === view);
+  });
+  if (window.location.hash !== `#${view}`) {
+    window.history.replaceState(null, "", `#${view}`);
+  }
+}
+
+async function loadDashboard(): Promise<void> {
+  const [overview, restaurants, accounts, creators] = await Promise.all([
+    getAdminOverview(), getAdminRestaurants(), getAdminAccounts(), getAdminCreators(),
+  ]);
+  renderOverview(overview);
+  renderRestaurants(restaurants.restaurants, accounts.accounts);
+  renderCreators(creators.creators);
+
+  byId("admin-login")!.hidden = true;
+  byId("admin-app")!.hidden = false;
+  const hash = window.location.hash.replace("#", "") as View;
+  setView(["overview", "restaurants", "creators"].includes(hash) ? hash : "overview");
+}
+
 function showLogin(message?: string): void {
-  byId("admin-dash")!.hidden = true;
-  byId("admin-logout")!.hidden = true;
-  const card = byId("admin-login")!;
-  card.hidden = false;
+  byId("admin-app")!.hidden = true;
+  byId("admin-login")!.hidden = false;
   const err = byId("admin-login-error");
   if (err) {
     err.hidden = !message;
     if (message) err.textContent = message;
   }
+  byId<HTMLInputElement>("a-key")?.focus();
 }
 
 async function unlock(key: string): Promise<void> {
+  if (!key) return;
   setAdminKey(key);
   try {
     await loadDashboard();
@@ -236,12 +276,15 @@ function wire(): void {
     if ((e as KeyboardEvent).key === "Enter") void unlock(keyInput.value.trim());
   });
 
+  document.querySelectorAll<HTMLElement>(".nav-item").forEach((b) => {
+    b.addEventListener("click", () => setView(b.dataset.view as View));
+  });
+
   byId("admin-logout")?.addEventListener("click", () => {
     setAdminKey(null);
     showLogin();
   });
 
-  // Already have a stored key? Try it; otherwise show the key prompt.
   if (getAdminKey()) void loadDashboard().catch(() => showLogin());
   else showLogin();
 }

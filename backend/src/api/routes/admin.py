@@ -17,38 +17,99 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 @router.get("/overview")
 def overview(_: None = Depends(deps.require_admin)) -> dict:
-    """Top-line funnel metrics for the whole platform."""
+    """Funnels (restaurant + creator), payment totals, and headline stats."""
     with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        # --- restaurant-side accounts funnel ---
         cur.execute(
             """
-            SELECT count(*)                                                          AS total,
-                   count(email_verified_at)                                          AS verified,
-                   count(*) FILTER (WHERE created_at > now() - interval '7 days')     AS last_7d,
-                   count(*) FILTER (WHERE created_at > now() - interval '30 days')    AS last_30d
+            SELECT count(*)                                                        AS total,
+                   count(email_verified_at)                                        AS verified,
+                   count(*) FILTER (WHERE created_at > now() - interval '7 days')   AS last_7d,
+                   count(*) FILTER (WHERE created_at > now() - interval '30 days')  AS last_30d
             FROM accounts
             """
         )
-        accounts = cur.fetchone()
+        a = cur.fetchone()
+
+        cur.execute("SELECT count(DISTINCT account_id) AS n FROM memberships")
+        with_restaurant = cur.fetchone()["n"]
 
         cur.execute(
             """
-            SELECT count(*)                                     AS total,
-                   count(*) FILTER (WHERE status = 'active')    AS active
+            SELECT count(DISTINCT m.account_id) AS n
+            FROM memberships m JOIN restaurants r ON r.id = m.restaurant_id
+            WHERE r.status = 'active'
+            """
+        )
+        with_active = cur.fetchone()["n"]
+
+        cur.execute(
+            "SELECT count(*) AS n FROM ("
+            "  SELECT account_id FROM memberships GROUP BY account_id HAVING count(*) > 1"
+            ") t"
+        )
+        multi_owners = cur.fetchone()["n"]
+
+        # --- restaurants + payments ---
+        cur.execute(
+            """
+            SELECT count(*)                                            AS total,
+                   count(*) FILTER (WHERE status = 'active')           AS active,
+                   COALESCE(sum(spending_limit_eur), 0)                AS total_limit,
+                   COALESCE(sum(spending_limit_eur)
+                            FILTER (WHERE status = 'active'), 0)       AS active_limit,
+                   COALESCE(avg(spending_limit_eur), 0)               AS avg_limit
             FROM restaurants
             """
         )
-        restaurants = cur.fetchone()
+        r = cur.fetchone()
 
         cur.execute("SELECT status, count(*) AS n FROM restaurants GROUP BY status ORDER BY status")
-        by_status = {r["status"]: r["n"] for r in cur.fetchall()}
+        by_status = {row["status"]: row["n"] for row in cur.fetchall()}
 
-        cur.execute("SELECT count(*) AS total, count(email_verified_at) AS verified FROM creators")
-        creators = cur.fetchone()
+        # --- creator funnel ---
+        cur.execute(
+            """
+            SELECT count(*)                                        AS total,
+                   count(*) FILTER (WHERE status = 'active')       AS active,
+                   count(email_verified_at)                        AS verified
+            FROM creators
+            """
+        )
+        c = cur.fetchone()
+
+        cur.execute(
+            "SELECT count(DISTINCT creator_id) AS n FROM social_accounts WHERE status = 'connected'"
+        )
+        creators_connected = cur.fetchone()["n"]
 
     return {
-        "accounts": accounts,
-        "restaurants": {**restaurants, "by_status": by_status},
-        "creators": creators,
+        "restaurant_funnel": [
+            {"label": "Signed up", "value": a["total"]},
+            {"label": "Created a restaurant", "value": with_restaurant},
+            {"label": "Has an active restaurant", "value": with_active},
+            {"label": "Verified email", "value": a["verified"]},
+        ],
+        "creator_funnel": [
+            {"label": "Signed up", "value": c["total"]},
+            {"label": "Active", "value": c["active"]},
+            {"label": "Verified email", "value": c["verified"]},
+        ],
+        "payments": {
+            "total_spending_limit": r["total_limit"],
+            "active_spending_limit": r["active_limit"],
+            "avg_spending_limit": r["avg_limit"],
+            "est_monthly_fees": r["active"] * 50,  # €50/mo platform fee per active restaurant
+        },
+        "stats": {
+            "restaurants_total": r["total"],
+            "restaurants_active": r["active"],
+            "by_status": by_status,
+            "multi_restaurant_owners": multi_owners,
+            "creators_connected": creators_connected,
+            "signups_7d": a["last_7d"],
+            "signups_30d": a["last_30d"],
+        },
     }
 
 

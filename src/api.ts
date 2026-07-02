@@ -247,10 +247,29 @@ export function createSetupIntent(restaurantId: number):
 
 /* ---- admin (control tower) ----------------------------------------------- */
 
+export interface FunnelStage {
+  label: string;
+  value: number;
+}
+
 export interface AdminOverview {
-  accounts: { total: number; verified: number; last_7d: number; last_30d: number };
-  restaurants: { total: number; active: number; by_status: Record<string, number> };
-  creators: { total: number; verified: number };
+  restaurant_funnel: FunnelStage[];
+  creator_funnel: FunnelStage[];
+  payments: {
+    total_spending_limit: number;
+    active_spending_limit: number;
+    avg_spending_limit: number;
+    est_monthly_fees: number;
+  };
+  stats: {
+    restaurants_total: number;
+    restaurants_active: number;
+    by_status: Record<string, number>;
+    multi_restaurant_owners: number;
+    creators_connected: number;
+    signups_7d: number;
+    signups_30d: number;
+  };
 }
 
 export interface AdminRestaurant {
