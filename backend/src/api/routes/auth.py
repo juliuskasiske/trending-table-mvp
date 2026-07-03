@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, EmailStr
 
 from .. import deps
+from ..ratelimit import rate_limit
 from ... import audit, config
 from ...auth import email as email_mod
 from ...auth import passwords, sessions, store, tokens
@@ -35,7 +36,7 @@ def _audit_kwargs(role: str, subject_id: int) -> dict:
     return {"account_id": subject_id} if role == "account" else {"creator_id": subject_id}
 
 
-@router.post("/signup")
+@router.post("/signup", dependencies=[Depends(rate_limit("signup", 5, 60))])
 def signup(body: SignupIn, response: Response) -> dict:
     problem = passwords.password_problem(body.password, body.email)
     if problem:
@@ -65,7 +66,7 @@ def signup(body: SignupIn, response: Response) -> dict:
     return out
 
 
-@router.post("/login")
+@router.post("/login", dependencies=[Depends(rate_limit("login", 10, 60))])
 def login(body: LoginIn, response: Response) -> dict:
     with get_control_connection() as conn:
         row = store.get_by_email(conn, body.role, body.email)
@@ -114,7 +115,7 @@ def verify(token: str) -> dict:
     return {"ok": True}
 
 
-@router.post("/resend-verification")
+@router.post("/resend-verification", dependencies=[Depends(rate_limit("resend", 3, 60))])
 def resend_verification(principal: dict = Depends(deps.current_principal)) -> dict:
     if principal["email_verified"]:
         return {"ok": True, "already_verified": True}

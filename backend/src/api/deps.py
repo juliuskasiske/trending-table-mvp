@@ -9,6 +9,9 @@ from .. import config
 from ..auth import store
 from ..auth.sessions import read_session
 from ..db.connection import get_control_connection
+from .ratelimit import rate_limit
+
+_admin_throttle = rate_limit("admin", 30, 60)
 
 
 def current_principal(request: Request) -> dict:
@@ -43,6 +46,7 @@ def require_admin(request: Request) -> None:
 
     No account/email involved — the key lives in ADMIN_KEY (.env).
     """
+    _admin_throttle(request)  # throttle key guesses per IP
     if not config.ADMIN_KEY:
         raise HTTPException(status_code=403, detail="Control tower is not configured.")
     key = request.headers.get("x-admin-key", "")

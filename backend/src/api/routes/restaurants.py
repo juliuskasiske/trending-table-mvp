@@ -1,6 +1,7 @@
 """Restaurant routes: provisioning + profile / menu / guidelines (RLS-scoped)."""
 from __future__ import annotations
 
+import logging
 from typing import Literal
 
 from fastapi import APIRouter, Depends
@@ -14,6 +15,7 @@ from ...db.connection import app_connection, get_control_connection
 from ...integrations import digitize
 from ...tenancy import provision, repo
 
+_log = logging.getLogger("trending_table.restaurants")
 router = APIRouter(prefix="/api/restaurants", tags=["restaurants"])
 
 
@@ -165,6 +167,7 @@ def digitize_menu(body: DigitizeIn, ctx: dict = Depends(restaurant_ctx)) -> dict
         raise HTTPException(status_code=400, detail="Provide a PDF (data) or a url.")
     try:
         items, source = digitize.digitize(data=body.data, url=body.url, mode=body.mode)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Couldn't digitize this menu: {exc}")
+    except Exception:
+        _log.exception("menu digitize failed")  # detail stays server-side
+        raise HTTPException(status_code=502, detail="Couldn't read that menu. Check the link, or upload a PDF.")
     return {"items": items, "count": len(items), "source": source}
