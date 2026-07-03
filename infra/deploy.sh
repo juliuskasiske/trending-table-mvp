@@ -38,6 +38,10 @@ OWNER_PW=$(gen 24); RW_PW=$(gen 24); SESSION=$(gen 32); ADMIN=$(gen 24); FERNET=
 GKEY="${GOOGLE_MAPS_API_KEY:-}"; [ -z "$GKEY" ] && read -rp "Google Maps API key: " GKEY
 LKEY="${LLM_API_KEY:-}";         [ -z "$LKEY" ] && read -rp "LLM API key: "        LKEY
 
+# Optional overrides (defaults shown). e.g. MAIL_FROM=hello@yourdomain.com
+MAIL_FROM="${MAIL_FROM:-no-reply@$DOMAIN}"
+MAIL_FROM_NAME="${MAIL_FROM_NAME:-Trending Table}"
+
 cat > infra/.env <<EOF
 POSTGRES_USER=tt_owner
 POSTGRES_PASSWORD=$OWNER_PW
@@ -61,8 +65,8 @@ SMTP_USER=
 SMTP_PASSWORD=
 SMTP_STARTTLS=1
 SMTP_SSL=0
-MAIL_FROM=no-reply@$DOMAIN
-MAIL_FROM_NAME=Trending Table
+MAIL_FROM=$MAIL_FROM
+MAIL_FROM_NAME=$MAIL_FROM_NAME
 GOOGLE_MAPS_API_KEY=$GKEY
 LLM_BASE_URL=https://api.llmbase.ai/v1
 LLM_API_KEY=$LKEY
