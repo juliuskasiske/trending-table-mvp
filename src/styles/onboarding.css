@@ -203,11 +203,6 @@ body {
   width: 100%; /* Sign up + Log in stacked, full width */
 }
 
-/* Extra space above Sign up so it reads as a separate action from Log in. */
-.gate-login [data-signup] {
-  margin-top: 22px;
-}
-
 .gate-error {
   color: var(--accent);
   font-weight: 600;
