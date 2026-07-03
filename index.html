@@ -52,35 +52,21 @@
           <p class="gate-eyebrow" data-i18n="gate.eyebrow">Welcome to Trending Table</p>
           <h1 class="gate-title" data-i18n="gate.title">Log in or sign up</h1>
 
-          <div class="gate-options">
-            <div class="gate-card">
-              <h2 data-i18n="gate.restaurant.title">Restaurant</h2>
-              <p class="gate-card-desc" data-i18n="gate.restaurant.desc">Book local creators and fill your tables.</p>
-              <form class="gate-login" novalidate data-login="restaurant">
-                <input class="input" type="email" placeholder="Email" autocomplete="email"
-                  data-i18n-ph="gate.email" />
-                <input class="input" type="password" placeholder="Password" autocomplete="current-password"
-                  data-i18n-ph="gate.password" />
-                <button type="submit" class="btn btn-ink" data-i18n="gate.login">Log in</button>
-                <button type="button" class="btn btn-primary" data-signup="restaurant" data-i18n="gate.signup">Sign up</button>
-                <p class="gate-error" hidden></p>
-              </form>
-            </div>
-
-            <div class="gate-card">
-              <h2 data-i18n="gate.creator.title">Creator</h2>
-              <p class="gate-card-desc" data-i18n="gate.creator.desc">Get paid to post about places you love.</p>
-              <form class="gate-login" novalidate data-login="creator">
-                <input class="input" type="email" placeholder="Email" autocomplete="email"
-                  data-i18n-ph="gate.email" />
-                <input class="input" type="password" placeholder="Password" autocomplete="current-password"
-                  data-i18n-ph="gate.password" />
-                <button type="submit" class="btn btn-ink" data-i18n="gate.login">Log in</button>
-                <button type="button" class="btn btn-primary" data-signup="creator" data-i18n="gate.signup">Sign up</button>
-                <p class="gate-error" hidden></p>
-              </form>
-            </div>
+          <div class="role-toggle" id="role-toggle" role="group" aria-label="Role">
+            <button type="button" class="on" data-role="restaurant" data-i18n="gate.restaurant.title">Restaurant</button>
+            <button type="button" data-role="creator" data-i18n="gate.creator.title">Creator</button>
           </div>
+
+          <form class="gate-login" id="gate-form" novalidate>
+            <input class="input" type="email" placeholder="Email" autocomplete="email"
+              data-i18n-ph="gate.email" />
+            <input class="input" type="password" placeholder="Password" autocomplete="current-password"
+              data-i18n-ph="gate.password" />
+            <button type="submit" class="btn btn-ink" data-i18n="gate.login">Log in</button>
+            <p class="gate-hint" data-i18n="gate.noAccount">No account yet? Register below:</p>
+            <button type="button" class="btn btn-primary" id="gate-signup" data-i18n="gate.signup">Sign up</button>
+            <p class="gate-error" id="gate-error" hidden></p>
+          </form>
 
           <div class="notice gate-soon" id="gate-soon" hidden></div>
         </section>

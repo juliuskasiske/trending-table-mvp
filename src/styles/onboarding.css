@@ -160,39 +160,48 @@ body {
   margin: 0 0 32px;
 }
 
-/* Stacked panels: Restaurant first, Creator underneath. Each is a vertical
-   login form — email, password, then Sign up above Log in. */
-.gate-options {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  max-width: 460px;
-  margin: 4px auto 0;
-  text-align: left;
-}
-
-.gate-card {
+/* Role toggle (Restaurant | Creator) — equal-width segments. */
+.role-toggle {
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   border: 2px solid var(--line);
-  border-radius: 16px;
+  border-radius: 12px;
+  overflow: hidden;
+  margin: 0 0 24px;
+}
+
+.role-toggle button {
+  appearance: none;
+  border: 0;
   background: var(--panel);
-  box-shadow: 6px 6px 0 var(--ink);
-  padding: 22px 24px;
-}
-
-.gate-card h2 {
-  font: 800 22px/1 var(--font-display);
-  margin: 0 0 4px;
-}
-
-.gate-card-desc {
   color: var(--muted);
-  margin: 0 0 18px;
+  font: 700 16px/1 var(--font-display);
+  padding: 12px 28px;
+  text-align: center;
+  cursor: pointer;
 }
 
+.role-toggle button + button {
+  border-left: 2px solid var(--line);
+}
+
+.role-toggle button.on {
+  background: var(--ink);
+  color: var(--on-accent);
+}
+
+.role-toggle button:not(.on):hover {
+  color: var(--ink);
+}
+
+/* Single login window — stays in place when the role is toggled. */
 .gate-login {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  max-width: 380px;
+  margin: 0 auto;
 }
 
 .gate-login .input {
@@ -200,7 +209,14 @@ body {
 }
 
 .gate-login .btn {
-  width: 100%; /* Sign up + Log in stacked, full width */
+  width: 100%;
+}
+
+.gate-hint {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 6px 0 0;
+  text-align: center;
 }
 
 .gate-error {
@@ -208,6 +224,7 @@ body {
   font-weight: 600;
   font-size: 14px;
   margin: 4px 0 0;
+  text-align: center;
 }
 
 .gate-soon {

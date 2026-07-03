@@ -159,40 +159,31 @@ export function initOnboarding(): void {
     el.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
 
-  // Sign up → registration flow (restaurant) or coming soon (creator).
-  document.querySelectorAll<HTMLButtonElement>("[data-signup]").forEach((b) => {
-    b.addEventListener("click", () => {
-      if (b.dataset.signup === "restaurant") startFlow(0);
-      else showComingSoon("creator");
+  // One login window that stays in place; the role toggle only changes where
+  // its buttons point. For now only Restaurant · Sign up is live.
+  let gateRole: "restaurant" | "creator" = "restaurant";
+
+  function selectRole(role: "restaurant" | "creator"): void {
+    gateRole = role;
+    document.querySelectorAll<HTMLElement>("#role-toggle button[data-role]").forEach((b) => {
+      b.classList.toggle("on", b.dataset.role === role);
     });
+    byId("gate-soon")!.hidden = true;
+    byId("gate-error")!.hidden = true;
+  }
+
+  document.querySelectorAll<HTMLButtonElement>("#role-toggle button[data-role]").forEach((b) => {
+    b.addEventListener("click", () => selectRole(b.dataset.role as "restaurant" | "creator"));
   });
 
-  // Log in — restaurant logs in for real; creator side is coming soon.
-  document.querySelectorAll<HTMLFormElement>("form[data-login]").forEach((f) => {
-    const errEl = f.querySelector<HTMLElement>(".gate-error");
-    f.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      if (f.dataset.login === "creator") {
-        showComingSoon("creator");
-        return;
-      }
-      const email = f.querySelector<HTMLInputElement>('input[type="email"]')!.value.trim();
-      const password = f.querySelector<HTMLInputElement>('input[type="password"]')!.value;
-      if (errEl) errEl.hidden = true;
-      try {
-        const p = await login(email, password, "account");
-        authed = true;
-        principalEmail = p.email;
-        startFlow(1); // signed in → add / manage a restaurant
-      } catch (err) {
-        if (errEl) {
-          errEl.hidden = false;
-          errEl.textContent = (err as { status?: number }).status === 401
-            ? t("gate.loginFailed")
-            : (err as Error).message || t("gate.loginFailed");
-        }
-      }
-    });
+  byId("gate-signup")?.addEventListener("click", () => {
+    if (gateRole === "restaurant") startFlow(0); // → /register
+    else showComingSoon("creator");
+  });
+
+  byId("gate-form")?.addEventListener("submit", (e) => {
+    e.preventDefault(); // Log in is blocked for now (no dashboard / creator side)
+    showComingSoon(gateRole === "restaurant" ? "restaurantLogin" : "creator");
   });
 
   /* ---- Validation ------------------------------------------------------ */
