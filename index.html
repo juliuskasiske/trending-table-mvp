@@ -45,33 +45,23 @@
       <main class="container stage">
         <div class="verify-banner" id="verify-banner" hidden></div>
 
-        <!-- Entry chooser — the first thing shown. Restaurant · Sign up starts the
-             onboarding flow; everything else is a coming-soon placeholder. -->
+        <!-- Entry chooser — the first thing shown. Toggle the role, then Sign up
+             / Log in. Restaurant · Sign up starts the onboarding flow; the rest
+             show a coming-soon notice. -->
         <section class="gate" id="gate">
           <p class="gate-eyebrow" data-i18n="gate.eyebrow">Welcome to Trending Table</p>
           <h1 class="gate-title" data-i18n="gate.title">How do you want to join?</h1>
-          <p class="gate-sub" data-i18n="gate.sub">Pick your side of the marketplace.</p>
 
-          <div class="gate-cards">
-            <div class="gate-card">
-              <div class="gate-card-icon" aria-hidden="true">🍝</div>
-              <h2 data-i18n="gate.restaurant.title">Restaurant</h2>
-              <p data-i18n="gate.restaurant.desc">Book local creators and fill your tables.</p>
-              <div class="gate-actions">
-                <button type="button" class="btn btn-primary" data-gate="restaurant-signup" data-i18n="gate.signup">Sign up</button>
-                <button type="button" class="btn btn-ghost" data-gate="restaurant-login" data-i18n="gate.login">Log in</button>
-              </div>
-            </div>
+          <div class="role-toggle" id="role-toggle" role="group" aria-label="Role">
+            <button type="button" class="on" data-role="restaurant" data-i18n="gate.restaurant.title">Restaurant</button>
+            <button type="button" data-role="creator" data-i18n="gate.creator.title">Creator</button>
+          </div>
 
-            <div class="gate-card">
-              <div class="gate-card-icon" aria-hidden="true">🎬</div>
-              <h2 data-i18n="gate.creator.title">Creator</h2>
-              <p data-i18n="gate.creator.desc">Get paid to post about places you love.</p>
-              <div class="gate-actions">
-                <button type="button" class="btn btn-primary" data-gate="creator-signup" data-i18n="gate.signup">Sign up</button>
-                <button type="button" class="btn btn-ghost" data-gate="creator-login" data-i18n="gate.login">Log in</button>
-              </div>
-            </div>
+          <p class="gate-role-desc" id="gate-role-desc" data-i18n="gate.restaurant.desc">Book local creators and fill your tables.</p>
+
+          <div class="gate-actions">
+            <button type="button" class="btn btn-primary" id="gate-signup" data-i18n="gate.signup">Sign up</button>
+            <button type="button" class="btn btn-ghost" id="gate-login" data-i18n="gate.login">Log in</button>
           </div>
 
           <div class="notice gate-soon" id="gate-soon" hidden></div>

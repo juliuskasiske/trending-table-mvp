@@ -152,52 +152,60 @@ body {
   margin: 0 0 32px;
 }
 
-.gate-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 20px;
-  text-align: left;
-}
-
-.gate-card {
+/* Role toggle (Restaurant | Creator) */
+.role-toggle {
+  display: inline-flex;
   border: 2px solid var(--line);
-  border-radius: 16px;
+  border-radius: 12px;
+  overflow: hidden;
+  margin: 8px 0 20px;
+}
+
+.role-toggle button {
+  appearance: none;
+  border: 0;
   background: var(--panel);
-  box-shadow: 6px 6px 0 var(--ink);
-  padding: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.gate-card-icon {
-  font-size: 34px;
-  line-height: 1;
-}
-
-.gate-card h2 {
-  font: 800 22px/1 var(--font-display);
-  margin: 6px 0 0;
-}
-
-.gate-card p {
   color: var(--muted);
-  margin: 0 0 10px;
-  min-height: 42px;
+  font: 700 16px/1 var(--font-display);
+  padding: 12px 28px;
+  cursor: pointer;
+}
+
+.role-toggle button + button {
+  border-left: 2px solid var(--line);
+}
+
+.role-toggle button.on {
+  background: var(--ink);
+  color: var(--on-accent);
+}
+
+.role-toggle button:not(.on):hover {
+  color: var(--ink);
+}
+
+.gate-role-desc {
+  color: var(--muted);
+  margin: 0 auto 28px;
+  max-width: 440px;
+  min-height: 22px;
 }
 
 .gate-actions {
   display: flex;
-  gap: 10px;
-  margin-top: auto;
+  gap: 12px;
+  max-width: 420px;
+  margin: 0 auto;
 }
 
 .gate-actions .btn {
   flex: 1;
+  padding: 14px 18px;
 }
 
 .gate-soon {
-  margin-top: 22px;
+  margin: 22px auto 0;
+  max-width: 440px;
   text-align: left;
 }
 

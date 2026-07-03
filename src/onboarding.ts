@@ -151,19 +151,31 @@ export function initOnboarding(): void {
     el.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
 
-  document.querySelectorAll<HTMLButtonElement>("[data-gate]").forEach((b) => {
-    b.addEventListener("click", () => {
-      switch (b.dataset.gate) {
-        case "restaurant-signup":
-          startFlow(0);
-          break;
-        case "restaurant-login":
-          showComingSoon("restaurantLogin");
-          break;
-        default: // creator-signup / creator-login
-          showComingSoon("creator");
-      }
+  let gateRole: "restaurant" | "creator" = "restaurant";
+
+  function selectRole(role: "restaurant" | "creator"): void {
+    gateRole = role;
+    document.querySelectorAll<HTMLElement>("#role-toggle button[data-role]").forEach((b) => {
+      b.classList.toggle("on", b.dataset.role === role);
     });
+    const desc = byId("gate-role-desc");
+    if (desc) {
+      desc.dataset.i18n = `gate.${role}.desc`; // so a language switch re-translates it
+      desc.textContent = t(`gate.${role}.desc`);
+    }
+    byId("gate-soon")!.hidden = true; // clear any prior coming-soon notice
+  }
+
+  document.querySelectorAll<HTMLButtonElement>("#role-toggle button[data-role]").forEach((b) => {
+    b.addEventListener("click", () => selectRole(b.dataset.role as "restaurant" | "creator"));
+  });
+
+  byId("gate-signup")?.addEventListener("click", () => {
+    if (gateRole === "restaurant") startFlow(0);
+    else showComingSoon("creator");
+  });
+  byId("gate-login")?.addEventListener("click", () => {
+    showComingSoon(gateRole === "restaurant" ? "restaurantLogin" : "creator");
   });
 
   /* ---- Validation ------------------------------------------------------ */
