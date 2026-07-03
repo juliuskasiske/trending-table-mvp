@@ -50,29 +50,43 @@
              show a coming-soon notice. -->
         <section class="gate" id="gate">
           <p class="gate-eyebrow" data-i18n="gate.eyebrow">Welcome to Trending Table</p>
-          <h1 class="gate-title" data-i18n="gate.title">How do you want to join?</h1>
+          <h1 class="gate-title" data-i18n="gate.title">Log in or sign up</h1>
 
           <div class="gate-options">
             <div class="gate-card">
               <div class="gate-card-head">
-                <h2 data-i18n="gate.restaurant.title">Restaurant</h2>
-                <p data-i18n="gate.restaurant.desc">Book local creators and fill your tables.</p>
+                <div class="gate-card-title">
+                  <h2 data-i18n="gate.restaurant.title">Restaurant</h2>
+                  <p data-i18n="gate.restaurant.desc">Book local creators and fill your tables.</p>
+                </div>
+                <button type="button" class="btn btn-primary" data-signup="restaurant" data-i18n="gate.signup">Sign up</button>
               </div>
-              <div class="gate-actions">
-                <button type="button" class="btn btn-primary" data-gate="restaurant-signup" data-i18n="gate.signup">Sign up</button>
-                <button type="button" class="btn btn-ghost" data-gate="restaurant-login" data-i18n="gate.login">Log in</button>
-              </div>
+              <form class="gate-login" novalidate data-login="restaurant">
+                <input class="input" type="email" placeholder="Email" autocomplete="email"
+                  data-i18n-ph="gate.email" />
+                <input class="input" type="password" placeholder="Password" autocomplete="current-password"
+                  data-i18n-ph="gate.password" />
+                <button type="submit" class="btn btn-ink" data-i18n="gate.login">Log in</button>
+              </form>
+              <p class="gate-error" hidden></p>
             </div>
 
             <div class="gate-card">
               <div class="gate-card-head">
-                <h2 data-i18n="gate.creator.title">Creator</h2>
-                <p data-i18n="gate.creator.desc">Get paid to post about places you love.</p>
+                <div class="gate-card-title">
+                  <h2 data-i18n="gate.creator.title">Creator</h2>
+                  <p data-i18n="gate.creator.desc">Get paid to post about places you love.</p>
+                </div>
+                <button type="button" class="btn btn-primary" data-signup="creator" data-i18n="gate.signup">Sign up</button>
               </div>
-              <div class="gate-actions">
-                <button type="button" class="btn btn-primary" data-gate="creator-signup" data-i18n="gate.signup">Sign up</button>
-                <button type="button" class="btn btn-ghost" data-gate="creator-login" data-i18n="gate.login">Log in</button>
-              </div>
+              <form class="gate-login" novalidate data-login="creator">
+                <input class="input" type="email" placeholder="Email" autocomplete="email"
+                  data-i18n-ph="gate.email" />
+                <input class="input" type="password" placeholder="Password" autocomplete="current-password"
+                  data-i18n-ph="gate.password" />
+                <button type="submit" class="btn btn-ink" data-i18n="gate.login">Log in</button>
+              </form>
+              <p class="gate-error" hidden></p>
             </div>
           </div>
 

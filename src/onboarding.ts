@@ -128,18 +128,26 @@ export function initOnboarding(): void {
     steps[index].querySelector<HTMLElement>("input, select, textarea, button")?.focus();
   }
 
-  /* ---- Entry chooser (gate) ------------------------------------------- */
+  /* ---- Entry chooser (gate) — /login and /register -------------------- */
+
+  const setPath = (path: string) => {
+    if (window.location.pathname.replace(/\/+$/, "") !== path) {
+      window.history.replaceState(null, "", path);
+    }
+  };
 
   function showGate(): void {
     byId("gate")!.hidden = false;
     if (form) form.hidden = true;
     if (progress) progress.hidden = true;
+    setPath("/login");
   }
 
   function startFlow(index: number): void {
     byId("gate")!.hidden = true;
     byId("gate-soon")!.hidden = true;
     if (form) form.hidden = false;
+    setPath("/register");
     show(index);
   }
 
@@ -151,17 +159,38 @@ export function initOnboarding(): void {
     el.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
 
-  document.querySelectorAll<HTMLButtonElement>("[data-gate]").forEach((b) => {
+  // Sign up → registration flow (restaurant) or coming soon (creator).
+  document.querySelectorAll<HTMLButtonElement>("[data-signup]").forEach((b) => {
     b.addEventListener("click", () => {
-      switch (b.dataset.gate) {
-        case "restaurant-signup":
-          startFlow(0);
-          break;
-        case "restaurant-login":
-          showComingSoon("restaurantLogin");
-          break;
-        default: // creator-signup / creator-login
-          showComingSoon("creator");
+      if (b.dataset.signup === "restaurant") startFlow(0);
+      else showComingSoon("creator");
+    });
+  });
+
+  // Log in — restaurant logs in for real; creator side is coming soon.
+  document.querySelectorAll<HTMLFormElement>("form[data-login]").forEach((f) => {
+    const errEl = f.parentElement?.querySelector<HTMLElement>(".gate-error") ?? null;
+    f.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (f.dataset.login === "creator") {
+        showComingSoon("creator");
+        return;
+      }
+      const email = f.querySelector<HTMLInputElement>('input[type="email"]')!.value.trim();
+      const password = f.querySelector<HTMLInputElement>('input[type="password"]')!.value;
+      if (errEl) errEl.hidden = true;
+      try {
+        const p = await login(email, password, "account");
+        authed = true;
+        principalEmail = p.email;
+        startFlow(1); // signed in → add / manage a restaurant
+      } catch (err) {
+        if (errEl) {
+          errEl.hidden = false;
+          errEl.textContent = (err as { status?: number }).status === 401
+            ? t("gate.loginFailed")
+            : (err as Error).message || t("gate.loginFailed");
+        }
       }
     });
   });
@@ -1270,13 +1299,16 @@ export function initOnboarding(): void {
       window.history.replaceState(null, "", window.location.pathname);
     }
 
-    // Returning, signed-in accounts skip the chooser and go add a restaurant;
-    // everyone else picks a lane on the entry chooser first.
+    // Routing: signed-in accounts go straight to the flow; /register starts a
+    // fresh registration; everything else shows the /login screen.
     const me = await getMe();
+    const path = window.location.pathname.replace(/\/+$/, "");
     if (me && me.role === "account") {
       authed = true;
       principalEmail = me.email;
       startFlow(1);
+    } else if (path === "/register") {
+      startFlow(0);
     } else {
       showGate();
     }
