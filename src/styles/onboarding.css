@@ -144,9 +144,15 @@ body {
 }
 
 .gate-title {
-  font: 800 clamp(30px, 6vw, 44px) / 1.05 var(--font-display);
+  font: 800 clamp(30px, 6vw, 44px) / 1.1 var(--font-display);
   letter-spacing: -0.01em;
-  margin: 0 0 10px;
+  /* Reserve two lines so a 1-line (EN) vs 2-line (DE) title doesn't shift the
+     content below when the language is toggled. Generous gap to the panels. */
+  min-height: 2.2em;
+  margin: 0 0 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .gate-sub {
@@ -195,6 +201,11 @@ body {
 
 .gate-login .btn {
   width: 100%; /* Sign up + Log in stacked, full width */
+}
+
+/* Extra space above Sign up so it reads as a separate action from Log in. */
+.gate-login [data-signup] {
+  margin-top: 22px;
 }
 
 .gate-error {
