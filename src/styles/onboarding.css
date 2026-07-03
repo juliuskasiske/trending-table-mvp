@@ -80,7 +80,9 @@ body {
 
 /* EN / DE language toggle */
 .lang-toggle {
-  display: inline-flex;
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr; /* EN / DE equal width */
   border: 2px solid var(--line);
   border-radius: 8px;
   overflow: hidden;
@@ -152,9 +154,11 @@ body {
   margin: 0 0 32px;
 }
 
-/* Role toggle (Restaurant | Creator) */
+/* Role toggle (Restaurant | Creator) — segments forced to equal width */
 .role-toggle {
-  display: inline-flex;
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr; /* both segments equal, sized to the wider label */
   border: 2px solid var(--line);
   border-radius: 12px;
   overflow: hidden;
@@ -168,6 +172,7 @@ body {
   color: var(--muted);
   font: 700 16px/1 var(--font-display);
   padding: 12px 28px;
+  text-align: center;
   cursor: pointer;
 }
 
@@ -222,7 +227,9 @@ body {
 }
 
 .cadence-toggle {
-  display: inline-flex;
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr; /* Monthly / Annual equal width */
   border: 2px solid var(--line);
   border-radius: 10px;
   overflow: hidden;
