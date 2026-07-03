@@ -16,6 +16,19 @@ const STORAGE_KEY = "tt-lang";
 const en: Dict = {
   "meta.title": "Get started — Trending Table",
   "topbar.tag": "Restaurant sign-up",
+
+  // Entry chooser
+  "gate.eyebrow": "Welcome to Trending Table",
+  "gate.title": "How do you want to join?",
+  "gate.sub": "Pick your side of the marketplace.",
+  "gate.signup": "Sign up",
+  "gate.login": "Log in",
+  "gate.restaurant.title": "Restaurant",
+  "gate.restaurant.desc": "Book local creators and fill your tables.",
+  "gate.creator.title": "Creator",
+  "gate.creator.desc": "Get paid to post about places you love.",
+  "gate.soon.creator": "The creator side is coming soon — we'll open it up shortly.",
+  "gate.soon.restaurantLogin": "Restaurant login is coming soon. For now, use Sign up to get started.",
   "progress.step": "Step",
   "progress.of": "of",
 
@@ -237,6 +250,18 @@ const en: Dict = {
 const de: Dict = {
   "meta.title": "Loslegen — Trending Table",
   "topbar.tag": "Restaurant-Anmeldung",
+
+  "gate.eyebrow": "Willkommen bei Trending Table",
+  "gate.title": "Wie möchtest du mitmachen?",
+  "gate.sub": "Wähle deine Seite des Marktplatzes.",
+  "gate.signup": "Registrieren",
+  "gate.login": "Anmelden",
+  "gate.restaurant.title": "Restaurant",
+  "gate.restaurant.desc": "Buche lokale Creator und füll deine Tische.",
+  "gate.creator.title": "Creator",
+  "gate.creator.desc": "Verdiene Geld, indem du über Orte postest, die du liebst.",
+  "gate.soon.creator": "Die Creator-Seite kommt bald — wir schalten sie in Kürze frei.",
+  "gate.soon.restaurantLogin": "Der Restaurant-Login kommt bald. Nutze vorerst „Registrieren“, um zu starten.",
   "progress.step": "Schritt",
   "progress.of": "von",
 

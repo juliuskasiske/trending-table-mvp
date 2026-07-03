@@ -128,6 +128,44 @@ export function initOnboarding(): void {
     steps[index].querySelector<HTMLElement>("input, select, textarea, button")?.focus();
   }
 
+  /* ---- Entry chooser (gate) ------------------------------------------- */
+
+  function showGate(): void {
+    byId("gate")!.hidden = false;
+    if (form) form.hidden = true;
+    if (progress) progress.hidden = true;
+  }
+
+  function startFlow(index: number): void {
+    byId("gate")!.hidden = true;
+    byId("gate-soon")!.hidden = true;
+    if (form) form.hidden = false;
+    show(index);
+  }
+
+  function showComingSoon(kind: "creator" | "restaurantLogin"): void {
+    const el = byId("gate-soon");
+    if (!el) return;
+    el.hidden = false;
+    el.textContent = t(`gate.soon.${kind}`);
+    el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+
+  document.querySelectorAll<HTMLButtonElement>("[data-gate]").forEach((b) => {
+    b.addEventListener("click", () => {
+      switch (b.dataset.gate) {
+        case "restaurant-signup":
+          startFlow(0);
+          break;
+        case "restaurant-login":
+          showComingSoon("restaurantLogin");
+          break;
+        default: // creator-signup / creator-login
+          showComingSoon("creator");
+      }
+    });
+  });
+
   /* ---- Validation ------------------------------------------------------ */
 
   function setError(name: string, on: boolean): void {
@@ -1159,7 +1197,7 @@ export function initOnboarding(): void {
     applyConfigUi();
     renderBudget();
     renderCadence();
-    show(authed ? 1 : 0); // signed-in users skip straight to a new restaurant
+    startFlow(authed ? 1 : 0); // "start another restaurant" — back into the flow
   }
 
   byId("restart")?.addEventListener("click", resetAll);
@@ -1232,13 +1270,16 @@ export function initOnboarding(): void {
       window.history.replaceState(null, "", window.location.pathname);
     }
 
-    // Returning, signed-in accounts skip the signup step and go add a restaurant.
+    // Returning, signed-in accounts skip the chooser and go add a restaurant;
+    // everyone else picks a lane on the entry chooser first.
     const me = await getMe();
     if (me && me.role === "account") {
       authed = true;
       principalEmail = me.email;
+      startFlow(1);
+    } else {
+      showGate();
     }
-    show(authed ? 1 : 0);
   })();
 }
 

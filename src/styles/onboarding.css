@@ -127,6 +127,80 @@ body {
   border-color: var(--accent);
 }
 
+/* Entry chooser (gate) */
+.gate {
+  padding: 12px 0 48px;
+  text-align: center;
+}
+
+.gate-eyebrow {
+  color: var(--accent);
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: 0.02em;
+  margin: 0 0 8px;
+}
+
+.gate-title {
+  font: 800 clamp(30px, 6vw, 44px) / 1.05 var(--font-display);
+  letter-spacing: -0.01em;
+  margin: 0 0 10px;
+}
+
+.gate-sub {
+  color: var(--muted);
+  margin: 0 0 32px;
+}
+
+.gate-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 20px;
+  text-align: left;
+}
+
+.gate-card {
+  border: 2px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel);
+  box-shadow: 6px 6px 0 var(--ink);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gate-card-icon {
+  font-size: 34px;
+  line-height: 1;
+}
+
+.gate-card h2 {
+  font: 800 22px/1 var(--font-display);
+  margin: 6px 0 0;
+}
+
+.gate-card p {
+  color: var(--muted);
+  margin: 0 0 10px;
+  min-height: 42px;
+}
+
+.gate-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: auto;
+}
+
+.gate-actions .btn {
+  flex: 1;
+}
+
+.gate-soon {
+  margin-top: 22px;
+  text-align: left;
+}
+
 /* Billing-cycle (monthly / annual) toggle */
 .cadence {
   margin-bottom: 24px;
