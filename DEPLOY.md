@@ -32,7 +32,7 @@ curl -fsSL https://get.docker.com | sh
 
 ```bash
 git clone https://github.com/juliuskasiske/trending-table-mvp.git
-cd trending-table-mvp/mvp        # (repo layout: the app lives in mvp/)
+cd trending-table-mvp            # the repo root IS the app (no mvp/ subfolder)
 
 cp infra/.env.example infra/.env
 cp backend/.env.prod.example backend/.env.prod
