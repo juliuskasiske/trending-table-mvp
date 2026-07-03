@@ -169,7 +169,7 @@ export function initOnboarding(): void {
 
   // Log in — restaurant logs in for real; creator side is coming soon.
   document.querySelectorAll<HTMLFormElement>("form[data-login]").forEach((f) => {
-    const errEl = f.parentElement?.querySelector<HTMLElement>(".gate-error") ?? null;
+    const errEl = f.querySelector<HTMLElement>(".gate-error");
     f.addEventListener("submit", async (e) => {
       e.preventDefault();
       if (f.dataset.login === "creator") {

@@ -154,13 +154,13 @@ body {
   margin: 0 0 32px;
 }
 
-/* Stacked panels: Restaurant first, Creator underneath. Each has a Sign up
-   button up top and an inline email/password login form. */
+/* Stacked panels: Restaurant first, Creator underneath. Each is a vertical
+   login form — email, password, then Sign up above Log in. */
 .gate-options {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  max-width: 620px;
+  max-width: 460px;
   margin: 4px auto 0;
   text-align: left;
 }
@@ -173,45 +173,35 @@ body {
   padding: 22px 24px;
 }
 
-.gate-card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
-.gate-card-title h2 {
+.gate-card h2 {
   font: 800 22px/1 var(--font-display);
   margin: 0 0 4px;
 }
 
-.gate-card-title p {
+.gate-card-desc {
   color: var(--muted);
-  margin: 0;
-}
-
-/* All gate CTAs (Sign up / Log in) share one width. */
-.gate-card .btn {
-  min-width: 120px;
+  margin: 0 0 18px;
 }
 
 .gate-login {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 10px;
 }
 
 .gate-login .input {
-  flex: 1 1 150px;
   margin: 0;
+}
+
+.gate-login .btn {
+  width: 100%; /* Sign up + Log in stacked, full width */
 }
 
 .gate-error {
   color: var(--accent);
   font-weight: 600;
   font-size: 14px;
-  margin: 10px 0 0;
+  margin: 4px 0 0;
 }
 
 .gate-soon {
