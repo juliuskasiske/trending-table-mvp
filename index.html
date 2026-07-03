@@ -52,16 +52,28 @@
           <p class="gate-eyebrow" data-i18n="gate.eyebrow">Welcome to Trending Table</p>
           <h1 class="gate-title" data-i18n="gate.title">How do you want to join?</h1>
 
-          <div class="role-toggle" id="role-toggle" role="group" aria-label="Role">
-            <button type="button" class="on" data-role="restaurant" data-i18n="gate.restaurant.title">Restaurant</button>
-            <button type="button" data-role="creator" data-i18n="gate.creator.title">Creator</button>
-          </div>
+          <div class="gate-options">
+            <div class="gate-card">
+              <div class="gate-card-head">
+                <h2 data-i18n="gate.restaurant.title">Restaurant</h2>
+                <p data-i18n="gate.restaurant.desc">Book local creators and fill your tables.</p>
+              </div>
+              <div class="gate-actions">
+                <button type="button" class="btn btn-primary" data-gate="restaurant-signup" data-i18n="gate.signup">Sign up</button>
+                <button type="button" class="btn btn-ghost" data-gate="restaurant-login" data-i18n="gate.login">Log in</button>
+              </div>
+            </div>
 
-          <p class="gate-role-desc" id="gate-role-desc" data-i18n="gate.restaurant.desc">Book local creators and fill your tables.</p>
-
-          <div class="gate-actions">
-            <button type="button" class="btn btn-primary" id="gate-signup" data-i18n="gate.signup">Sign up</button>
-            <button type="button" class="btn btn-ghost" id="gate-login" data-i18n="gate.login">Log in</button>
+            <div class="gate-card">
+              <div class="gate-card-head">
+                <h2 data-i18n="gate.creator.title">Creator</h2>
+                <p data-i18n="gate.creator.desc">Get paid to post about places you love.</p>
+              </div>
+              <div class="gate-actions">
+                <button type="button" class="btn btn-primary" data-gate="creator-signup" data-i18n="gate.signup">Sign up</button>
+                <button type="button" class="btn btn-ghost" data-gate="creator-login" data-i18n="gate.login">Log in</button>
+              </div>
+            </div>
           </div>
 
           <div class="notice gate-soon" id="gate-soon" hidden></div>

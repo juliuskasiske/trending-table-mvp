@@ -154,58 +154,53 @@ body {
   margin: 0 0 32px;
 }
 
-/* Role toggle (Restaurant | Creator) — segments forced to equal width */
-.role-toggle {
-  display: inline-grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr; /* both segments equal, sized to the wider label */
-  border: 2px solid var(--line);
-  border-radius: 12px;
-  overflow: hidden;
-  margin: 8px 0 20px;
-}
-
-.role-toggle button {
-  appearance: none;
-  border: 0;
-  background: var(--panel);
-  color: var(--muted);
-  font: 700 16px/1 var(--font-display);
-  padding: 12px 28px;
-  text-align: center;
-  cursor: pointer;
-}
-
-.role-toggle button + button {
-  border-left: 2px solid var(--line);
-}
-
-.role-toggle button.on {
-  background: var(--ink);
-  color: var(--on-accent);
-}
-
-.role-toggle button:not(.on):hover {
-  color: var(--ink);
-}
-
-.gate-role-desc {
-  color: var(--muted);
-  margin: 0 auto 28px;
-  max-width: 440px;
-  min-height: 22px;
-}
-
-.gate-actions {
+/* Stacked options: Restaurant first, Creator underneath */
+.gate-options {
   display: flex;
-  gap: 12px;
-  max-width: 420px;
-  margin: 0 auto;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 560px;
+  margin: 4px auto 0;
+  text-align: left;
+}
+
+.gate-card {
+  border: 2px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel);
+  box-shadow: 6px 6px 0 var(--ink);
+  padding: 22px 24px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.gate-card-head {
+  flex: 1 1 220px;
+}
+
+.gate-card-head h2 {
+  font: 800 22px/1 var(--font-display);
+  margin: 0 0 4px;
+}
+
+.gate-card-head p {
+  color: var(--muted);
+  margin: 0;
+}
+
+/* Sign up / Log in — equal width */
+.gate-actions {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 10px;
 }
 
 .gate-actions .btn {
-  flex: 1;
-  padding: 14px 18px;
+  padding: 12px 22px;
 }
 
 .gate-soon {
