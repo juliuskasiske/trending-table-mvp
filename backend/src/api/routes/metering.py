@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
 from psycopg.rows import dict_row
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .. import deps
 from ...billing import metering
@@ -16,43 +16,31 @@ router = APIRouter(prefix="/api", tags=["metering"])
 
 
 class MetricsIn(BaseModel):
-    views: int
-    likes: int | None = None
-    comments: int | None = None
-    shares: int | None = None
-    saves: int | None = None
-    reach: int | None = None
-    impressions: int | None = None
+    views: int = Field(ge=0)
+    likes: int | None = Field(default=None, ge=0)
+    comments: int | None = Field(default=None, ge=0)
+    shares: int | None = Field(default=None, ge=0)
+    saves: int | None = Field(default=None, ge=0)
+    reach: int | None = Field(default=None, ge=0)
+    impressions: int | None = Field(default=None, ge=0)
 
 
 @router.post("/posts/{post_id}/metrics")
 def ingest_post_metrics(post_id: int, body: MetricsIn,
-                        principal: dict = Depends(deps.current_principal)) -> dict:
-    """Record a metric snapshot and bill new views. Represents the system poller;
-    exposed for admin/testing. Caller must be the post's creator or a member of
-    its restaurant."""
-    with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
-        cur.execute("SELECT restaurant_id, creator_id FROM posts WHERE id = %s", (post_id,))
-        post = cur.fetchone()
-    if not post:
-        raise HTTPException(status_code=404, detail="Post not found.")
-    allowed = (
-        (principal["role"] == "creator" and principal["id"] == post["creator_id"])
-        or (principal["role"] == "account"
-            and _is_member(principal["id"], post["restaurant_id"]))
-    )
-    if not allowed:
-        raise HTTPException(status_code=403, detail="Not your post.")
-    return metering.ingest_metrics(post_id, body.model_dump())
+                        _: None = Depends(deps.require_admin)) -> dict:
+    """Record a metric snapshot and bill new views.
 
-
-def _is_member(account_id: int, restaurant_id: int) -> bool:
+    Metrics move real money (restaurant spend + creator earnings at €/view), so
+    self-reported numbers from either marketplace side would be an incentive to
+    inflate. In production only the system poller ingests metrics (it calls
+    metering.ingest_metrics directly); this HTTP endpoint exists for admin and
+    testing and is therefore ADMIN_KEY-gated.
+    """
     with get_control_connection() as conn, conn.cursor() as cur:
-        cur.execute(
-            "SELECT 1 FROM memberships WHERE account_id = %s AND restaurant_id = %s",
-            (account_id, restaurant_id),
-        )
-        return cur.fetchone() is not None
+        cur.execute("SELECT 1 FROM posts WHERE id = %s", (post_id,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Post not found.")
+    return metering.ingest_metrics(post_id, body.model_dump())
 
 
 @router.get("/restaurants/{restaurant_id}/spend")

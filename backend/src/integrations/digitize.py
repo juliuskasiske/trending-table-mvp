@@ -3,10 +3,13 @@ heuristic. Same behaviour as the retired Node service, now native Python."""
 from __future__ import annotations
 
 import base64
+import ipaddress
 import json
 import os
 import re
+import socket
 import tempfile
+from urllib.parse import urlsplit
 
 import httpx
 from markitdown import MarkItDown
@@ -36,11 +39,49 @@ def pdf_to_markdown(base64_pdf: str) -> str:
         return _md().convert(f.name).text_content
 
 
+_MAX_MENU_BYTES = 5 * 1024 * 1024  # 5 MB — menus are pages, not archives
+_MAX_REDIRECTS = 5
+
+
+def _assert_public_host(url: str) -> None:
+    """SSRF guard: the URL must resolve to public addresses only.
+
+    Users paste menu URLs and the SERVER fetches them, so without this a user
+    could point us at internal targets (localhost, the Docker network, cloud
+    metadata at 169.254.169.254, …).
+    """
+    host = urlsplit(url).hostname
+    if not host:
+        raise ValueError("Invalid URL")
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        raise ValueError("Could not resolve that host")
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+            raise ValueError("That URL points at a non-public address")
+
+
 def url_to_markdown(url: str) -> str:
     if not url.startswith(("http://", "https://")):
         raise ValueError("Only http(s) URLs are supported")
-    r = httpx.get(url, follow_redirects=True, timeout=20)
-    r.raise_for_status()
+    # Follow redirects manually so EVERY hop is validated against the SSRF
+    # guard (a public URL may redirect to an internal one), and cap the body.
+    with httpx.Client(follow_redirects=False, timeout=20) as client:
+        for _ in range(_MAX_REDIRECTS + 1):
+            _assert_public_host(url)
+            r = client.get(url)
+            if r.is_redirect:
+                url = str(r.next_request.url)
+                continue
+            r.raise_for_status()
+            if len(r.content) > _MAX_MENU_BYTES:
+                raise ValueError("That page is too large to digitize")
+            break
+        else:
+            raise ValueError("Too many redirects")
     with tempfile.NamedTemporaryFile(suffix=".html", mode="w", encoding="utf-8") as f:
         f.write(r.text)
         f.flush()
