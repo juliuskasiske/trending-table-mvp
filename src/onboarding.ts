@@ -48,13 +48,23 @@ const STORAGE_KEY = "tt-onboarding";
 
 const locale = () => (getLang() === "de" ? "de-DE" : "en-US");
 const nf = { format: (n: number) => new Intl.NumberFormat(locale()).format(n) };
+// Locale-aware currency: € leads in English (€50), trails in German (50 €).
 const eur = (n: number) =>
-  "€" + new Intl.NumberFormat(locale(), { maximumFractionDigits: 0 }).format(n);
+  new Intl.NumberFormat(locale(), {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(n);
 
 /** Euro with cents — for fee amounts like €49.99 that must not round to €50. */
 const eur2 = (n: number) =>
-  "€" +
-  new Intl.NumberFormat(locale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+  new Intl.NumberFormat(locale(), {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(n);
 
 export function initOnboarding(): void {
   const form = document.querySelector<HTMLFormElement>("#onboarding");
