@@ -854,6 +854,11 @@ export function initOnboarding(): void {
       saveBtn.disabled = true;
       saveBtn.textContent = t("pay.subscribing");
     }
+    // Clear any error from a previous attempt — this is a fresh try.
+    if (notice) {
+      notice.hidden = true;
+      notice.textContent = "";
+    }
 
     // 1. Validate the card details the user entered.
     const submit = await elements.submit();
@@ -893,6 +898,11 @@ export function initOnboarding(): void {
       statusText.textContent = payment.last4
         ? t("pay.savedCard", { brand: payment.brand ?? "card", last4: payment.last4 })
         : t("pay.subscribed");
+    }
+    const notice = byId("pay-notice");
+    if (notice) {
+      notice.hidden = true;
+      notice.textContent = "";
     }
     if (status) status.hidden = false;
     if (el) el.hidden = true;
