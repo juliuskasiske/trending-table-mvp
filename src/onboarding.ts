@@ -699,7 +699,6 @@ export function initOnboarding(): void {
     };
     set("fig-limit", eur(lim));
     set("fig-views", nf.format(views));
-    set("fig-cpm", `€${PRICING.cpm} CPM`);
     set("bd-fee", eur(PRICING.platformFee));
     set("bd-views", eur(lim - PRICING.platformFee));
     set("bd-count", nf.format(views));
