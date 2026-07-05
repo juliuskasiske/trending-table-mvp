@@ -245,6 +245,14 @@ export function createSetupIntent(restaurantId: number):
   return api(`/api/restaurants/${restaurantId}/billing/setup-intent`, { method: "POST" });
 }
 
+export function createSubscription(restaurantId: number, cadence: "monthly" | "annual"):
+  Promise<{ clientSecret: string; publishableKey: string | null; subscriptionId: string; status: string }> {
+  return api(`/api/restaurants/${restaurantId}/billing/subscribe`, {
+    method: "POST",
+    body: JSON.stringify({ cadence }),
+  });
+}
+
 /* ---- admin (control tower) ----------------------------------------------- */
 
 export interface FunnelStage {

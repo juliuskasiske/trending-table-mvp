@@ -42,6 +42,12 @@ MAIL_FROM_NAME = os.environ.get("MAIL_FROM_NAME", "Trending Table")
 # in .env; unset means the control tower is disabled.
 ADMIN_KEY = os.environ.get("ADMIN_KEY", "")
 
+# Stripe — platform-fee subscription. STRIPE_SECRET_KEY read in stripe_client.
+# The two price IDs are the €50/mo and annual platform-fee prices.
+STRIPE_PRICE_MONTHLY = os.environ.get("STRIPE_PRICE_MONTHLY", "")
+STRIPE_PRICE_ANNUAL = os.environ.get("STRIPE_PRICE_ANNUAL", "")
+STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+
 _INSECURE_SESSION_DEFAULTS = {"dev-insecure-secret-change-me", "dev-session-secret-change-me"}
 
 

@@ -11,7 +11,7 @@
 import {
   activateRestaurant,
   createRestaurant,
-  createSetupIntent,
+  createSubscription,
   digitizeMenu,
   digitizeMenuUrl,
   faviconLogo,
@@ -748,10 +748,22 @@ export function initOnboarding(): void {
     if (!btn) return;
     cadence = btn.dataset.cadence === "annual" ? "annual" : "monthly";
     renderCadence();
+    syncStripeAmount();
     save();
   });
 
   /* ---- Stripe ---------------------------------------------------------- */
+
+  /** The platform fee for the selected cadence, in cents (Stripe's unit). */
+  function feeCents(): number {
+    const euros = cadence === "annual" ? annualFee().discounted : PRICING.platformFee;
+    return Math.round(euros * 100);
+  }
+
+  /** Keep the Payment Element's amount in sync when the cadence toggles. */
+  function syncStripeAmount(): void {
+    if (elements) elements.update({ amount: feeCents() });
+  }
 
   async function ensureStripe(): Promise<void> {
     if (stripeReady) return;
@@ -772,8 +784,14 @@ export function initOnboarding(): void {
       if (restaurantId == null) throw new Error(t("pay.finishRestaurant"));
       stripe = await loadStripe(config.stripePublishableKey);
       if (!stripe) throw new Error(t("pay.stripeLoadFail"));
-      const { clientSecret } = await createSetupIntent(restaurantId);
-      elements = stripe.elements({ clientSecret, appearance: { theme: "flat" } });
+      // Deferred subscription flow: build the Element from the amount, create
+      // the actual subscription server-side only when the user confirms.
+      elements = stripe.elements({
+        mode: "subscription",
+        amount: feeCents(),
+        currency: "eur",
+        appearance: { theme: "flat" },
+      });
       const paymentEl = elements.create("payment");
       paymentEl.mount("#payment-element");
       if (saveBtn) saveBtn.hidden = false;
@@ -789,31 +807,50 @@ export function initOnboarding(): void {
   }
 
   byId("save-card")?.addEventListener("click", async () => {
-    if (!stripe || !elements) return;
+    if (!stripe || !elements || restaurantId == null) return;
     const saveBtn = byId<HTMLButtonElement>("save-card");
     const notice = byId("pay-notice");
-    if (saveBtn) {
-      saveBtn.disabled = true;
-      saveBtn.textContent = t("pay.saving");
-    }
-    const { error, setupIntent } = await stripe.confirmSetup({
-      elements,
-      confirmParams: { return_url: window.location.href },
-      redirect: "if_required",
-    });
-    if (error) {
+    const fail = (msg: string) => {
       if (notice) {
         notice.hidden = false;
         notice.className = "notice error";
-        notice.textContent = error.message ?? t("pay.cardNotSaved");
+        notice.textContent = msg;
       }
       if (saveBtn) {
         saveBtn.disabled = false;
-        saveBtn.textContent = t("btn.saveCard");
+        saveBtn.textContent = t("btn.subscribe");
       }
-      return;
+    };
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = t("pay.subscribing");
     }
-    const pmId = String(setupIntent?.payment_method ?? "");
+
+    // 1. Validate the card details the user entered.
+    const submit = await elements.submit();
+    if (submit.error) return fail(submit.error.message ?? t("pay.subFail"));
+
+    // 2. Create the real subscription for the chosen cadence (nothing charged yet).
+    let clientSecret: string;
+    try {
+      const res = await createSubscription(restaurantId, cadence);
+      clientSecret = res.clientSecret;
+    } catch (err) {
+      return fail(String(err));
+    }
+
+    // 3. Confirm the first invoice's payment — this is the actual charge.
+    const { error, paymentIntent } = await stripe.confirmPayment({
+      elements,
+      clientSecret,
+      confirmParams: { return_url: window.location.href },
+      redirect: "if_required",
+    });
+    if (error) return fail(error.message ?? t("pay.subFail"));
+
+    const pmId = String(
+      (paymentIntent && (paymentIntent as { payment_method?: string }).payment_method) ?? "",
+    );
     payment = { connected: true, paymentMethodId: pmId };
     showPaymentSaved();
   });
@@ -825,8 +862,8 @@ export function initOnboarding(): void {
     const saveBtn = byId("save-card");
     if (statusText) {
       statusText.textContent = payment.last4
-        ? t("pay.savedCard", { brand: (payment.brand ?? "card").toUpperCase(), last4: payment.last4 })
-        : t("pay.saved");
+        ? t("pay.savedCard", { brand: payment.brand ?? "card", last4: payment.last4 })
+        : t("pay.subscribed");
     }
     if (status) status.hidden = false;
     if (el) el.hidden = true;

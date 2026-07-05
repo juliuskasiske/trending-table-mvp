@@ -15,7 +15,7 @@ def config() -> dict:
         "placesEnabled": places.enabled(),
         "menuAiEnabled": digitize.markitdown_available(),
         "menuLlmEnabled": digitize.llm_enabled(),
-        "stripeEnabled": stripe_client.enabled(),
+        "stripeEnabled": stripe_client.configured(),
         "stripePublishableKey": stripe_client.publishable_key(),
         "pricing": {"ratePerView": 0.01, "platformFee": 50, "creatorPerView": 0.002},
     }
