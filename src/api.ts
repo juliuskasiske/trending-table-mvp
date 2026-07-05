@@ -65,8 +65,16 @@ async function api<T>(path: string, opts: RequestInit & { json?: unknown } = {})
     ...rest,
   });
   if (!r.ok) {
-    const detail = (await r.json().catch(() => ({}))) as { detail?: string };
-    const err = new Error(detail.detail || `${path} failed: ${r.status}`) as Error & { status?: number };
+    const body = (await r.json().catch(() => ({}))) as { detail?: unknown };
+    // FastAPI validation errors return detail as an array of {loc,msg,type};
+    // flatten those to a readable string instead of "[object Object]".
+    let msg: string;
+    const d = body.detail;
+    if (typeof d === "string") msg = d;
+    else if (Array.isArray(d)) msg = d.map((e) => (e as { msg?: string }).msg ?? String(e)).join("; ");
+    else if (d) msg = JSON.stringify(d);
+    else msg = `${path} failed: ${r.status}`;
+    const err = new Error(msg) as Error & { status?: number };
     err.status = r.status;
     throw err;
   }
@@ -254,7 +262,7 @@ export function createSubscription(restaurantId: number, cadence: "monthly" | "a
   Promise<{ clientSecret: string; publishableKey: string | null; subscriptionId: string; status: string }> {
   return api(`/api/restaurants/${restaurantId}/billing/subscribe`, {
     method: "POST",
-    body: JSON.stringify({ cadence }),
+    json: { cadence },
   });
 }
 
