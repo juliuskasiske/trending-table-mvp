@@ -51,6 +51,10 @@ STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
 # Meter. Both must be set to bill views; otherwise views are only recorded locally.
 STRIPE_PRICE_USAGE = os.environ.get("STRIPE_PRICE_USAGE", "")
 STRIPE_METER_EVENT_NAME = os.environ.get("STRIPE_METER_EVENT_NAME", "")
+# Optional launch date (ISO YYYY-MM-DD, Europe/Berlin). If set and in the
+# future, the platform-fee subscription trials until this date, so the first
+# payment lands on it. Once past, new subscriptions start (and bill) immediately.
+STRIPE_SUBSCRIPTION_START = os.environ.get("STRIPE_SUBSCRIPTION_START", "")
 
 _INSECURE_SESSION_DEFAULTS = {"dev-insecure-secret-change-me", "dev-session-secret-change-me"}
 

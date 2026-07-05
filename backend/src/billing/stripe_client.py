@@ -3,10 +3,35 @@ Metered usage billing arrives in a later phase."""
 from __future__ import annotations
 
 import os
+from datetime import date, datetime, time
+from zoneinfo import ZoneInfo
 
 import stripe
 
 from .. import config
+
+_BERLIN = ZoneInfo("Europe/Berlin")
+
+
+def _trial_end_ts() -> int | None:
+    """Unix timestamp for the configured launch date (start of day, Berlin),
+    or None if unset, unparseable, or already in the past."""
+    raw = config.STRIPE_SUBSCRIPTION_START
+    if not raw:
+        return None
+    try:
+        d = date.fromisoformat(raw.strip())
+    except ValueError:
+        return None
+    start = datetime.combine(d, time(0, 0), tzinfo=_BERLIN)
+    ts = int(start.timestamp())
+    return ts if ts > int(datetime.now(tz=_BERLIN).timestamp()) else None
+
+
+def deferred_start() -> bool:
+    """True when new subscriptions trial until a future launch date (so the
+    card is collected now via a SetupIntent, not charged until then)."""
+    return _trial_end_ts() is not None
 
 
 def _secret() -> str:
@@ -80,7 +105,7 @@ def create_subscription(customer_id: str, cadence: str) -> dict:
     frontend — so creating (and cancelling) one moves zero money.
     """
     _client()
-    sub = stripe.Subscription.create(
+    kwargs = dict(
         customer=customer_id,
         items=[{"price": _price_for(cadence)}],
         payment_behavior="default_incomplete",
@@ -90,13 +115,29 @@ def create_subscription(customer_id: str, cadence: str) -> dict:
             # metered usage subscription needs later. Klarna cannot.
             "payment_method_types": ["card"],
         },
-        expand=["latest_invoice.payment_intent"],
+        expand=["latest_invoice.payment_intent", "pending_setup_intent"],
     )
-    pi = getattr(sub.latest_invoice, "payment_intent", None)
+    trial_ts = _trial_end_ts()
+    if trial_ts:
+        # Trial until the launch date → no charge now; first payment lands then.
+        kwargs["trial_end"] = trial_ts
+        kwargs["trial_settings"] = {"end_behavior": {"missing_payment_method": "cancel"}}
+    sub = stripe.Subscription.create(**kwargs)
+
+    # With a trial the first invoice is €0, so Stripe gives a SetupIntent to
+    # collect the card (confirm mode "setup"); otherwise it's a PaymentIntent
+    # for the first charge (confirm mode "payment").
+    psi = getattr(sub, "pending_setup_intent", None)
+    pi = getattr(sub.latest_invoice, "payment_intent", None) if sub.latest_invoice else None
+    if psi:
+        client_secret, mode = psi.client_secret, "setup"
+    else:
+        client_secret, mode = (pi.client_secret if pi else None), "payment"
     return {
         "subscription_id": sub.id,
         "status": sub.status,
-        "client_secret": pi.client_secret if pi else None,
+        "client_secret": client_secret,
+        "mode": mode,
     }
 
 

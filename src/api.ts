@@ -15,6 +15,10 @@ export interface AppConfig {
     monthly?: { amount: number; currency: string };
     annual?: { amount: number; currency: string };
   };
+  // When true, the subscription trials until subscriptionStart: card is saved
+  // now, first charged on that date. Collect via SetupIntent, not PaymentIntent.
+  subscriptionDeferredStart?: boolean;
+  subscriptionStart?: string | null;
   pricing: { ratePerView: number; platformFee: number; creatorPerView?: number };
 }
 
@@ -259,7 +263,7 @@ export function createSetupIntent(restaurantId: number):
 }
 
 export function createSubscription(restaurantId: number, cadence: "monthly" | "annual"):
-  Promise<{ clientSecret: string; publishableKey: string | null; subscriptionId: string; status: string }> {
+  Promise<{ clientSecret: string; publishableKey: string | null; subscriptionId: string; status: string; mode: "setup" | "payment" }> {
   return api(`/api/restaurants/${restaurantId}/billing/subscribe`, {
     method: "POST",
     json: { cadence },

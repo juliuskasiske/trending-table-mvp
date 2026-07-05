@@ -76,6 +76,7 @@ def subscribe(body: SubscribeIn,
         "publishableKey": stripe_client.publishable_key(),
         "subscriptionId": result["subscription_id"],
         "status": result["status"],
+        "mode": result["mode"],
     }
 
 

@@ -304,6 +304,13 @@ body {
   font-weight: 600;
 }
 
+.pay-start {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
 /* ---- Progress ---------------------------------------------------------- */
 
 .progress {

@@ -91,6 +91,7 @@ export function initOnboarding(): void {
   let stripe: Stripe | null = null;
   let elements: StripeElements | null = null;
   let stripeReady = false;
+  let stripeMode: "setup" | "subscription" = "subscription"; // "setup" when trialing
   let restaurantId: number | null = null; // the provisioned tenant
   let authed = false; // a session exists (signed up or logged in)
   let principalEmail = ""; // the logged-in account's email
@@ -789,9 +790,10 @@ export function initOnboarding(): void {
     return cadence === "annual" ? feeAnnualCents() : feeMonthlyCents();
   }
 
-  /** Keep the Payment Element's amount in sync when the cadence toggles. */
+  /** Keep the Payment Element's amount in sync when the cadence toggles.
+   * (In setup mode there's no amount — the card is saved, charged later.) */
   function syncStripeAmount(): void {
-    if (elements) elements.update({ amount: feeCents() });
+    if (elements && stripeMode === "subscription") elements.update({ amount: feeCents() });
   }
 
   async function ensureStripe(): Promise<void> {
@@ -813,11 +815,14 @@ export function initOnboarding(): void {
       if (restaurantId == null) throw new Error(t("pay.finishRestaurant"));
       stripe = await loadStripe(config.stripePublishableKey);
       if (!stripe) throw new Error(t("pay.stripeLoadFail"));
-      // Deferred subscription flow: build the Element from the amount, create
-      // the actual subscription server-side only when the user confirms.
+      // When the subscription trials until a launch date, no money is due now,
+      // so we collect the card via a SetupIntent ("setup" mode, no amount).
+      // Otherwise we charge the first invoice now ("subscription" mode).
+      stripeMode = config.subscriptionDeferredStart ? "setup" : "subscription";
       elements = stripe.elements({
-        mode: "subscription",
-        amount: feeCents(),
+        ...(stripeMode === "subscription"
+          ? { mode: "subscription" as const, amount: feeCents() }
+          : { mode: "setup" as const }),
         currency: "eur",
         // Card only — it can be charged the variable monthly usage later.
         paymentMethodTypes: ["card"],
@@ -875,19 +880,32 @@ export function initOnboarding(): void {
       return fail(String(err));
     }
 
-    // 3. Confirm the first invoice's payment — this is the actual charge.
-    const { error, paymentIntent } = await stripe.confirmPayment({
-      elements,
-      clientSecret,
-      confirmParams: { return_url: window.location.href },
-      redirect: "if_required",
-    });
-    if (error) return fail(error.message ?? t("pay.subFail"));
-
-    const pmId = String(
-      (paymentIntent && (paymentIntent as { payment_method?: string }).payment_method) ?? "",
-    );
-    payment = { connected: true, paymentMethodId: pmId };
+    // 3. Confirm: a trialing subscription saves the card (SetupIntent, charged
+    //    on the launch date); otherwise it charges the first invoice now.
+    const confirmParams = { return_url: window.location.href };
+    if (stripeMode === "setup") {
+      const { error, setupIntent } = await stripe.confirmSetup({
+        elements,
+        clientSecret,
+        confirmParams,
+        redirect: "if_required",
+      });
+      if (error) return fail(error.message ?? t("pay.subFail"));
+      const pmId = String(setupIntent?.payment_method ?? "");
+      payment = { connected: true, paymentMethodId: pmId };
+    } else {
+      const { error, paymentIntent } = await stripe.confirmPayment({
+        elements,
+        clientSecret,
+        confirmParams,
+        redirect: "if_required",
+      });
+      if (error) return fail(error.message ?? t("pay.subFail"));
+      const pmId = String(
+        (paymentIntent && (paymentIntent as { payment_method?: string }).payment_method) ?? "",
+      );
+      payment = { connected: true, paymentMethodId: pmId };
+    }
     showPaymentSaved();
   });
 
@@ -1198,9 +1216,28 @@ export function initOnboarding(): void {
     if (consent) consent.innerHTML = t("review.consent", { fee });
   }
 
+  /** Show "first payment on <date>" when the subscription trials until launch. */
+  function applyStartNote(): void {
+    const el = byId("pay-start-note");
+    if (!el) return;
+    if (config?.subscriptionDeferredStart && config.subscriptionStart) {
+      const [y, m, d] = config.subscriptionStart.split("-").map(Number);
+      const date = new Intl.DateTimeFormat(locale(), {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      }).format(new Date(y, m - 1, d));
+      el.textContent = t("pay.startsOn", { date });
+      el.hidden = false;
+    } else {
+      el.hidden = true;
+    }
+  }
+
   function applyConfigUi(): void {
     if (!config) return;
     applyFeeStrings();
+    applyStartNote();
     if (searchNotice) {
       searchNotice.hidden = config.placesEnabled;
       searchNotice.className = config.placesEnabled || configLoaded ? "notice" : "notice error";
