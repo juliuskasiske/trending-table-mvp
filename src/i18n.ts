@@ -90,7 +90,7 @@ const en: Dict = {
   "billing.eyebrow": "Stay in control",
   "billing.title": "Set your monthly budget",
   "billing.sub":
-    "You pay €0.01 per view plus a €50 platform fee. Spend stops the moment you hit your limit — never a euro more.",
+    "You pay €0.01 per view plus a {fee} platform fee. Spend stops the moment you hit your limit — never a euro more.",
   "billing.fig.limit": "Monthly limit",
   "billing.fig.views": "Est. views / month",
   "billing.fig.reach": "Est. reach value",
@@ -104,7 +104,7 @@ const en: Dict = {
   "billing.cadence.label": "Billing cycle",
   "billing.cadence.monthly": "Monthly",
   "billing.cadence.annual": "Annual",
-  "billing.cadence.monthlyNote": "€50/month platform fee. Per-view spend is always billed as used.",
+  "billing.cadence.monthlyNote": "{fee}/month platform fee. Per-view spend is always billed as used.",
   "billing.cadence.annualNote":
     "Platform fee billed yearly: {discounted}/year instead of {full} — you save {savings} (20%). Per-view spend stays pay-as-you-go.",
 
@@ -146,7 +146,7 @@ const en: Dict = {
   "review.must": "Must include",
   "review.avoid": "Avoid",
   "review.consent":
-    'I agree to the <a href="#" tabindex="-1">Terms</a> and <a href="#" tabindex="-1">Privacy Policy</a>, and to a €50 monthly platform fee plus €0.01 per view while my account is active.',
+    'I agree to the <a href="#" tabindex="-1">Terms</a> and <a href="#" tabindex="-1">Privacy Policy</a>, and to a {fee} monthly platform fee plus €0.01 per view while my account is active.',
   "review.consent.err": "Please accept the terms to continue.",
 
   // Success
@@ -328,7 +328,7 @@ const de: Dict = {
   "billing.eyebrow": "Behalte die Kontrolle",
   "billing.title": "Leg dein Monatsbudget fest",
   "billing.sub":
-    "Du zahlst 0,01 € pro View plus 50 € Plattformgebühr. Die Ausgaben stoppen, sobald du dein Limit erreichst — keinen Euro mehr.",
+    "Du zahlst 0,01 € pro View plus {fee} Plattformgebühr. Die Ausgaben stoppen, sobald du dein Limit erreichst — keinen Euro mehr.",
   "billing.fig.limit": "Monatslimit",
   "billing.fig.views": "Geschätzte Views / Monat",
   "billing.fig.reach": "Geschätzter Reichweitenwert",
@@ -342,7 +342,7 @@ const de: Dict = {
   "billing.cadence.label": "Abrechnungszeitraum",
   "billing.cadence.monthly": "Monatlich",
   "billing.cadence.annual": "Jährlich",
-  "billing.cadence.monthlyNote": "50 €/Monat Plattformgebühr. Views werden immer nach Verbrauch abgerechnet.",
+  "billing.cadence.monthlyNote": "{fee}/Monat Plattformgebühr. Views werden immer nach Verbrauch abgerechnet.",
   "billing.cadence.annualNote":
     "Plattformgebühr jährlich abgerechnet: {discounted}/Jahr statt {full} — du sparst {savings} (20 %). Views bleiben nutzungsbasiert.",
 
@@ -382,7 +382,7 @@ const de: Dict = {
   "review.must": "Muss enthalten",
   "review.avoid": "Vermeiden",
   "review.consent":
-    'Ich stimme den <a href="#" tabindex="-1">AGB</a> und der <a href="#" tabindex="-1">Datenschutzerklärung</a> zu sowie einer monatlichen Plattformgebühr von 50 € plus 0,01 € pro View, solange mein Konto aktiv ist.',
+    'Ich stimme den <a href="#" tabindex="-1">AGB</a> und der <a href="#" tabindex="-1">Datenschutzerklärung</a> zu sowie einer monatlichen Plattformgebühr von {fee} plus 0,01 € pro View, solange mein Konto aktiv ist.',
   "review.consent.err": "Bitte akzeptiere die Bedingungen, um fortzufahren.",
 
   "done.title": "Du bist dabei.",

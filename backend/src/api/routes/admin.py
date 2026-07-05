@@ -12,12 +12,16 @@ from fastapi import APIRouter, Depends
 from psycopg.rows import dict_row
 
 from .. import deps
+from ...billing import stripe_client
 from ...db.connection import get_control_connection
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 # €/month platform fee, baked into each restaurant's monthly spending limit.
-PLATFORM_FEE = Decimal("50")
+# Sourced from the real Stripe monthly price; €50 fallback if Stripe is off.
+def platform_fee() -> Decimal:
+    cents = stripe_client.prices().get("monthly", {}).get("amount")
+    return (Decimal(cents) / 100) if cents else Decimal("50")
 
 
 @router.get("/overview")
@@ -91,6 +95,7 @@ def overview(_: None = Depends(deps.require_admin)) -> dict:
         )
         creators_connected = cur.fetchone()["n"]
 
+    fee = platform_fee()
     return {
         "restaurant_funnel": [
             {"label": "Accounts", "value": a["total"]},
@@ -105,14 +110,15 @@ def overview(_: None = Depends(deps.require_admin)) -> dict:
         ],
         "payments": {
             # "Payment-capable" = active (live) AND owner email verified.
-            # All monthly figures. spending_limit already INCLUDES the €50/mo fee.
+            # All monthly figures. spending_limit already INCLUDES the platform fee.
+            "platform_fee": fee,
             "verified_restaurants": r["payable"],
             "total_limit_incl_fee": r["payable_limit"],
             "total_limit_excl_fee": max(
-                Decimal("0"), r["payable_limit"] - r["payable"] * PLATFORM_FEE
+                Decimal("0"), r["payable_limit"] - r["payable"] * fee
             ),
             "avg_limit_incl_fee": r["payable_avg"],
-            "est_monthly_fees": r["payable"] * PLATFORM_FEE,
+            "est_monthly_fees": r["payable"] * fee,
             "all_restaurants_limit_incl_fee": r["all_limit"],
         },
         "stats": {

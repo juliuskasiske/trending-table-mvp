@@ -17,5 +17,6 @@ def config() -> dict:
         "menuLlmEnabled": digitize.llm_enabled(),
         "stripeEnabled": stripe_client.configured(),
         "stripePublishableKey": stripe_client.publishable_key(),
+        "stripePrices": stripe_client.prices(),
         "pricing": {"ratePerView": 0.01, "platformFee": 50, "creatorPerView": 0.002},
     }

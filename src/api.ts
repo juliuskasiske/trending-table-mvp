@@ -10,6 +10,11 @@ export interface AppConfig {
   menuLlmEnabled: boolean;
   stripeEnabled: boolean;
   stripePublishableKey: string | null;
+  // Real platform-fee amounts straight from Stripe, in cents. {} if unconfigured.
+  stripePrices: {
+    monthly?: { amount: number; currency: string };
+    annual?: { amount: number; currency: string };
+  };
   pricing: { ratePerView: number; platformFee: number; creatorPerView?: number };
 }
 
@@ -264,7 +269,8 @@ export interface AdminOverview {
   restaurant_funnel: FunnelStage[];
   creator_funnel: FunnelStage[];
   payments: {
-    // All monthly €. spending_limit already includes the €50/mo platform fee.
+    // All monthly €. spending_limit already includes the platform fee.
+    platform_fee: number | string;
     verified_restaurants: number;
     total_limit_incl_fee: number | string;
     total_limit_excl_fee: number | string;

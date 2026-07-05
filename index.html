@@ -226,7 +226,7 @@
           <section class="step card" data-step="billing" data-name="Budget &amp; payment">
             <p class="step-eyebrow" data-i18n="billing.eyebrow">Stay in control</p>
             <h1 class="step-title" data-i18n="billing.title">Set your monthly budget</h1>
-            <p class="step-sub" data-i18n="billing.sub">
+            <p class="step-sub" id="billing-sub">
               You pay €0.01 per view plus a €50 platform fee. Spend stops the
               moment you hit your limit — never a euro more.
             </p>
@@ -374,7 +374,7 @@
 
             <label class="consent">
               <input type="checkbox" id="consent" name="consent" required />
-              <span data-i18n-html="review.consent">
+              <span id="consent-text">
                 I agree to the <a href="#" tabindex="-1">Terms</a> and
                 <a href="#" tabindex="-1">Privacy Policy</a>, and to a €50 monthly
                 platform fee plus €0.01 per view while my account is active.

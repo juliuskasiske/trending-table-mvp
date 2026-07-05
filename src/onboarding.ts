@@ -51,6 +51,11 @@ const nf = { format: (n: number) => new Intl.NumberFormat(locale()).format(n) };
 const eur = (n: number) =>
   "€" + new Intl.NumberFormat(locale(), { maximumFractionDigits: 0 }).format(n);
 
+/** Euro with cents — for fee amounts like €49.99 that must not round to €50. */
+const eur2 = (n: number) =>
+  "€" +
+  new Intl.NumberFormat(locale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+
 export function initOnboarding(): void {
   const form = document.querySelector<HTMLFormElement>("#onboarding");
   if (!form) return;
@@ -681,13 +686,30 @@ export function initOnboarding(): void {
     if (file) void handleMenuPdf(file);
   });
 
+  /* ---- Platform-fee amounts (single source of truth: Stripe) ----------- */
+
+  const ANNUAL_DISCOUNT = 0.2; // fallback discount if Stripe prices aren't loaded
+
+  /** The real monthly platform fee in cents — from Stripe, or the €50 default. */
+  function feeMonthlyCents(): number {
+    return config?.stripePrices?.monthly?.amount ?? Math.round(PRICING.platformFee * 100);
+  }
+  /** The real annual platform fee in cents — from Stripe, or the discounted default. */
+  function feeAnnualCents(): number {
+    return (
+      config?.stripePrices?.annual?.amount ??
+      Math.round(PRICING.platformFee * 12 * (1 - ANNUAL_DISCOUNT) * 100)
+    );
+  }
+  const feeMonthlyEur = () => feeMonthlyCents() / 100;
+
   /* ---- Budget maths ---------------------------------------------------- */
 
   const limit = form.elements.namedItem("limit") as HTMLInputElement;
 
   function budget(): { limit: number; views: number } {
     const lim = Number(limit.value);
-    const views = Math.max(0, Math.round((lim - PRICING.platformFee) / PRICING.ratePerView));
+    const views = Math.max(0, Math.round((lim - feeMonthlyEur()) / PRICING.ratePerView));
     return { limit: lim, views };
   }
 
@@ -699,8 +721,8 @@ export function initOnboarding(): void {
     };
     set("fig-limit", eur(lim));
     set("fig-views", nf.format(views));
-    set("bd-fee", eur(PRICING.platformFee));
-    set("bd-views", eur(lim - PRICING.platformFee));
+    set("bd-fee", eur2(feeMonthlyEur()));
+    set("bd-views", eur2(lim - feeMonthlyEur()));
     set("bd-count", nf.format(views));
   }
 
@@ -711,12 +733,10 @@ export function initOnboarding(): void {
 
   /* ---- Billing cycle (monthly vs annual platform fee) ------------------ */
 
-  const ANNUAL_DISCOUNT = 0.2; // 20% off the platform fee for annual billing
-
-  /** The annualised platform fee, before and after the 20% discount. */
+  /** The annualised platform fee: full (12×monthly) vs the real annual price. */
   function annualFee(): { full: number; discounted: number; savings: number } {
-    const full = PRICING.platformFee * 12;
-    const discounted = full * (1 - ANNUAL_DISCOUNT);
+    const full = feeMonthlyEur() * 12;
+    const discounted = feeAnnualCents() / 100;
     return { full, discounted, savings: full - discounted };
   }
 
@@ -732,13 +752,13 @@ export function initOnboarding(): void {
     if (cadence === "annual") {
       const { full, discounted, savings } = annualFee();
       note.textContent = t("billing.cadence.annualNote", {
-        full: eur(full),
-        discounted: eur(discounted),
-        savings: eur(savings),
+        full: eur2(full),
+        discounted: eur2(discounted),
+        savings: eur2(savings),
       });
       note.classList.add("annual");
     } else {
-      note.textContent = t("billing.cadence.monthlyNote");
+      note.textContent = t("billing.cadence.monthlyNote", { fee: eur2(feeMonthlyEur()) });
       note.classList.remove("annual");
     }
   }
@@ -756,8 +776,7 @@ export function initOnboarding(): void {
 
   /** The platform fee for the selected cadence, in cents (Stripe's unit). */
   function feeCents(): number {
-    const euros = cadence === "annual" ? annualFee().discounted : PRICING.platformFee;
-    return Math.round(euros * 100);
+    return cadence === "annual" ? feeAnnualCents() : feeMonthlyCents();
   }
 
   /** Keep the Payment Element's amount in sync when the cadence toggles. */
@@ -936,8 +955,8 @@ export function initOnboarding(): void {
     put(
       "r-billing",
       cadence === "annual"
-        ? t("review.cycle.annual", { discounted: eur(annualFee().discounted) })
-        : t("review.cycle.monthly", { fee: eur(PRICING.platformFee) }),
+        ? t("review.cycle.annual", { discounted: eur2(annualFee().discounted) })
+        : t("review.cycle.monthly", { fee: eur2(feeMonthlyEur()) }),
     );
     put(
       "r-payment",
@@ -1147,8 +1166,19 @@ export function initOnboarding(): void {
   });
 
   /** Apply config-driven UI (Places manual fallback, menu notices). */
+  /** Inject the real platform fee into the prose that mentions it, in the
+   * current language. Driven from code (not data-i18n) so the amount is exact. */
+  function applyFeeStrings(): void {
+    const fee = eur2(feeMonthlyEur());
+    const sub = byId("billing-sub");
+    if (sub) sub.textContent = t("billing.sub", { fee });
+    const consent = byId("consent-text");
+    if (consent) consent.innerHTML = t("review.consent", { fee });
+  }
+
   function applyConfigUi(): void {
     if (!config) return;
+    applyFeeStrings();
     if (searchNotice) {
       searchNotice.hidden = config.placesEnabled;
       searchNotice.className = config.placesEnabled || configLoaded ? "notice" : "notice error";
@@ -1308,6 +1338,7 @@ export function initOnboarding(): void {
         menuLlmEnabled: false,
         stripeEnabled: false,
         stripePublishableKey: null,
+        stripePrices: {},
         pricing: { ratePerView: PRICING.ratePerView, platformFee: PRICING.platformFee },
       };
     }

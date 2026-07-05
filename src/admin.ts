@@ -171,17 +171,18 @@ function renderOverview(o: AdminOverview): void {
   // €50/mo platform fee, so we label incl./excl. explicitly. Only "verified"
   // restaurants (owner email confirmed) are payment-capable.
   const p = o.payments;
+  const feeLabel = "€" + Number(p.platform_fee).toFixed(2); // exact, e.g. €49.99
   byId("payment-stats")!.innerHTML = [
     statCard(fmtEur(p.all_restaurants_limit_incl_fee), "Monthly limit · all restaurants (incl. platform fee)", true),
     statCard(`${p.verified_restaurants} / ${o.stats.restaurants_total}`, "Payment-capable restaurants (active + verified)"),
     statCard(fmtEur(p.total_limit_incl_fee), "Monthly limit · payment-capable (incl. fee)"),
-    statCard(fmtEur(p.est_monthly_fees), `Est. monthly platform fees (${p.verified_restaurants} × €50)`),
+    statCard(fmtEur(p.est_monthly_fees), `Est. monthly platform fees (${p.verified_restaurants} × ${feeLabel})`),
   ].join("");
   const note = byId("payment-note");
   if (note) {
     note.innerHTML =
       `“Payment-capable” = the restaurant is active (live) and its owner's email is confirmed. ` +
-      `Figures are monthly; the spending limit includes the €50/mo platform fee ` +
+      `Figures are monthly; the spending limit includes the ${esc(feeLabel)}/mo platform fee ` +
       `(ad-view budget excl. fee: <b>${esc(fmtEur(p.total_limit_excl_fee))}</b>).`;
   }
 

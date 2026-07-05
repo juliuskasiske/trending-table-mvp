@@ -49,6 +49,29 @@ def _price_for(cadence: str) -> str:
     return price
 
 
+_price_cache: dict[str, dict] = {}
+
+
+def prices() -> dict:
+    """The real platform-fee amounts, straight from Stripe (cached per process).
+    Shape: {"monthly": {"amount": <cents>, "currency": "eur"}, "annual": {...}}.
+    Returns {} if Stripe isn't configured or is unreachable — callers must cope."""
+    if not configured():
+        return {}
+    out: dict = {}
+    _client()
+    for cadence in ("monthly", "annual"):
+        pid = _price_for(cadence)
+        try:
+            if pid not in _price_cache:
+                p = stripe.Price.retrieve(pid)
+                _price_cache[pid] = {"amount": p.unit_amount, "currency": p.currency}
+            out[cadence] = _price_cache[pid]
+        except Exception:
+            return {}
+    return out
+
+
 def create_subscription(customer_id: str, cadence: str) -> dict:
     """Create an *incomplete* platform-fee subscription and return the first
     invoice's PaymentIntent client secret for the frontend to confirm.
