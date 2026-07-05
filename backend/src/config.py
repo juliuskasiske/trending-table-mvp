@@ -47,6 +47,10 @@ ADMIN_KEY = os.environ.get("ADMIN_KEY", "")
 STRIPE_PRICE_MONTHLY = os.environ.get("STRIPE_PRICE_MONTHLY", "")
 STRIPE_PRICE_ANNUAL = os.environ.get("STRIPE_PRICE_ANNUAL", "")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+# Usage billing: a metered price (€0.01/view) reported through a Stripe Billing
+# Meter. Both must be set to bill views; otherwise views are only recorded locally.
+STRIPE_PRICE_USAGE = os.environ.get("STRIPE_PRICE_USAGE", "")
+STRIPE_METER_EVENT_NAME = os.environ.get("STRIPE_METER_EVENT_NAME", "")
 
 _INSECURE_SESSION_DEFAULTS = {"dev-insecure-secret-change-me", "dev-session-secret-change-me"}
 

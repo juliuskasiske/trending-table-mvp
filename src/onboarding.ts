@@ -819,6 +819,8 @@ export function initOnboarding(): void {
         mode: "subscription",
         amount: feeCents(),
         currency: "eur",
+        // Card only — it can be charged the variable monthly usage later.
+        paymentMethodTypes: ["card"],
         appearance: { theme: "flat" },
       });
       const paymentEl = elements.create("payment");

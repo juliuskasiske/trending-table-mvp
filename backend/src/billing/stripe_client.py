@@ -84,7 +84,12 @@ def create_subscription(customer_id: str, cadence: str) -> dict:
         customer=customer_id,
         items=[{"price": _price_for(cadence)}],
         payment_behavior="default_incomplete",
-        payment_settings={"save_default_payment_method": "on_subscription"},
+        payment_settings={
+            "save_default_payment_method": "on_subscription",
+            # Card only: it supports the variable off-session charges that the
+            # metered usage subscription needs later. Klarna cannot.
+            "payment_method_types": ["card"],
+        },
         expand=["latest_invoice.payment_intent"],
     )
     pi = getattr(sub.latest_invoice, "payment_intent", None)
@@ -98,6 +103,44 @@ def create_subscription(customer_id: str, cadence: str) -> dict:
 def cancel_subscription(subscription_id: str) -> None:
     _client()
     stripe.Subscription.delete(subscription_id)
+
+
+# ---- Usage billing (metered views) ---------------------------------------
+
+def usage_enabled() -> bool:
+    """Ready to bill views: secret key + metered price + meter event name."""
+    return bool(_secret() and config.STRIPE_PRICE_USAGE and config.STRIPE_METER_EVENT_NAME)
+
+
+def ensure_usage_subscription(customer_id: str) -> str:
+    """Return the customer's monthly metered usage subscription, creating it if
+    needed. It has a €0 base, so creating it charges nothing; usage accrues via
+    meter events and is invoiced at period end against the default payment
+    method (set when the platform-fee subscription was confirmed)."""
+    _client()
+    # Reuse an existing active usage subscription on the metered price.
+    subs = stripe.Subscription.list(customer=customer_id, status="active", limit=100)
+    for s in subs.auto_paging_iter():
+        for it in s["items"]["data"]:
+            if it["price"]["id"] == config.STRIPE_PRICE_USAGE:
+                return s.id
+    sub = stripe.Subscription.create(
+        customer=customer_id,
+        items=[{"price": config.STRIPE_PRICE_USAGE}],
+        payment_settings={"payment_method_types": ["card"]},
+    )
+    return sub.id
+
+
+def report_view_usage(customer_id: str, views: int, identifier: str) -> None:
+    """Report billable views to the Stripe meter. `identifier` makes the event
+    idempotent so a retried poll can't double-bill."""
+    _client()
+    stripe.billing.MeterEvent.create(
+        event_name=config.STRIPE_METER_EVENT_NAME,
+        payload={"stripe_customer_id": customer_id, "value": str(int(views))},
+        identifier=identifier,
+    )
 
 
 def construct_event(payload: bytes, sig_header: str):

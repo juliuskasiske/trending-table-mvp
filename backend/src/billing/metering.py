@@ -6,13 +6,17 @@ creator earns €0.002/view (20%); platform keeps €0.008 (80%).
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from decimal import Decimal
 
 from psycopg.rows import dict_row
 from psycopg.types.json import Json
 
+from . import stripe_client
 from ..db.connection import get_control_connection
+
+log = logging.getLogger("metering")
 
 VIEW_PRICE = Decimal("0.01")     # what the restaurant pays per view
 CREATOR_PRICE = Decimal("0.002")  # what the creator earns per view (20%)
@@ -41,7 +45,10 @@ def ingest_metrics(post_id: int, metrics: dict) -> dict:
                 (post_id, *[metrics.get(c) for c in _METRIC_COLS], Json(metrics.get("source", {}))),
             )
             cur.execute(
-                "SELECT restaurant_id, creator_id, billed_views FROM posts WHERE id = %s",
+                "SELECT p.restaurant_id, p.creator_id, p.billed_views,"
+                " r.stripe_customer_id, r.stripe_usage_subscription_id"
+                " FROM posts p JOIN restaurants r ON r.id = p.restaurant_id"
+                " WHERE p.id = %s",
                 (post_id,),
             )
             post = cur.fetchone()
@@ -69,12 +76,15 @@ def ingest_metrics(post_id: int, metrics: dict) -> dict:
 
             amount = Decimal(billed) * VIEW_PRICE
             creator_amount = Decimal(billed) * CREATOR_PRICE
+            usage_event_id = None
             if billed > 0:
                 cur.execute(
                     "INSERT INTO usage_events (restaurant_id, post_id, kind, quantity,"
-                    " unit_price_eur, amount_eur) VALUES (%s, %s, 'view', %s, %s, %s)",
+                    " unit_price_eur, amount_eur) VALUES (%s, %s, 'view', %s, %s, %s)"
+                    " RETURNING id",
                     (post["restaurant_id"], post_id, billed, VIEW_PRICE, amount),
                 )
+                usage_event_id = cur.fetchone()["id"]
                 cur.execute(
                     "INSERT INTO creator_earnings (creator_id, post_id, period, views, amount_eur)"
                     " VALUES (%s, %s, %s, %s, %s)",
@@ -86,8 +96,18 @@ def ingest_metrics(post_id: int, metrics: dict) -> dict:
                 )
         conn.commit()
 
-    # NOTE: when Stripe is configured, also report `billed` to the metered
-    # subscription item here (usage record) — wired with subscriptions.
+    # Report the billed views to Stripe (metered usage). Done AFTER the local
+    # ledger commit so a Stripe hiccup never loses the billing record; the
+    # idempotent event identifier lets a later retry reconcile safely.
+    if billed > 0 and post["stripe_customer_id"] and stripe_client.usage_enabled():
+        _report_usage_to_stripe(
+            restaurant_id=post["restaurant_id"],
+            customer_id=post["stripe_customer_id"],
+            usage_subscription_id=post["stripe_usage_subscription_id"],
+            usage_event_id=usage_event_id,
+            billed=billed,
+        )
+
     return {
         "delta": delta,
         "billed_views": billed,
@@ -95,3 +115,28 @@ def ingest_metrics(post_id: int, metrics: dict) -> dict:
         "creator_amount_eur": float(creator_amount),
         "capped": capped,
     }
+
+
+def _report_usage_to_stripe(*, restaurant_id, customer_id, usage_subscription_id,
+                            usage_event_id, billed) -> None:
+    """Ensure the metered usage subscription exists, then report the views.
+    Best-effort: failures are logged, not raised (the local ledger is truth)."""
+    try:
+        if not usage_subscription_id:
+            usage_subscription_id = stripe_client.ensure_usage_subscription(customer_id)
+            with get_control_connection() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE restaurants SET stripe_usage_subscription_id = %s WHERE id = %s",
+                    (usage_subscription_id, restaurant_id),
+                )
+                conn.commit()
+        identifier = f"ue_{usage_event_id}"
+        stripe_client.report_view_usage(customer_id, billed, identifier)
+        with get_control_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "UPDATE usage_events SET stripe_usage_record_id = %s WHERE id = %s",
+                (identifier, usage_event_id),
+            )
+            conn.commit()
+    except Exception:
+        log.exception("Stripe usage reporting failed for usage_event %s", usage_event_id)

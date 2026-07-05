@@ -58,12 +58,14 @@ CREATE TABLE IF NOT EXISTS restaurants (
     stripe_customer_id     TEXT,
     stripe_subscription_id TEXT,
     stripe_subscription_status TEXT,
+    stripe_usage_subscription_id TEXT,
     spending_limit_eur     NUMERIC(12, 2),
     created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Additive column for DBs created before the subscription flow (idempotent).
+-- Additive columns for DBs created before these flows (idempotent).
 ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS stripe_subscription_status TEXT;
+ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS stripe_usage_subscription_id TEXT;
 
 -- Which account manages which restaurant, and in what role. One account can own
 -- many restaurants ("one account → many restaurants").
