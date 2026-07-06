@@ -1,11 +1,16 @@
-/* Account management — reuses the app shell (admin.css) + form controls
-   (onboarding.css). Only the account-specific bits live here. */
+/* Account management — matches the onboarding "riso" language: sharp
+   rectangles, 2px black borders, hard offset shadows. Reuses the app shell
+   (admin.css) and form controls (onboarding.css). */
+
+/* Sharpen the shared nav to the riso look (admin.css rounds it). */
+.account-app .nav-item { border-radius: 0; font-weight: 700; }
+.account-app .nav-item.on { background: var(--ink); color: var(--panel); }
 
 .account-nav-foot {
   margin-top: auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   padding-top: 16px;
 }
 
@@ -13,7 +18,7 @@
   display: inline-grid;
   grid-auto-flow: column;
   grid-auto-columns: 1fr;
-  gap: 4px;
+  gap: 6px;
   width: max-content;
 }
 .account-lang button {
@@ -21,27 +26,25 @@
   border: 2px solid var(--line);
   background: transparent;
   color: var(--muted);
-  font: 600 12px/1 var(--font);
-  padding: 6px 12px;
-  border-radius: 8px;
+  font: 700 12px/1 var(--font);
+  padding: 7px 13px;
   cursor: pointer;
 }
 .account-lang button.on {
   background: var(--ink);
   color: var(--panel);
-  border-color: var(--ink);
 }
 
 .account-main {
-  padding: 32px 40px;
-  max-width: 760px;
+  padding: 40px clamp(24px, 4vw, 56px) 72px;
+  max-width: 780px;
 }
 
 /* Restaurant cards */
 .acct-cards {
   display: grid;
-  gap: 12px;
-  margin: 8px 0 20px;
+  gap: 16px;
+  margin: 8px 0 22px;
 }
 .acct-card {
   appearance: none;
@@ -49,17 +52,29 @@
   text-align: left;
   border: 2px solid var(--line);
   background: var(--panel);
-  border-radius: 14px;
-  padding: 16px 18px;
+  box-shadow: 6px 6px 0 var(--ink);
+  padding: 18px 20px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
 }
-.acct-card:hover { border-color: var(--ink); }
-.acct-card-name { font: 700 17px/1.2 var(--font); color: var(--ink); }
+.acct-card:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 8px 8px 0 var(--ink);
+}
+.acct-card-name { font: 800 17px/1.2 var(--font); color: var(--ink); }
 .acct-card-meta { display: flex; gap: 8px; align-items: center; }
-.pill.plan { background: var(--line); color: var(--ink); }
+
+/* Status tags — sharp rectangles, not pills */
+.acct-card-meta .pill {
+  border-radius: 0;
+  border: 2px solid var(--line);
+  font-weight: 700;
+}
+.pill.plan { background: var(--bg); color: var(--ink); }
+
 .acct-add { margin-top: 4px; display: inline-block; }
 .acct-empty,
 .acct-loading { color: var(--muted); }
@@ -69,12 +84,13 @@
   display: inline-block;
   margin-bottom: 8px;
   color: var(--muted);
+  font-weight: 600;
 }
 .acct-tabs {
   display: flex;
-  gap: 4px;
+  gap: 2px;
   border-bottom: 2px solid var(--line);
-  margin: 12px 0 22px;
+  margin: 12px 0 24px;
   flex-wrap: wrap;
 }
 .acct-tab {
@@ -82,78 +98,87 @@
   border: 0;
   background: transparent;
   color: var(--muted);
-  font: 600 15px/1 var(--font);
-  padding: 10px 14px;
+  font: 700 15px/1 var(--font);
+  padding: 11px 16px;
   cursor: pointer;
-  border-bottom: 2px solid transparent;
+  border-bottom: 3px solid transparent;
   margin-bottom: -2px;
 }
 .acct-tab.on { color: var(--ink); border-bottom-color: var(--accent); }
 
 /* Save rows / transient confirmation */
-.acct-save-row { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
-.acct-saved { color: var(--accent); font-weight: 600; font-size: 14px; }
+.acct-save-row { display: flex; align-items: center; gap: 14px; margin-top: 10px; }
+.acct-saved { color: var(--accent); font-weight: 700; font-size: 14px; }
 .acct-note { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
-.acct-note.cancel { color: var(--accent); font-weight: 600; }
-.acct-section { margin-bottom: 18px; }
-.acct-section-title { font: 700 16px/1 var(--font); margin: 0 0 12px; }
+.acct-note.cancel { color: var(--accent); font-weight: 700; }
+.acct-section { margin-bottom: 22px; }
+.acct-section-title { font: 800 16px/1 var(--font); margin: 0 0 14px; }
 
 /* Menu editor */
-.menu-editor { display: grid; gap: 8px; margin-bottom: 8px; }
+.menu-editor { display: grid; gap: 10px; margin-bottom: 10px; }
 .menu-row {
   display: grid;
   grid-template-columns: 1fr 1.4fr 0.7fr auto;
   gap: 8px;
   align-items: center;
 }
-.menu-add { margin-bottom: 16px; display: inline-block; }
+.menu-add { margin-bottom: 18px; display: inline-block; font-weight: 700; }
 .menu-scan { margin-top: 8px; }
-.menu-scan-row { display: flex; gap: 8px; }
+.menu-scan-row { display: flex; gap: 10px; }
 .menu-scan-row .input { flex: 1; }
 
-/* Billing */
-.acct-billing { border: 2px solid var(--line); border-radius: 14px; padding: 6px 18px; margin-bottom: 14px; }
-.bill-line { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); }
+/* Billing summary panel — sharp bordered box, no radius */
+.acct-billing {
+  border: 2px solid var(--line);
+  box-shadow: 6px 6px 0 var(--ink);
+  padding: 4px 20px;
+  margin-bottom: 18px;
+  background: var(--panel);
+}
+.bill-line { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-bottom: 2px solid var(--line); }
 .bill-line:last-child { border-bottom: 0; }
 .bill-line span { color: var(--muted); }
-.acct-limit { margin-top: 18px; }
+.acct-limit { margin-top: 20px; }
 
 /* Danger zone + danger buttons */
 .danger-zone {
-  margin-top: 32px;
+  margin-top: 36px;
   border: 2px solid var(--accent);
-  border-radius: 14px;
-  padding: 18px 20px;
+  box-shadow: 6px 6px 0 var(--accent);
+  padding: 20px 22px;
+  background: var(--panel);
 }
-.danger-zone h2 { font: 700 16px/1 var(--font); margin: 0 0 8px; color: var(--accent); }
+.danger-zone h2 { font: 800 16px/1 var(--font); margin: 0 0 8px; color: var(--accent); }
 .btn-danger {
   background: var(--accent);
   color: #fff;
-  border: 2px solid var(--accent);
+  border: 2px solid var(--ink);
+  box-shadow: 4px 4px 0 var(--ink);
 }
-.btn-danger:hover { filter: brightness(0.95); }
-.btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
-.danger-link { color: var(--accent); font-weight: 600; }
+.btn-danger:hover { transform: translate(-2px, -2px); box-shadow: 6px 6px 0 var(--ink); }
+.btn-danger:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(--ink); }
+.btn-danger:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; transform: none; }
+.danger-link { color: var(--accent); font-weight: 700; }
 
 /* Confirm modal */
 .confirm-wrap {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(23, 23, 23, 0.55);
   display: grid;
   place-items: center;
   padding: 24px;
   z-index: 50;
 }
-.confirm-box { width: 100%; max-width: 440px; }
-.confirm-box h2 { font: 700 18px/1.2 var(--font); margin: 0 0 8px; }
-.confirm-box p { color: var(--muted); margin: 0 0 14px; }
-.confirm-box .input { margin-bottom: 14px; }
-.confirm-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.confirm-box { width: 100%; max-width: 460px; }
+.confirm-box h2 { font: 800 20px/1.15 var(--font-display); margin: 0 0 10px; }
+.confirm-box p { color: var(--muted); margin: 0 0 16px; }
+.confirm-box .input { margin-bottom: 16px; }
+.confirm-actions { display: flex; justify-content: flex-end; gap: 12px; }
 
-@media (max-width: 720px) {
+@media (max-width: 760px) {
   .account-app { grid-template-columns: 1fr; }
-  .admin-nav { height: auto; position: static; border-right: 0; border-bottom: 2px solid var(--line); }
-  .account-main { padding: 24px 18px; }
+  .admin-nav { height: auto; position: static; }
+  .account-main { padding: 24px 18px 48px; }
   .menu-row { grid-template-columns: 1fr 1fr; }
 }
