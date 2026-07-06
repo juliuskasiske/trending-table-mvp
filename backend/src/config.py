@@ -59,6 +59,14 @@ STRIPE_SUBSCRIPTION_START = os.environ.get("STRIPE_SUBSCRIPTION_START", "")
 # MONTHLY platform fee. Empty = no discount.
 STRIPE_WELCOME_COUPON = os.environ.get("STRIPE_WELCOME_COUPON", "")
 
+# Instagram (Meta "Instagram API with Instagram Login"). These are the
+# Instagram app's id/secret (Meta app → Instagram → API setup with Instagram
+# login), NOT the top-level Meta app id. Redirect URI must exactly match one
+# registered under Business login settings. Empty = the connect step is mocked.
+INSTAGRAM_APP_ID = os.environ.get("INSTAGRAM_APP_ID", "")
+INSTAGRAM_APP_SECRET = os.environ.get("INSTAGRAM_APP_SECRET", "")
+INSTAGRAM_REDIRECT_URI = os.environ.get("INSTAGRAM_REDIRECT_URI", "")
+
 _INSECURE_SESSION_DEFAULTS = {"dev-insecure-secret-change-me", "dev-session-secret-change-me"}
 
 

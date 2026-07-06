@@ -130,7 +130,7 @@ CREATE TABLE IF NOT EXISTS creator_profiles (
 CREATE TABLE IF NOT EXISTS social_accounts (
     id                BIGSERIAL PRIMARY KEY,
     creator_id        BIGINT NOT NULL REFERENCES creators(id) ON DELETE CASCADE,
-    platform          TEXT NOT NULL CHECK (platform IN ('instagram', 'tiktok')),
+    platform          TEXT NOT NULL CHECK (platform IN ('instagram', 'tiktok', 'youtube')),
     handle            TEXT,
     platform_user_id  TEXT,
     follower_count    INTEGER,
@@ -139,11 +139,20 @@ CREATE TABLE IF NOT EXISTS social_accounts (
     token_expires_at  TIMESTAMPTZ,
     scopes            TEXT[] NOT NULL DEFAULT '{}',
     status            TEXT NOT NULL DEFAULT 'connected'
-                      CHECK (status IN ('connected', 'expired', 'revoked')),
+                      CHECK (status IN ('connected', 'expired', 'revoked', 'pending')),
     connected_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (creator_id, platform)
 );
 CREATE INDEX IF NOT EXISTS social_accounts_creator_idx ON social_accounts (creator_id);
+
+-- Widen the platform/status checks on DBs created before YouTube + handle-only
+-- "pending" connections (idempotent — drop the inline-named check, re-add).
+ALTER TABLE social_accounts DROP CONSTRAINT IF EXISTS social_accounts_platform_check;
+ALTER TABLE social_accounts ADD CONSTRAINT social_accounts_platform_check
+    CHECK (platform IN ('instagram', 'tiktok', 'youtube'));
+ALTER TABLE social_accounts DROP CONSTRAINT IF EXISTS social_accounts_status_check;
+ALTER TABLE social_accounts ADD CONSTRAINT social_accounts_status_check
+    CHECK (status IN ('connected', 'expired', 'revoked', 'pending'));
 
 -- ============================================================================
 -- Marketplace graph (creator ↔ restaurant)
