@@ -27,7 +27,6 @@ import {
   putMenu,
   putProfile,
   resendVerification,
-  updateMe,
   type BillingDetail,
   type Principal,
   type RestaurantSummary,
@@ -510,11 +509,6 @@ function renderAccountView(body: HTMLElement): void {
   const verified = me?.email_verified;
   body.innerHTML = `
     <section class="card acct-section">
-      ${field("ac-name", t("account.acct.displayName"), me?.display_name ?? "")}
-      ${saveButton("ac-name-save")}
-    </section>
-
-    <section class="card acct-section">
       <div class="bill-line"><span>${esc(t("account.acct.email"))}</span><b>${esc(me?.email ?? "")}</b></div>
       <div class="bill-line"><span>${esc(t("account.acct.status"))}</span>
         <span class="pill ${verified ? "yes" : "no"}">${esc(verified ? t("account.acct.verified") : t("account.acct.unverified"))}</span></div>
@@ -538,12 +532,6 @@ function renderAccountView(body: HTMLElement): void {
   byId<HTMLInputElement>("ac-cur")!.type = "password";
   byId<HTMLInputElement>("ac-new")!.type = "password";
 
-  byId("ac-name-save")?.addEventListener("click", async () => {
-    const name = byId<HTMLInputElement>("ac-name")?.value.trim() ?? "";
-    await updateMe(name);
-    if (me) me.display_name = name || null;
-    flashSaved("ac-name-save-ok");
-  });
   byId("ac-resend")?.addEventListener("click", async () => {
     await resendVerification();
     flashSaved("ac-resend-ok");
