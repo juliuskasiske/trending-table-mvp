@@ -67,6 +67,14 @@ INSTAGRAM_APP_ID = os.environ.get("INSTAGRAM_APP_ID", "")
 INSTAGRAM_APP_SECRET = os.environ.get("INSTAGRAM_APP_SECRET", "")
 INSTAGRAM_REDIRECT_URI = os.environ.get("INSTAGRAM_REDIRECT_URI", "")
 
+# Metrics poller: how often (seconds) the API polls live posts for fresh view
+# counts and bills the delta. 0 / unset = disabled (default), so dev doesn't
+# accrue mock charges. In production set e.g. 900 (15 min).
+try:
+    METRICS_POLL_INTERVAL_SECONDS = int(os.environ.get("METRICS_POLL_INTERVAL_SECONDS", "0") or 0)
+except ValueError:
+    METRICS_POLL_INTERVAL_SECONDS = 0
+
 _INSECURE_SESSION_DEFAULTS = {"dev-insecure-secret-change-me", "dev-session-secret-change-me"}
 
 

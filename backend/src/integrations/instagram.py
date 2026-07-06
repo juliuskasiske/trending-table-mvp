@@ -110,6 +110,17 @@ def media_by_permalink(token: str, permalink: str) -> dict | None:
     return None
 
 
+def media_by_id(token: str, media_id: str) -> dict:
+    """Fetch one media object's engagement fields directly by its API id (used
+    by the metrics poller — likes/comments live on the media, not insights)."""
+    r = httpx.get(f"{_GRAPH}/{media_id}", params={
+        "fields": "id,media_type,media_product_type,like_count,comments_count,permalink",
+        "access_token": token,
+    }, timeout=_TIMEOUT)
+    r.raise_for_status()
+    return r.json()
+
+
 def media_insights(token: str, media_id: str, product_type: str | None) -> dict:
     """Live counts for one media. Reels expose 'views'; older/other media fall
     back to 'reach'. Best-effort — returns {} if insights aren't available."""

@@ -51,6 +51,19 @@ app.include_router(metering.router)
 app.include_router(admin.router)
 
 
+@app.on_event("startup")
+def _start_metrics_poller() -> None:
+    # No-op unless METRICS_POLL_INTERVAL_SECONDS > 0.
+    from ..workers import scheduler as metrics_scheduler
+    metrics_scheduler.start()
+
+
+@app.on_event("shutdown")
+def _stop_metrics_poller() -> None:
+    from ..workers import scheduler as metrics_scheduler
+    metrics_scheduler.stop()
+
+
 def _ping(run) -> str:
     try:
         run()
