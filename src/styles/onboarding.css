@@ -575,9 +575,56 @@ body {
   margin-top: 6px;
 }
 
+/* Edgy riso slider — sharp bordered track, rectangular thumb, pink fill. */
 .slider {
+  -webkit-appearance: none;
+  appearance: none;
   width: 100%;
-  accent-color: var(--accent);
+  height: 28px;
+  background: transparent;
+  cursor: pointer;
+}
+.slider:focus { outline: none; }
+
+/* WebKit: track carries the pink fill up to --pct, then cream. */
+.slider::-webkit-slider-runnable-track {
+  height: 14px;
+  border: 2px solid var(--line);
+  background: linear-gradient(to right, var(--accent) var(--pct, 20%), var(--bg) var(--pct, 20%));
+}
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 28px;
+  margin-top: -9px;
+  background: var(--ink);
+  border: 2px solid var(--line);
+  border-radius: 0;
+}
+.slider:focus-visible::-webkit-slider-thumb {
+  box-shadow: 3px 3px 0 var(--accent-2);
+}
+
+/* Firefox: native progress fill + matching sharp thumb. */
+.slider::-moz-range-track {
+  height: 14px;
+  border: 2px solid var(--line);
+  background: var(--bg);
+}
+.slider::-moz-range-progress {
+  height: 14px;
+  background: var(--accent);
+}
+.slider::-moz-range-thumb {
+  width: 18px;
+  height: 28px;
+  background: var(--ink);
+  border: 2px solid var(--line);
+  border-radius: 0;
+}
+.slider:focus-visible::-moz-range-thumb {
+  box-shadow: 3px 3px 0 var(--accent-2);
 }
 
 .slider-scale {

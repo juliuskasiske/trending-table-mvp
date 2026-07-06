@@ -757,8 +757,17 @@ export function initOnboarding(): void {
     return { limit: lim, views };
   }
 
+  /** Drive the WebKit slider fill (Firefox fills natively via ::-moz-range-progress). */
+  function setSliderFill(): void {
+    const min = Number(limit.min) || 0;
+    const max = Number(limit.max) || 100;
+    const pct = max > min ? ((Number(limit.value) - min) / (max - min)) * 100 : 0;
+    limit.style.setProperty("--pct", `${pct}%`);
+  }
+
   function renderBudget(): void {
     const { limit: lim, views } = budget();
+    setSliderFill();
     const set = (id: string, v: string) => {
       const el = byId(id);
       if (el) el.textContent = v;
