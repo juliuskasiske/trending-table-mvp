@@ -26,6 +26,11 @@ class BillingIn(BaseModel):
 
 class SubscribeIn(BaseModel):
     cadence: str = "monthly"  # "monthly" | "annual"
+    promo_code: str | None = None
+
+
+class PromoIn(BaseModel):
+    code: str
 
 
 def _ensure_customer(conn, rid: int, email: str | None) -> str:
@@ -62,8 +67,14 @@ def subscribe(body: SubscribeIn,
             row = cur.fetchone()
         if row and row[0] in ("active", "trialing"):
             raise HTTPException(status_code=409, detail="Subscription already active.")
+        promo_id = None
+        if body.promo_code:
+            promo = stripe_client.lookup_promo(body.promo_code)
+            if not promo:
+                raise HTTPException(status_code=400, detail="That code is invalid or expired.")
+            promo_id = promo["id"]
         customer_id = _ensure_customer(conn, rid, principal["email"])
-        result = stripe_client.create_subscription(customer_id, cadence)
+        result = stripe_client.create_subscription(customer_id, cadence, promotion_code=promo_id)
         with conn.cursor() as cur:
             cur.execute(
                 "UPDATE restaurants SET stripe_subscription_id = %s, "
@@ -77,6 +88,23 @@ def subscribe(body: SubscribeIn,
         "subscriptionId": result["subscription_id"],
         "status": result["status"],
         "mode": result["mode"],
+    }
+
+
+@router.post("/{restaurant_id}/billing/promo")
+def check_promo(body: PromoIn,
+                ctx: dict = Depends(restaurant_ctx),
+                _: dict = Depends(deps.require_account)) -> dict:
+    """Validate a promo code the user typed, so the payment step can show the
+    discount before they pay. Returns {valid, percentOff, amountOff, code}."""
+    promo = stripe_client.lookup_promo(body.code)
+    if not promo:
+        return {"valid": False}
+    return {
+        "valid": True,
+        "code": promo["code"],
+        "percentOff": promo["percentOff"],
+        "amountOff": promo["amountOff"],
     }
 
 

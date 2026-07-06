@@ -311,6 +311,14 @@ body {
   color: var(--ink);
 }
 
+.pay-promo {
+  display: flex;
+  gap: 10px;
+  margin: 4px 0 10px;
+}
+.pay-promo .input { flex: 1; }
+.pay-promo .btn { flex: none; }
+
 .pay-welcome {
   margin: 0 0 10px;
   font-size: 13px;

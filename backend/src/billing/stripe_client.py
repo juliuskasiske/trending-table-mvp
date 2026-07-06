@@ -34,23 +34,33 @@ def deferred_start() -> bool:
     return _trial_end_ts() is not None
 
 
-_welcome_cache: dict = {}
-
-
-def welcome_discount() -> dict | None:
-    """The auto-applied first-month discount (monthly plan), read from the
-    Stripe coupon and cached. Shape: {"percentOff": 20}. None if unconfigured."""
-    cid = config.STRIPE_WELCOME_COUPON
-    if not cid or not _secret():
+def lookup_promo(code: str) -> dict | None:
+    """Validate a user-entered promo code against Stripe. Returns the active
+    promotion code + its discount, or None if it doesn't exist / isn't active.
+    Shape: {"id": "promo_…", "code": "WELCOME", "percentOff": 20, "amountOff": 0}."""
+    code = (code or "").strip()
+    if not code or not _secret():
         return None
-    if "d" not in _welcome_cache:
-        _client()
-        try:
-            c = stripe.Coupon.retrieve(cid)
-            _welcome_cache["d"] = {"percentOff": c.percent_off} if (c.valid and c.percent_off) else None
-        except Exception:
-            _welcome_cache["d"] = None
-    return _welcome_cache["d"]
+    _client()
+    try:
+        # Codes are stored as created (usually upper-case); try as typed, then upper.
+        found = stripe.PromotionCode.list(code=code, active=True, limit=1).data
+        if not found and code != code.upper():
+            found = stripe.PromotionCode.list(code=code.upper(), active=True, limit=1).data
+    except Exception:
+        return None
+    if not found:
+        return None
+    pc = found[0]
+    c = pc.coupon
+    if not c.valid:
+        return None
+    return {
+        "id": pc.id,
+        "code": pc.code,
+        "percentOff": c.percent_off or 0,
+        "amountOff": c.amount_off or 0,  # in cents
+    }
 
 
 def _secret() -> str:
@@ -116,12 +126,15 @@ def prices() -> dict:
     return out
 
 
-def create_subscription(customer_id: str, cadence: str) -> dict:
+def create_subscription(customer_id: str, cadence: str, promotion_code: str | None = None) -> dict:
     """Create an *incomplete* platform-fee subscription and return the first
     invoice's PaymentIntent client secret for the frontend to confirm.
 
     'incomplete' means NOTHING is charged until the card is confirmed on the
     frontend — so creating (and cancelling) one moves zero money.
+
+    `promotion_code` is a Stripe promotion-code id (from lookup_promo); when
+    given, its coupon is applied to the subscription.
     """
     _client()
     kwargs = dict(
@@ -141,10 +154,11 @@ def create_subscription(customer_id: str, cadence: str) -> dict:
         # Trial until the launch date → no charge now; first payment lands then.
         kwargs["trial_end"] = trial_ts
         kwargs["trial_settings"] = {"end_behavior": {"missing_payment_method": "cancel"}}
-    # "Welcome" first-month discount — monthly plan only (duration=once lands on
-    # the first real invoice, not the €0 trial invoice).
-    if cadence == "monthly" and config.STRIPE_WELCOME_COUPON:
-        kwargs["discounts"] = [{"coupon": config.STRIPE_WELCOME_COUPON}]
+    # A user-entered promo code (validated via lookup_promo) applies its coupon.
+    # With a trial, a duration=once coupon lands on the first real invoice, not
+    # the €0 trial invoice.
+    if promotion_code:
+        kwargs["discounts"] = [{"promotion_code": promotion_code}]
     sub = stripe.Subscription.create(**kwargs)
 
     # With a trial the first invoice is €0, so Stripe gives a SetupIntent to

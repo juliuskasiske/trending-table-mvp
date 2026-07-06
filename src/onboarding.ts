@@ -12,6 +12,7 @@ import {
   activateRestaurant,
   createRestaurant,
   createSubscription,
+  validatePromo,
   digitizeMenu,
   digitizeMenuUrl,
   faviconLogo,
@@ -816,6 +817,43 @@ export function initOnboarding(): void {
     save();
   });
 
+  // Promo code: validate against Stripe and reflect the discount before paying.
+  byId("promo-apply")?.addEventListener("click", async () => {
+    const input = byId<HTMLInputElement>("promo-code");
+    const note = byId("pay-welcome-note");
+    const btn = byId<HTMLButtonElement>("promo-apply");
+    const code = input?.value.trim() ?? "";
+    if (restaurantId == null || !code) return;
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = t("pay.promoChecking");
+    }
+    try {
+      const res = await validatePromo(restaurantId, code);
+      if (res.valid) {
+        appliedPromo = { code: res.code ?? code, percentOff: res.percentOff ?? 0, amountOff: res.amountOff ?? 0 };
+        applyWelcomeNote();
+      } else {
+        appliedPromo = null;
+        if (note) {
+          note.hidden = false;
+          note.textContent = t("pay.promoInvalid");
+        }
+      }
+    } catch {
+      if (note) {
+        note.hidden = false;
+        note.textContent = t("pay.promoInvalid");
+      }
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = t("pay.promoApply");
+      }
+      syncStripeAmount();
+    }
+  });
+
   /* ---- Stripe ---------------------------------------------------------- */
 
   /** The platform fee for the selected cadence, in cents (Stripe's unit). */
@@ -823,15 +861,17 @@ export function initOnboarding(): void {
     return cadence === "annual" ? feeAnnualCents() : feeMonthlyCents();
   }
 
-  /** The "Welcome" first-month discount percent — monthly plan only. */
-  function welcomePercentOff(): number {
-    return cadence === "monthly" ? (config?.stripeWelcome?.percentOff ?? 0) : 0;
-  }
+  /** A validated promo code the user entered (null = none applied). */
+  let appliedPromo: { code: string; percentOff: number; amountOff: number } | null = null;
 
   /** What Stripe actually charges on the first invoice, in cents — the fee less
-   * the Welcome discount. The Payment Element's amount must match this. */
+   * any applied promo. The Payment Element's amount must match this. */
   function firstChargeCents(): number {
-    return Math.round(feeCents() * (1 - welcomePercentOff() / 100));
+    let cents = feeCents();
+    if (appliedPromo) {
+      cents = Math.round(cents * (1 - appliedPromo.percentOff / 100)) - appliedPromo.amountOff;
+    }
+    return Math.max(0, cents);
   }
 
   /** Keep the Payment Element's amount in sync when the cadence toggles.
@@ -918,7 +958,7 @@ export function initOnboarding(): void {
     // 2. Create the real subscription for the chosen cadence (nothing charged yet).
     let clientSecret: string;
     try {
-      const res = await createSubscription(restaurantId, cadence);
+      const res = await createSubscription(restaurantId, cadence, appliedPromo?.code);
       clientSecret = res.clientSecret;
     } catch (err) {
       return fail(String(err));
@@ -1284,16 +1324,15 @@ export function initOnboarding(): void {
     }
   }
 
-  /** Show the auto-applied "Welcome" first-month discount (monthly plan only). */
+  /** Show the confirmation for an applied promo code (empty when none). */
   function applyWelcomeNote(): void {
     const el = byId("pay-welcome-note");
     if (!el) return;
-    const pct = welcomePercentOff();
-    if (pct > 0) {
-      el.textContent = t("pay.welcome", {
-        percent: pct,
+    if (appliedPromo) {
+      el.textContent = t("pay.promoApplied", {
+        code: appliedPromo.code,
         first: eur2(firstChargeCents() / 100),
-        regular: eur2(feeMonthlyEur()),
+        regular: eur2(feeCents() / 100),
       });
       el.hidden = false;
     } else {
