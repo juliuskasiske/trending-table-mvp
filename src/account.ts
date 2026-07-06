@@ -10,6 +10,7 @@ import "./styles/onboarding.css"; // shared card / field / input / button / chip
 import "./styles/admin.css"; // shared .admin-title + .pill
 import "./styles/account.css";
 import "./styles/platform.css";
+import "./styles/messages.css";
 import {
   cancelBilling,
   changePassword,
@@ -22,11 +23,13 @@ import {
   getMe,
   getMenu,
   getRestaurant,
+  getThread,
   inviteCreator,
   listBookings,
   listCreators,
   listPosts,
   listRestaurants,
+  listThreads,
   logout,
   putBilling,
   putGuidelines,
@@ -34,10 +37,12 @@ import {
   putProfile,
   resendVerification,
   reviewCreator,
+  sendMessage,
   type BillingDetail,
   type Booking,
   type CreatorDetail,
   type CreatorSummary,
+  type Message,
   type Principal,
   type RestaurantPost,
   type RestaurantSummary,
@@ -77,6 +82,7 @@ const ic = {
   people: svg('<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>'),
   send: svg('<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>'),
   close: svg('<path d="M18 6 6 18M6 6l12 12"/>'),
+  chevronLeft: svg('<path d="m15 18-6-6 6-6"/>'),
   star: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14l-5-4.87 6.91-1.01L12 2Z"/></svg>',
   starEmpty: svg('<path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14l-5-4.87 6.91-1.01L12 2Z"/>'),
 };
@@ -124,6 +130,18 @@ const fmtDateTime = (iso: string | null | undefined): string => {
     : new Intl.DateTimeFormat(locale(), { day: "numeric", month: "long", year: "numeric" }).format(d);
 };
 
+/** Compact chat timestamp: today → HH:MM, otherwise a short date. */
+const msgTime = (iso: string | null | undefined): string => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  return sameDay
+    ? new Intl.DateTimeFormat(locale(), { hour: "2-digit", minute: "2-digit" }).format(d)
+    : new Intl.DateTimeFormat(locale(), { day: "numeric", month: "short" }).format(d);
+};
+
 // campaign status → mockup pill class + i18n label key
 const statusMeta = (s: string): { cls: string; key: string } => {
   const map: Record<string, string> = {
@@ -147,6 +165,9 @@ let detail: { id: number; tab: Tab } | null = null;
 let bookingView: number | null = null; // campaign id whose posts are being viewed
 let creatorQuery = ""; // directory search text
 let creatorPlatform = ""; // directory platform filter ("" = all)
+let msgActive: number | null = null; // creator_id of the open conversation
+let msgPollTimer: number | undefined;
+let msgLastId = 0; // latest painted message id (avoids needless re-render on poll)
 
 const main = () => byId("acct-main")!;
 const restName = () => restaurants[0]?.name || "Restaurant";
@@ -205,6 +226,7 @@ function render(): void {
   const m = main();
   if (mainView === "bookings") { void renderBookings(m); return; }
   if (mainView === "creators") { void renderCreators(m); return; }
+  if (mainView === "messages") { void renderMessages(m); return; }
   if (mainView !== "settings") return renderComingSoon(m, mainView);
   renderSettings(m);
 }
@@ -626,10 +648,14 @@ async function paintCreatorModal(cid: number, r: RestaurantSummary | null): Prom
       ${socialRows ? `<div class="cd-section-title">${esc(t("creators.channels"))}</div><div class="crm-socials">${socialRows}</div>` : ""}
       ${reviewForm}
       ${reviews}
-      <div class="crm-foot">${inviteBtn}</div>
+      <div class="crm-foot">
+        <button type="button" class="btn-msg" id="crm-msg">${ic.messages}<span>${esc(t("creators.message"))}</span></button>
+        ${inviteBtn}
+      </div>
     </div>`;
 
   byId("crm-close")?.addEventListener("click", closeCreatorModal);
+  byId("crm-msg")?.addEventListener("click", () => openMessageWith(cid));
   byId("crm-invite")?.addEventListener("click", async () => {
     if (!r) return;
     const btn = byId<HTMLButtonElement>("crm-invite")!;
@@ -672,6 +698,156 @@ async function paintCreatorModal(cid: number, r: RestaurantSummary | null): Prom
       }
     });
   }
+}
+
+/* ---- messages (two-pane inbox) ------------------------------------------- */
+
+async function renderMessages(m: HTMLElement): Promise<void> {
+  stopMsgPoll();
+  const r = activeRestaurant();
+  if (!r) {
+    m.innerHTML = `<h1 class="admin-title">${esc(t("account.nav.messages"))}</h1>
+      <div class="pl-empty">${esc(t("bookings.noRestaurant"))}</div>`;
+    return;
+  }
+  m.innerHTML = `
+    <h1 class="admin-title">${esc(t("account.nav.messages"))}</h1>
+    <div class="msg-app${msgActive != null ? " thread-open" : ""}" id="msg-app">
+      <div class="msg-list" id="msg-list"><p class="acct-loading" style="padding:20px">…</p></div>
+      <div class="msg-convo" id="msg-convo"></div>
+    </div>`;
+  await loadThreadList(r);
+  if (msgActive != null) await openConversation(r, msgActive);
+  else renderConvoEmpty();
+  msgPollTimer = window.setInterval(() => {
+    if (mainView !== "messages") return;
+    void loadThreadList(r);
+    if (msgActive != null) void paintBubbles(r, msgActive, true);
+  }, 5000);
+}
+
+function renderConvoEmpty(): void {
+  const convo = byId("msg-convo");
+  if (convo) convo.innerHTML = `<div class="msg-convo-empty">${esc(t("messages.selectThread"))}</div>`;
+}
+
+async function loadThreadList(r: RestaurantSummary): Promise<void> {
+  const list = byId("msg-list");
+  if (!list) return;
+  let threads;
+  try {
+    threads = (await listThreads(r.id)).threads;
+  } catch {
+    list.innerHTML = `<div class="msg-list-empty">${esc(t("account.error.load"))}</div>`;
+    return;
+  }
+  if (mainView !== "messages") return;
+  list.innerHTML = threads.length
+    ? threads.map((th) => {
+        const name = th.creator_name || t("bookings.creatorFallback");
+        const av = th.creator_avatar
+          ? `<span class="msg-thread-av"${avatarStyle(th.creator_avatar)}></span>`
+          : `<span class="msg-thread-av">${esc(initial(name))}</span>`;
+        const preview = (th.last_sender === "restaurant" ? t("messages.youPrefix") + " " : "") + (th.last_body || "");
+        const unread = th.unread > 0 ? `<span class="msg-unread">${th.unread}</span>` : "";
+        return `<button type="button" class="msg-thread ${msgActive === th.creator_id ? "on" : ""}" data-cid="${th.creator_id}">
+          ${av}
+          <span class="msg-thread-main">
+            <span class="msg-thread-top"><span class="msg-thread-name">${esc(name)}</span><span class="msg-thread-time">${esc(msgTime(th.last_at))}</span></span>
+            <span class="msg-thread-preview">${esc(preview)}</span>
+          </span>${unread}
+        </button>`;
+      }).join("")
+    : `<div class="msg-list-empty">${esc(t("messages.noThreads"))}</div>`;
+  list.querySelectorAll<HTMLElement>(".msg-thread").forEach((el) =>
+    el.addEventListener("click", () => void openConversation(r, Number(el.dataset.cid))));
+}
+
+async function openConversation(r: RestaurantSummary, cid: number): Promise<void> {
+  msgActive = cid;
+  msgLastId = 0;
+  byId("msg-app")?.classList.add("thread-open");
+  byId("msg-list")?.querySelectorAll<HTMLElement>(".msg-thread")
+    .forEach((el) => el.classList.toggle("on", Number(el.dataset.cid) === cid));
+  const convo = byId("msg-convo");
+  if (!convo) return;
+  convo.innerHTML = `
+    <div class="msg-convo-head" id="msg-head"></div>
+    <div class="msg-bubbles" id="msg-bubbles"><p class="acct-loading" style="padding:20px">…</p></div>
+    <div class="msg-composer">
+      <textarea class="msg-input" id="msg-input" rows="1" placeholder="${esc(t("messages.placeholder"))}"></textarea>
+      <button type="button" class="msg-send" id="msg-send" aria-label="${esc(t("messages.send"))}">${ic.send}</button>
+    </div>`;
+  const input = byId<HTMLTextAreaElement>("msg-input")!;
+  const send = byId<HTMLButtonElement>("msg-send")!;
+  const doSend = async (): Promise<void> => {
+    const body = input.value.trim();
+    if (!body) return;
+    input.value = "";
+    send.disabled = true;
+    try {
+      await sendMessage(r.id, cid, body);
+      await paintBubbles(r, cid, false);
+      await loadThreadList(r);
+    } finally {
+      send.disabled = false;
+      input.focus();
+    }
+  };
+  send.addEventListener("click", () => void doSend());
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void doSend(); }
+  });
+  await paintBubbles(r, cid, false);
+  input.focus();
+}
+
+async function paintBubbles(r: RestaurantSummary, cid: number, pollMode: boolean): Promise<void> {
+  if (msgActive !== cid || mainView !== "messages") return;
+  let th;
+  try {
+    th = await getThread(r.id, cid);
+  } catch {
+    return;
+  }
+  if (msgActive !== cid || mainView !== "messages") return;
+  const msgs = th.messages;
+  const latest = msgs.length ? msgs[msgs.length - 1].id : 0;
+  if (pollMode && latest === msgLastId) return;
+  msgLastId = latest;
+
+  const name = th.peer.name || t("bookings.creatorFallback");
+  const head = byId("msg-head");
+  if (head) {
+    const av = th.peer.avatar
+      ? `<span class="msg-convo-av"${avatarStyle(th.peer.avatar)}></span>`
+      : `<span class="msg-convo-av">${esc(initial(name))}</span>`;
+    head.innerHTML = `<button type="button" class="msg-convo-back" id="msg-back" aria-label="${esc(t("messages.back"))}">${ic.chevronLeft}</button>${av}<span class="msg-convo-name">${esc(name)}</span>`;
+    byId("msg-back")?.addEventListener("click", () => {
+      msgActive = null;
+      byId("msg-app")?.classList.remove("thread-open");
+      byId("msg-list")?.querySelectorAll<HTMLElement>(".msg-thread").forEach((el) => el.classList.remove("on"));
+      renderConvoEmpty();
+    });
+  }
+  const bubbles = byId("msg-bubbles");
+  if (bubbles) {
+    bubbles.innerHTML = msgs.length
+      ? msgs.map(bubble).join("")
+      : `<div class="msg-convo-empty">${esc(t("messages.sayHi", { name }))}</div>`;
+    bubbles.scrollTop = bubbles.scrollHeight;
+  }
+}
+
+function bubble(mm: Message): string {
+  const dir = mm.sender_role === "restaurant" ? "out" : "in";
+  return `<div class="msg-row ${dir}"><div class="msg-bubble">${esc(mm.body)}</div><span class="msg-time">${esc(msgTime(mm.created_at))}</span></div>`;
+}
+
+/** Jump to the inbox with a specific creator's thread open (from the modal). */
+function openMessageWith(cid: number): void {
+  msgActive = cid;
+  navTo("messages");
 }
 
 function renderSettings(m: HTMLElement): void {
@@ -1067,11 +1243,17 @@ function confirmBox(title: string, message: string, matchWord: string | null, on
 /* ---- navigation ---------------------------------------------------------- */
 
 function navTo(v: MainView): void {
+  if (v !== "messages") { msgActive = null; stopMsgPoll(); }
   mainView = v;
   bookingView = null;
   closeRestMenu();
   closeCreatorModal();
   render();
+}
+
+function stopMsgPoll(): void {
+  window.clearInterval(msgPollTimer);
+  msgPollTimer = undefined;
 }
 function openSettings(tab: SettingsTab): void {
   mainView = "settings";

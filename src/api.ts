@@ -357,6 +357,67 @@ export function reviewCreator(restaurantId: number, creatorId: number, rating: n
   });
 }
 
+/* ---- messaging ----------------------------------------------------------- */
+
+export interface Message {
+  id: number;
+  sender_role: "restaurant" | "creator";
+  body: string;
+  created_at: string;
+}
+
+export interface ThreadPeer {
+  id: number;
+  name: string | null;
+  avatar: string | null;
+}
+
+export interface ThreadDetail {
+  peer: ThreadPeer;
+  messages: Message[];
+}
+
+// Restaurant's view: threads keyed by creator.
+export interface RestaurantThread {
+  creator_id: number;
+  creator_name: string | null;
+  creator_avatar: string | null;
+  last_body: string | null;
+  last_at: string | null;
+  last_sender: string | null;
+  unread: number;
+}
+
+// Creator's view: threads keyed by restaurant.
+export interface CreatorThread {
+  restaurant_id: number;
+  restaurant_name: string | null;
+  last_body: string | null;
+  last_at: string | null;
+  last_sender: string | null;
+  unread: number;
+}
+
+export function listThreads(restaurantId: number): Promise<{ threads: RestaurantThread[] }> {
+  return api(`/api/restaurants/${restaurantId}/messages`);
+}
+export function getThread(restaurantId: number, creatorId: number): Promise<ThreadDetail> {
+  return api(`/api/restaurants/${restaurantId}/messages/${creatorId}`);
+}
+export function sendMessage(restaurantId: number, creatorId: number, body: string): Promise<Message> {
+  return api(`/api/restaurants/${restaurantId}/messages/${creatorId}`, { method: "POST", json: { body } });
+}
+
+export function listCreatorThreads(): Promise<{ threads: CreatorThread[] }> {
+  return api(`/api/creator/messages`);
+}
+export function getCreatorThread(restaurantId: number): Promise<ThreadDetail> {
+  return api(`/api/creator/messages/${restaurantId}`);
+}
+export function sendCreatorMessage(restaurantId: number, body: string): Promise<Message> {
+  return api(`/api/creator/messages/${restaurantId}`, { method: "POST", json: { body } });
+}
+
 /* ---- account management (reads + mutations) ------------------------------ */
 
 export interface RestaurantProfileData {

@@ -320,6 +320,15 @@ const en: Dict = {
   "creators.submitReview": "Submit rating",
   "creators.updateReview": "Update rating",
   "creators.pickStars": "Pick a star rating first.",
+  "creators.message": "Message",
+  "messages.title": "Messages",
+  "messages.selectThread": "Select a conversation to start chatting.",
+  "messages.noThreads": "No conversations yet.",
+  "messages.youPrefix": "You:",
+  "messages.placeholder": "Write a message…",
+  "messages.send": "Send",
+  "messages.back": "Back",
+  "messages.sayHi": "Say hi to {name} — no messages yet.",
   "account.rest.title": "Your restaurants",
   "account.rest.add": "Add a restaurant",
   "account.rest.empty": "No restaurants yet.",
@@ -431,6 +440,8 @@ const en: Dict = {
   "creator.connect.failed": "Instagram couldn't be connected. Please try again.",
   "creator.done.title": "You're all set.",
   "creator.done.sub": "We'll match you with restaurants that fit your content. Watch your inbox.",
+  "creator.done.inbox": "Go to my inbox",
+  "creator.home.accounts": "Manage accounts",
 };
 
 const de: Dict = {
@@ -726,6 +737,15 @@ const de: Dict = {
   "creators.submitReview": "Bewertung abgeben",
   "creators.updateReview": "Bewertung aktualisieren",
   "creators.pickStars": "Bitte zuerst Sterne auswählen.",
+  "creators.message": "Nachricht",
+  "messages.title": "Nachrichten",
+  "messages.selectThread": "Wähle eine Unterhaltung, um zu chatten.",
+  "messages.noThreads": "Noch keine Unterhaltungen.",
+  "messages.youPrefix": "Du:",
+  "messages.placeholder": "Nachricht schreiben…",
+  "messages.send": "Senden",
+  "messages.back": "Zurück",
+  "messages.sayHi": "Sag {name} Hallo — noch keine Nachrichten.",
   "account.rest.title": "Deine Restaurants",
   "account.rest.add": "Restaurant hinzufügen",
   "account.rest.empty": "Noch keine Restaurants.",
@@ -837,6 +857,8 @@ const de: Dict = {
   "creator.connect.failed": "Instagram konnte nicht verbunden werden. Bitte erneut versuchen.",
   "creator.done.title": "Alles bereit.",
   "creator.done.sub": "Wir matchen dich mit passenden Restaurants. Behalte dein Postfach im Auge.",
+  "creator.done.inbox": "Zum Postfach",
+  "creator.home.accounts": "Konten verwalten",
 };
 
 const messages: Record<Lang, Dict> = { en, de };

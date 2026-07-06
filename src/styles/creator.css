@@ -28,6 +28,18 @@
   width: 100%;
   max-width: 480px;
 }
+.creator-stage-wide { place-items: start stretch; }
+.creator-inbox { width: 100%; max-width: 980px; margin: 0 auto; }
+.ci-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+.ci-title { font: 800 clamp(26px, 4vw, 36px)/1 var(--font-display); letter-spacing: -0.02em; margin: 0; }
+.ci-actions { display: flex; gap: 8px; }
+.ci-link {
+  font: 800 12.5px/1 var(--font); color: var(--ink); background: var(--panel);
+  border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--ink); padding: 9px 14px; cursor: pointer;
+}
+.ci-link:hover { background: var(--accent); color: var(--on-accent); }
+.ci-loading { padding: 20px; color: var(--muted); font-weight: 600; }
+
 .creator-cta { width: 100%; margin-top: 6px; }
 .creator-finish { width: 100%; margin-top: 12px; }
 .creator-banner { margin: 0 0 16px; }

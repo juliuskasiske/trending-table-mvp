@@ -1,0 +1,90 @@
+/* Two-pane inbox shared by the restaurant (account) and creator apps.
+ * Risograph tokens; self-contained so either app can import it. */
+
+.msg-app {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  height: 68vh;
+  min-height: 420px;
+  border: 2px solid var(--ink);
+  box-shadow: 6px 6px 0 var(--ink);
+  background: var(--panel);
+  overflow: hidden;
+}
+
+/* thread list */
+.msg-list { border-right: 2px solid var(--ink); overflow-y: auto; background: var(--panel); }
+.msg-list-empty { padding: 28px 20px; color: var(--muted); font-weight: 600; font-size: 13.5px; }
+.msg-thread {
+  width: 100%; text-align: left;
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px; border: none; border-bottom: 2px solid rgba(23, 23, 23, 0.1);
+  background: var(--panel); cursor: pointer; font-family: var(--font);
+}
+.msg-thread:hover { background: var(--bg); }
+.msg-thread.on { background: rgba(255, 61, 134, 0.1); }
+.msg-thread-av {
+  width: 42px; height: 42px; flex-shrink: 0;
+  border: 2px solid var(--ink); background-size: cover; background-position: center; background-color: var(--bg);
+  display: grid; place-items: center; font: 800 16px/1 var(--font-display); color: var(--ink);
+}
+.msg-thread-main { min-width: 0; flex: 1; }
+.msg-thread-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.msg-thread-name { font-weight: 800; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.msg-thread-time { color: var(--muted); font-weight: 600; font-size: 11px; flex-shrink: 0; }
+.msg-thread-preview { color: var(--muted); font-weight: 500; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 3px; }
+.msg-unread {
+  display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px;
+  background: var(--accent); color: var(--on-accent); border: 2px solid var(--ink);
+  font: 800 11px/1 var(--font); flex-shrink: 0; margin-left: 6px;
+}
+
+/* conversation */
+.msg-convo { display: flex; flex-direction: column; min-width: 0; }
+.msg-convo-empty { display: grid; place-items: center; height: 100%; color: var(--muted); font-weight: 600; padding: 24px; text-align: center; }
+.msg-convo-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 18px; border-bottom: 2px solid var(--ink); flex-shrink: 0;
+}
+.msg-convo-back {
+  display: none; background: none; border: none; cursor: pointer; color: var(--ink); padding: 0 4px 0 0;
+}
+.msg-convo-av {
+  width: 34px; height: 34px; flex-shrink: 0;
+  border: 2px solid var(--ink); background-size: cover; background-position: center; background-color: var(--bg);
+  display: grid; place-items: center; font: 800 13px/1 var(--font-display); color: var(--ink);
+}
+.msg-convo-name { font-weight: 800; font-size: 15px; }
+.msg-bubbles { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+.msg-row { display: flex; flex-direction: column; max-width: 74%; }
+.msg-row.out { align-self: flex-end; align-items: flex-end; }
+.msg-row.in { align-self: flex-start; align-items: flex-start; }
+.msg-bubble {
+  border: 2px solid var(--ink); padding: 10px 13px;
+  font-size: 14px; line-height: 1.4; font-weight: 500; word-break: break-word;
+}
+.msg-row.out .msg-bubble { background: var(--accent); color: var(--on-accent); box-shadow: 2px 2px 0 var(--ink); }
+.msg-row.in .msg-bubble { background: var(--bg); color: var(--ink); box-shadow: 2px 2px 0 var(--ink); }
+.msg-time { color: var(--muted); font-weight: 600; font-size: 10.5px; margin-top: 4px; }
+.msg-composer { display: flex; gap: 10px; padding: 14px; border-top: 2px solid var(--ink); flex-shrink: 0; }
+.msg-input {
+  flex: 1; resize: none; font: 500 14px/1.4 var(--font); color: var(--ink);
+  background: var(--panel); border: 2px solid var(--ink); padding: 10px 12px; outline: none;
+}
+.msg-input:focus { box-shadow: 2px 2px 0 var(--accent); }
+.msg-send {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 46px; background: var(--accent); color: var(--on-accent);
+  border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--ink); cursor: pointer;
+}
+.msg-send:hover:not(:disabled) { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--ink); }
+.msg-send:disabled { background: var(--bg); color: var(--muted); box-shadow: 3px 3px 0 var(--muted); cursor: default; }
+.msg-send svg { width: 18px; height: 18px; }
+
+@media (max-width: 720px) {
+  .msg-app { grid-template-columns: 1fr; }
+  .msg-app .msg-convo { display: none; }
+  .msg-app.thread-open .msg-list { display: none; }
+  .msg-app.thread-open .msg-convo { display: flex; }
+  .msg-convo-back { display: inline-flex; }
+}

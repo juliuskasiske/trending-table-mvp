@@ -7,12 +7,18 @@
 import "./styles/theme.css";
 import "./styles/onboarding.css";
 import "./styles/creator.css";
+import "./styles/messages.css";
 import {
   getCreatorHandles,
+  getCreatorThread,
   getMe,
   instagramConnectUrl,
+  listCreatorThreads,
+  logout,
+  sendCreatorMessage,
   setCreatorHandles,
   signup,
+  type Message,
   type Principal,
   type SocialAccount,
 } from "./api.ts";
@@ -25,14 +31,30 @@ const esc = (s: unknown): string =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string,
   );
 const nf = () => new Intl.NumberFormat(getLang() === "de" ? "de-DE" : "en-US");
+const locale = () => (getLang() === "de" ? "de-DE" : "en-US");
+const initial = (s: string | null | undefined) => (s || "?").trim().charAt(0).toUpperCase();
+const msgTime = (iso: string | null | undefined): string => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const sameDay = d.toDateString() === new Date().toDateString();
+  return sameDay
+    ? new Intl.DateTimeFormat(locale(), { hour: "2-digit", minute: "2-digit" }).format(d)
+    : new Intl.DateTimeFormat(locale(), { day: "numeric", month: "short" }).format(d);
+};
+const sendIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>';
+const backIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>';
 
-type Step = "signup" | "handles" | "connect" | "done";
+type Step = "signup" | "handles" | "connect" | "done" | "home";
 
 let me: Principal | null = null;
 let step: Step = "signup";
 let accounts: SocialAccount[] = [];
 let igEnabled = false;
 let igBanner: "connected" | "error" | null = null;
+let ciActive: number | null = null; // restaurant_id of open conversation
+let ciPollTimer: number | undefined;
+let ciLastId = 0;
 
 const PLATFORMS: Array<{ key: "instagram" | "tiktok" | "youtube"; label: string }> = [
   { key: "instagram", label: "Instagram" },
@@ -193,12 +215,170 @@ function renderDone(card: HTMLElement): void {
       <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
     </div>
     <h1 class="step-title">${esc(t("creator.done.title"))}</h1>
-    <p class="step-sub">${esc(t("creator.done.sub"))}</p>`;
+    <p class="step-sub">${esc(t("creator.done.sub"))}</p>
+    <button type="button" class="btn btn-primary creator-cta" id="c-inbox">${esc(t("creator.done.inbox"))}</button>`;
+  byId("c-inbox")?.addEventListener("click", () => go("home"));
+}
+
+/* ---- home: the creator's inbox ------------------------------------------- */
+
+function stopCiPoll(): void {
+  window.clearInterval(ciPollTimer);
+  ciPollTimer = undefined;
+}
+
+function renderHome(): void {
+  stopCiPoll();
+  const stage = document.querySelector<HTMLElement>(".creator-stage");
+  if (!stage) return;
+  stage.classList.add("creator-stage-wide");
+  stage.innerHTML = `
+    <div class="creator-inbox">
+      <div class="ci-head">
+        <h1 class="ci-title">${esc(t("messages.title"))}</h1>
+        <div class="ci-actions">
+          <button type="button" class="ci-link" id="ci-accounts">${esc(t("creator.home.accounts"))}</button>
+          <button type="button" class="ci-link" id="ci-logout">${esc(t("account.signout"))}</button>
+        </div>
+      </div>
+      <div class="msg-app${ciActive != null ? " thread-open" : ""}" id="cmsg-app">
+        <div class="msg-list" id="cmsg-list"><p class="ci-loading">…</p></div>
+        <div class="msg-convo" id="cmsg-convo"></div>
+      </div>
+    </div>`;
+  byId("ci-accounts")?.addEventListener("click", () => go("connect"));
+  byId("ci-logout")?.addEventListener("click", async () => {
+    await logout();
+    window.location.assign("/login");
+  });
+  void loadCiThreads().then(() => {
+    if (ciActive != null) void openCiConversation(ciActive);
+    else renderCiEmpty();
+  });
+  ciPollTimer = window.setInterval(() => {
+    if (step !== "home") return;
+    void loadCiThreads();
+    if (ciActive != null) void paintCiBubbles(ciActive, true);
+  }, 5000);
+}
+
+function renderCiEmpty(): void {
+  const convo = byId("cmsg-convo");
+  if (convo) convo.innerHTML = `<div class="msg-convo-empty">${esc(t("messages.selectThread"))}</div>`;
+}
+
+async function loadCiThreads(): Promise<void> {
+  const list = byId("cmsg-list");
+  if (!list) return;
+  let threads;
+  try {
+    threads = (await listCreatorThreads()).threads;
+  } catch {
+    list.innerHTML = `<div class="msg-list-empty">${esc(t("creator.error"))}</div>`;
+    return;
+  }
+  if (step !== "home") return;
+  list.innerHTML = threads.length
+    ? threads.map((th) => {
+        const name = th.restaurant_name || "Restaurant";
+        const preview = (th.last_sender === "creator" ? t("messages.youPrefix") + " " : "") + (th.last_body || "");
+        const unread = th.unread > 0 ? `<span class="msg-unread">${th.unread}</span>` : "";
+        return `<button type="button" class="msg-thread ${ciActive === th.restaurant_id ? "on" : ""}" data-rid="${th.restaurant_id}">
+          <span class="msg-thread-av">${esc(initial(name))}</span>
+          <span class="msg-thread-main">
+            <span class="msg-thread-top"><span class="msg-thread-name">${esc(name)}</span><span class="msg-thread-time">${esc(msgTime(th.last_at))}</span></span>
+            <span class="msg-thread-preview">${esc(preview)}</span>
+          </span>${unread}
+        </button>`;
+      }).join("")
+    : `<div class="msg-list-empty">${esc(t("messages.noThreads"))}</div>`;
+  list.querySelectorAll<HTMLElement>(".msg-thread").forEach((el) =>
+    el.addEventListener("click", () => void openCiConversation(Number(el.dataset.rid))));
+}
+
+async function openCiConversation(rid: number): Promise<void> {
+  ciActive = rid;
+  ciLastId = 0;
+  byId("cmsg-app")?.classList.add("thread-open");
+  byId("cmsg-list")?.querySelectorAll<HTMLElement>(".msg-thread")
+    .forEach((el) => el.classList.toggle("on", Number(el.dataset.rid) === rid));
+  const convo = byId("cmsg-convo");
+  if (!convo) return;
+  convo.innerHTML = `
+    <div class="msg-convo-head" id="cmsg-head"></div>
+    <div class="msg-bubbles" id="cmsg-bubbles"><p class="ci-loading">…</p></div>
+    <div class="msg-composer">
+      <textarea class="msg-input" id="cmsg-input" rows="1" placeholder="${esc(t("messages.placeholder"))}"></textarea>
+      <button type="button" class="msg-send" id="cmsg-send" aria-label="${esc(t("messages.send"))}">${sendIcon}</button>
+    </div>`;
+  const input = byId<HTMLTextAreaElement>("cmsg-input")!;
+  const send = byId<HTMLButtonElement>("cmsg-send")!;
+  const doSend = async (): Promise<void> => {
+    const body = input.value.trim();
+    if (!body) return;
+    input.value = "";
+    send.disabled = true;
+    try {
+      await sendCreatorMessage(rid, body);
+      await paintCiBubbles(rid, false);
+      await loadCiThreads();
+    } finally {
+      send.disabled = false;
+      input.focus();
+    }
+  };
+  send.addEventListener("click", () => void doSend());
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void doSend(); }
+  });
+  await paintCiBubbles(rid, false);
+  input.focus();
+}
+
+async function paintCiBubbles(rid: number, pollMode: boolean): Promise<void> {
+  if (ciActive !== rid || step !== "home") return;
+  let th;
+  try {
+    th = await getCreatorThread(rid);
+  } catch {
+    return;
+  }
+  if (ciActive !== rid || step !== "home") return;
+  const msgs = th.messages;
+  const latest = msgs.length ? msgs[msgs.length - 1].id : 0;
+  if (pollMode && latest === ciLastId) return;
+  ciLastId = latest;
+
+  const name = th.peer.name || "Restaurant";
+  const head = byId("cmsg-head");
+  if (head) {
+    head.innerHTML = `<button type="button" class="msg-convo-back" id="cmsg-back" aria-label="${esc(t("messages.back"))}">${backIcon}</button><span class="msg-convo-av">${esc(initial(name))}</span><span class="msg-convo-name">${esc(name)}</span>`;
+    byId("cmsg-back")?.addEventListener("click", () => {
+      ciActive = null;
+      byId("cmsg-app")?.classList.remove("thread-open");
+      byId("cmsg-list")?.querySelectorAll<HTMLElement>(".msg-thread").forEach((el) => el.classList.remove("on"));
+      renderCiEmpty();
+    });
+  }
+  const bubbles = byId("cmsg-bubbles");
+  if (bubbles) {
+    bubbles.innerHTML = msgs.length
+      ? msgs.map(ciBubble).join("")
+      : `<div class="msg-convo-empty">${esc(t("messages.sayHi", { name }))}</div>`;
+    bubbles.scrollTop = bubbles.scrollHeight;
+  }
+}
+
+function ciBubble(mm: Message): string {
+  const dir = mm.sender_role === "creator" ? "out" : "in";
+  return `<div class="msg-row ${dir}"><div class="msg-bubble">${esc(mm.body)}</div><span class="msg-time">${esc(msgTime(mm.created_at))}</span></div>`;
 }
 
 /* ---- routing ------------------------------------------------------------- */
 
 function render(): void {
+  if (step !== "home") stopCiPoll();
+  if (step === "home") { renderHome(); return; }
   const card = byId("creator-card");
   if (!card) return;
   if (step === "signup") renderSignup(card);
@@ -238,7 +418,7 @@ export async function initCreator(): Promise<void> {
   }
   if (me && me.role === "creator") {
     accounts = (await getCreatorHandles().catch(() => ({ accounts: [], instagramEnabled: false }))).accounts;
-    step = igBanner || accounts.length ? "connect" : "handles";
+    step = igBanner ? "connect" : accounts.length ? "home" : "handles";
   } else {
     step = "signup";
   }
