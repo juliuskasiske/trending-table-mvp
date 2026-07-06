@@ -11,7 +11,7 @@ router = APIRouter(prefix="/api", tags=["config"])
 
 
 @router.get("/config")
-def config() -> dict:
+def get_config() -> dict:
     return {
         "placesEnabled": places.enabled(),
         "menuAiEnabled": digitize.markitdown_available(),
