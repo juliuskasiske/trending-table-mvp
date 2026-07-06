@@ -792,6 +792,10 @@ export function initOnboarding(): void {
       b.setAttribute("aria-pressed", String(on));
     });
     renderPriceHighlight();
+    // The promo code is monthly-only — hide the field (and its note) on annual.
+    const promoBox = byId("pay-promo");
+    if (promoBox) promoBox.hidden = cadence === "annual";
+    applyWelcomeNote();
     const note = byId("cadence-note");
     if (!note) return;
     if (cadence === "annual") {
@@ -868,11 +872,17 @@ export function initOnboarding(): void {
   /** A validated promo code the user entered (null = none applied). */
   let appliedPromo: { code: string; percentOff: number; amountOff: number } | null = null;
 
+  /** The promo code is a monthly first-month perk — it never applies to the
+   * annual plan (which already carries its own 20% off). */
+  function promoActive(): boolean {
+    return appliedPromo !== null && cadence === "monthly";
+  }
+
   /** What Stripe actually charges on the first invoice, in cents — the fee less
    * any applied promo. The Payment Element's amount must match this. */
   function firstChargeCents(): number {
     let cents = feeCents();
-    if (appliedPromo) {
+    if (promoActive() && appliedPromo) {
       cents = Math.round(cents * (1 - appliedPromo.percentOff / 100)) - appliedPromo.amountOff;
     }
     return Math.max(0, cents);
@@ -1013,7 +1023,7 @@ export function initOnboarding(): void {
     // 2. Create the real subscription for the chosen cadence (nothing charged yet).
     let clientSecret: string;
     try {
-      const res = await createSubscription(restaurantId, cadence, appliedPromo?.code);
+      const res = await createSubscription(restaurantId, cadence, promoActive() ? appliedPromo?.code : undefined);
       clientSecret = res.clientSecret;
     } catch (err) {
       return fail(String(err));
@@ -1383,7 +1393,7 @@ export function initOnboarding(): void {
   function applyWelcomeNote(): void {
     const el = byId("pay-welcome-note");
     if (!el) return;
-    if (appliedPromo) {
+    if (promoActive() && appliedPromo) {
       el.textContent = t("pay.promoApplied", {
         code: appliedPromo.code,
         first: eur2(firstChargeCents() / 100),
