@@ -358,6 +358,28 @@ export function validatePromo(restaurantId: number, code: string): Promise<Promo
   return api(`/api/restaurants/${restaurantId}/billing/promo`, { method: "POST", json: { code } });
 }
 
+/* ---- creator registration ------------------------------------------------ */
+
+export interface SocialAccount {
+  platform: "instagram" | "tiktok" | "youtube" | string;
+  handle: string | null;
+  follower_count: number | null;
+  status: string; // pending | connected | expired | revoked
+}
+
+export function setCreatorHandles(h: { instagram?: string; tiktok?: string; youtube?: string }):
+  Promise<{ ok: boolean }> {
+  return api("/api/creator/handles", { method: "POST", json: h });
+}
+
+export function getCreatorHandles(): Promise<{ accounts: SocialAccount[]; instagramEnabled: boolean }> {
+  return api("/api/creator/handles");
+}
+
+export function instagramConnectUrl(): Promise<{ url: string }> {
+  return api("/api/creator/instagram/connect");
+}
+
 /* ---- admin (control tower) ----------------------------------------------- */
 
 export interface FunnelStage {

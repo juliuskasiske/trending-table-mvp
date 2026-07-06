@@ -169,13 +169,6 @@ export function initOnboarding(): void {
     show(index);
   }
 
-  function showComingSoon(kind: "creator" | "restaurantLogin"): void {
-    const el = byId("gate-soon");
-    if (!el) return;
-    el.hidden = false;
-    el.textContent = t(`gate.soon.${kind}`);
-    el.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }
 
   // One login window that stays in place; the role toggle only changes where
   // its buttons point. For now only Restaurant · Sign up is live.
@@ -196,15 +189,12 @@ export function initOnboarding(): void {
 
   byId("gate-signup")?.addEventListener("click", () => {
     if (gateRole === "restaurant") startFlow(0); // → /register
-    else showComingSoon("creator");
+    else window.location.assign("/creator"); // creator registration flow
   });
 
   byId("gate-form")?.addEventListener("submit", async (e) => {
     e.preventDefault();
-    if (gateRole !== "restaurant") {
-      showComingSoon("creator"); // creator side isn't live yet
-      return;
-    }
+    const role = gateRole === "creator" ? "creator" : "account";
     const emailEl = byId<HTMLInputElement>("gate-email");
     const pwEl = byId<HTMLInputElement>("gate-password");
     const errEl = byId("gate-error");
@@ -218,8 +208,8 @@ export function initOnboarding(): void {
       btn.textContent = t("gate.loggingIn");
     }
     try {
-      await login(email, password, "account");
-      window.location.assign("/account"); // land in account management
+      await login(email, password, role);
+      window.location.assign(role === "creator" ? "/creator" : "/account");
     } catch (err) {
       if (errEl) {
         errEl.hidden = false;

@@ -21,6 +21,11 @@ function boot(): void {
     void import("./account.ts").then((m) => m.initAccount());
     return;
   }
+  if (path === "/creator") {
+    // Creator registration + Instagram connect, lazy-loaded.
+    void import("./creator.ts").then((m) => m.initCreator());
+    return;
+  }
   initI18n(); // translate static markup + wire the EN/DE toggle first
   initOnboarding();
 }
