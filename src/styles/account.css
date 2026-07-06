@@ -139,9 +139,7 @@
 
 /* Coming-soon: a blurred faux screen with an overlay */
 .coming-wrap { position: relative; min-height: 72vh; }
-.coming-blur { filter: blur(7px); opacity: 0.45; pointer-events: none; user-select: none; }
-.coming-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 20px; max-width: 780px; }
-.coming-card { height: 150px; border: 2px solid var(--line); background: var(--panel); box-shadow: 6px 6px 0 var(--ink); }
+.coming-blur { filter: blur(6px); opacity: 0.6; pointer-events: none; user-select: none; max-width: 940px; }
 .coming-overlay {
   position: absolute;
   inset: 0;
@@ -162,6 +160,28 @@
   padding: 14px 28px;
 }
 .coming-overlay p { color: var(--muted); font-weight: 600; max-width: 340px; margin: 0; }
+
+/* Faux content behind the blur (skeleton-ish, riso cards) */
+.fx-line { display: block; height: 11px; background: var(--line); opacity: 0.16; margin: 5px 0; }
+.fx-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 20px; }
+.fx-stat { padding: 20px; }
+.fx-num { font: 800 30px/1 var(--font-display); color: var(--ink); margin-bottom: 12px; }
+.fx-chart { margin-top: 16px; padding: 22px; }
+.fx-bars { display: flex; align-items: flex-end; gap: 12px; height: 170px; }
+.fx-bar { flex: 1; background: var(--accent); opacity: 0.85; }
+.fx-rows-card { margin-top: 16px; padding: 8px 20px; }
+.fx-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 20px; }
+.fx-creator { padding: 18px; }
+.fx-rows { display: grid; gap: 12px; margin-top: 20px; }
+.fx-row { display: flex; align-items: center; gap: 14px; padding: 4px 0; }
+.fx-rows > .fx-row { padding: 16px 18px; }
+.fx-body { flex: 1; }
+.fx-avatar { width: 48px; height: 48px; border-radius: 50%; background: var(--line); opacity: 0.16; flex: none; }
+.fx-avatar.sm { width: 38px; height: 38px; }
+.fx-pills { display: flex; gap: 8px; margin-top: 10px; }
+.fx-pill { width: 56px; height: 22px; border: 2px solid var(--line); opacity: 0.4; }
+.fx-tag { width: 74px; height: 26px; background: var(--accent); opacity: 0.7; flex: none; }
+.fx-time { width: 46px; flex: none; }
 
 /* Settings sub-tabs (Restaurants | Konto) */
 .acct-subtabs {

@@ -78,8 +78,8 @@ const restName = () => restaurants[0]?.name || "Restaurant";
 /* ---- shell (dark platform nav) ------------------------------------------- */
 
 function shell(): string {
-  const item = (v: MainView, badge = "") =>
-    `<button type="button" class="pnav-item" data-view="${v}">${ic[v as keyof typeof ic]}<span>${esc(t(`account.nav.${v}`))}</span>${badge}</button>`;
+  const item = (v: MainView) =>
+    `<button type="button" class="pnav-item" data-view="${v}">${ic[v as keyof typeof ic]}<span>${esc(t(`account.nav.${v}`))}</span></button>`;
   return `
 <div class="platform-app">
   <aside class="pnav">
@@ -88,7 +88,7 @@ function shell(): string {
       ${item("dashboard")}
       ${item("creators")}
       ${item("bookings")}
-      ${item("messages", `<span class="pnav-badge">3</span>`)}
+      ${item("messages")}
     </nav>
     <div class="pnav-foot">
       <div class="rest-menu" id="rest-menu" hidden>
@@ -127,13 +127,40 @@ function render(): void {
   renderSettings(m);
 }
 
+/** Plausible (blurred) faux content per tab, so the coming-soon screen looks
+ * like a real page behind frosted glass rather than empty boxes. */
+function fauxContent(key: MainView): string {
+  const line = (w: string) => `<span class="fx-line" style="width:${w}"></span>`;
+  const rep = (n: number, fn: (i: number) => string) => Array.from({ length: n }, (_, i) => fn(i)).join("");
+
+  if (key === "dashboard") {
+    const stat = (n: string) => `<div class="card fx-stat"><div class="fx-num">${n}</div>${line("70%")}</div>`;
+    const heights = [45, 72, 58, 88, 64, 96, 52, 78, 68, 92, 48, 82];
+    return `
+      <div class="fx-stats">${stat("2.481")}${stat("18")}${stat("€1.240")}</div>
+      <div class="card fx-chart"><div class="fx-bars">${heights.map((h) => `<span class="fx-bar" style="height:${h}%"></span>`).join("")}</div></div>
+      <div class="card fx-rows-card">${rep(4, () => `<div class="fx-row"><span class="fx-avatar sm"></span><span class="fx-body">${line("46%")}${line("28%")}</span><span class="fx-tag"></span></div>`)}</div>`;
+  }
+  if (key === "creators") {
+    return `<div class="fx-cards">${rep(6, () => `
+      <div class="card fx-creator"><span class="fx-avatar"></span>${line("62%")}${line("40%")}
+        <span class="fx-pills"><span class="fx-pill"></span><span class="fx-pill"></span></span></div>`)}</div>`;
+  }
+  if (key === "bookings") {
+    return `<div class="fx-rows">${rep(7, () => `
+      <div class="card fx-row"><span class="fx-avatar sm"></span><span class="fx-body">${line("52%")}${line("34%")}</span><span class="fx-tag"></span></div>`)}</div>`;
+  }
+  // messages
+  return `<div class="fx-rows">${rep(7, () => `
+    <div class="card fx-row"><span class="fx-avatar"></span><span class="fx-body">${line("40%")}${line("74%")}</span><span class="fx-time">${line("100%")}</span></div>`)}</div>`;
+}
+
 function renderComingSoon(m: HTMLElement, key: MainView): void {
-  const block = `<div class="coming-card"></div>`;
   m.innerHTML = `
     <div class="coming-wrap">
       <div class="coming-blur" aria-hidden="true">
         <h1 class="admin-title">${esc(t(`account.nav.${key}`))}</h1>
-        <div class="coming-grid">${block.repeat(6)}</div>
+        ${fauxContent(key)}
       </div>
       <div class="coming-overlay">
         <div class="coming-badge">${esc(t("account.comingSoon"))}</div>
