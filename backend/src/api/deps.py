@@ -31,6 +31,8 @@ def current_principal(request: Request) -> dict:
         row = store.get_by_id(conn, role, subject_id)
     if not row:
         raise HTTPException(status_code=401, detail="Account no longer exists")
+    if row.get("deleted_at"):  # soft-deleted account: kill the session
+        raise HTTPException(status_code=401, detail="This account was deleted")
 
     return {
         "id": row["id"],
@@ -78,10 +80,12 @@ def require_creator(request: Request) -> dict:
 
 
 def assert_membership(account_id: int, restaurant_id: int) -> str:
-    """Return the account's role on the restaurant, or 404 if not a member."""
+    """Return the account's role on the restaurant, or 404 if not a member
+    (or the restaurant has been soft-deleted)."""
     with get_control_connection() as conn, conn.cursor() as cur:
         cur.execute(
-            "SELECT role FROM memberships WHERE account_id = %s AND restaurant_id = %s",
+            "SELECT m.role FROM memberships m JOIN restaurants r ON r.id = m.restaurant_id"
+            " WHERE m.account_id = %s AND m.restaurant_id = %s AND r.status <> 'deleted'",
             (account_id, restaurant_id),
         )
         row = cur.fetchone()

@@ -136,6 +136,47 @@ async def stripe_webhook(request: Request) -> dict:
     return {"received": True}
 
 
+@router.get("/{restaurant_id}/billing")
+def get_billing(ctx: dict = Depends(restaurant_ctx)) -> dict:
+    """Billing summary for the account UI: spending limit + live subscription
+    status (platform fee + usage), including trial and next-payment dates."""
+    rid = ctx["restaurant_id"]
+    with get_control_connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT spending_limit_eur, stripe_subscription_id,"
+            " stripe_subscription_status, stripe_usage_subscription_id"
+            " FROM restaurants WHERE id = %s",
+            (rid,),
+        )
+        limit, sub_id, stored_status, usage_id = cur.fetchone()
+    platform = stripe_client.subscription_detail(sub_id) if stripe_client.enabled() else None
+    if platform is None and stored_status:
+        platform = {"status": stored_status}
+    usage = stripe_client.subscription_detail(usage_id) if stripe_client.enabled() else None
+    return {
+        "spending_limit_eur": float(limit) if limit is not None else None,
+        "platform": platform,
+        "usage": usage,
+    }
+
+
+@router.post("/{restaurant_id}/billing/cancel")
+def cancel_billing(ctx: dict = Depends(restaurant_ctx)) -> dict:
+    """Cancel the plan at period end — access stays until then, no more charges.
+    Applies to both the platform-fee and usage subscriptions."""
+    rid = ctx["restaurant_id"]
+    with get_control_connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT stripe_subscription_id, stripe_usage_subscription_id"
+            " FROM restaurants WHERE id = %s",
+            (rid,),
+        )
+        sub_id, usage_id = cur.fetchone()
+    stripe_client.cancel_at_period_end(sub_id)
+    stripe_client.cancel_at_period_end(usage_id)
+    return {"ok": True}
+
+
 @router.put("/{restaurant_id}/billing")
 def set_billing(body: BillingIn, ctx: dict = Depends(restaurant_ctx)) -> dict:
     """Store the monthly spending limit (Stripe subscription wired in Phase 6)."""

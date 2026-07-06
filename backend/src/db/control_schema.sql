@@ -66,6 +66,8 @@ CREATE TABLE IF NOT EXISTS restaurants (
 -- Additive columns for DBs created before these flows (idempotent).
 ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS stripe_subscription_status TEXT;
 ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS stripe_usage_subscription_id TEXT;
+-- Soft-delete tombstone for accounts (rows are kept, login is revoked).
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 
 -- Which account manages which restaurant, and in what role. One account can own
 -- many restaurants ("one account → many restaurants").

@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from fastapi import HTTPException
 
 from .. import deps
+from ...billing import stripe_client
 from ...db.connection import app_connection, get_control_connection
 from ...integrations import digitize
 from ...tenancy import provision, repo
@@ -86,9 +87,10 @@ def restaurant_ctx(restaurant_id: int, principal: dict = Depends(deps.require_ac
 def list_restaurants(principal: dict = Depends(deps.require_account)) -> dict:
     with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
-            "SELECT r.id, r.name, r.status, r.spending_limit_eur, m.role"
+            "SELECT r.id, r.name, r.status, r.spending_limit_eur,"
+            " r.stripe_subscription_status, m.role"
             " FROM restaurants r JOIN memberships m ON m.restaurant_id = r.id"
-            " WHERE m.account_id = %s ORDER BY r.created_at",
+            " WHERE m.account_id = %s AND r.status <> 'deleted' ORDER BY r.created_at",
             (principal["id"],),
         )
         rows = cur.fetchall()
@@ -158,6 +160,31 @@ def activate(ctx: dict = Depends(restaurant_ctx)) -> dict:
         cur.execute("UPDATE restaurants SET status = 'active' WHERE id = %s", (ctx["restaurant_id"],))
         conn.commit()
     return {"ok": True, "status": "active"}
+
+
+def soft_delete_restaurant(conn, restaurant_id: int) -> None:
+    """Cancel this restaurant's Stripe subscriptions (platform fee + usage)
+    immediately and mark it deleted. Rows are kept; status becomes 'deleted'."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT stripe_subscription_id, stripe_usage_subscription_id"
+            " FROM restaurants WHERE id = %s",
+            (restaurant_id,),
+        )
+        row = cur.fetchone()
+        if row:
+            stripe_client.cancel_subscription(row[0])
+            stripe_client.cancel_subscription(row[1])
+        cur.execute("UPDATE restaurants SET status = 'deleted' WHERE id = %s", (restaurant_id,))
+    conn.commit()
+
+
+@router.delete("/{restaurant_id}")
+def delete_restaurant(ctx: dict = Depends(restaurant_ctx)) -> dict:
+    """Soft-delete a restaurant: stop its Stripe billing and tag it deleted."""
+    with get_control_connection() as conn:
+        soft_delete_restaurant(conn, ctx["restaurant_id"])
+    return {"ok": True, "status": "deleted"}
 
 
 @router.post("/{restaurant_id}/menu/digitize")

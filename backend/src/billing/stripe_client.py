@@ -141,9 +141,50 @@ def create_subscription(customer_id: str, cadence: str) -> dict:
     }
 
 
-def cancel_subscription(subscription_id: str) -> None:
+def cancel_subscription(subscription_id: str | None) -> None:
+    """Cancel immediately (used by delete flows). No-op on empty ids and on a
+    subscription Stripe already forgot (e.g. cancelled earlier)."""
+    if not subscription_id:
+        return
     _client()
-    stripe.Subscription.delete(subscription_id)
+    try:
+        stripe.Subscription.delete(subscription_id)
+    except stripe.error.InvalidRequestError:
+        pass  # already gone / never existed
+
+
+def cancel_at_period_end(subscription_id: str | None) -> None:
+    """Schedule cancellation at the end of the paid period (used by 'cancel
+    plan'): access continues, no further charges. No-op on empty ids."""
+    if not subscription_id:
+        return
+    _client()
+    try:
+        stripe.Subscription.modify(subscription_id, cancel_at_period_end=True)
+    except stripe.error.InvalidRequestError:
+        pass
+
+
+def subscription_detail(subscription_id: str | None) -> dict | None:
+    """Live status of a subscription for the account UI, or None if absent."""
+    if not subscription_id:
+        return None
+    _client()
+    try:
+        s = stripe.Subscription.retrieve(subscription_id)
+    except stripe.error.InvalidRequestError:
+        return None
+    items = s["items"]["data"]
+    price_id = items[0]["price"]["id"] if items else None
+    cadence = ("annual" if price_id == config.STRIPE_PRICE_ANNUAL
+               else "monthly" if price_id == config.STRIPE_PRICE_MONTHLY else None)
+    return {
+        "status": s.status,
+        "cadence": cadence,
+        "cancel_at_period_end": bool(s.cancel_at_period_end),
+        "current_period_end": s.current_period_end,  # unix seconds
+        "trial_end": s.trial_end,
+    }
 
 
 # ---- Usage billing (metered views) ---------------------------------------
