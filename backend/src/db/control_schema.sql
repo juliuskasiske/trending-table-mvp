@@ -210,6 +210,22 @@ ALTER TABLE posts DROP CONSTRAINT IF EXISTS posts_platform_check;
 ALTER TABLE posts ADD CONSTRAINT posts_platform_check
     CHECK (platform IN ('instagram', 'tiktok', 'youtube'));
 
+-- A restaurant's star rating of a creator, left after a collaboration. One
+-- review per (restaurant, creator); a restaurant may only review a creator it
+-- has actually worked with (a completed campaign — enforced in the route).
+CREATE TABLE IF NOT EXISTS creator_reviews (
+    id            BIGSERIAL PRIMARY KEY,
+    creator_id    BIGINT NOT NULL REFERENCES creators(id) ON DELETE CASCADE,
+    restaurant_id BIGINT NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+    campaign_id   BIGINT REFERENCES campaigns(id) ON DELETE SET NULL,
+    rating        SMALLINT NOT NULL CHECK (rating BETWEEN 1 AND 5),
+    comment       TEXT,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (restaurant_id, creator_id)
+);
+CREATE INDEX IF NOT EXISTS creator_reviews_creator_idx ON creator_reviews (creator_id);
+
 -- ============================================================================
 -- Metrics + view-based billing
 -- ============================================================================

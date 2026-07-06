@@ -13,6 +13,7 @@ from .routes import (
     campaigns,
     config as config_routes,
     creator,
+    creators,
     menu,
     metering,
     places,
@@ -42,6 +43,7 @@ app.include_router(billing.router)
 app.include_router(billing.webhook_router)
 app.include_router(campaigns.router)
 app.include_router(creator.router)
+app.include_router(creators.router)
 app.include_router(menu.router)
 app.include_router(metering.router)
 app.include_router(admin.router)
