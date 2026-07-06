@@ -226,6 +226,22 @@ CREATE TABLE IF NOT EXISTS creator_reviews (
 );
 CREATE INDEX IF NOT EXISTS creator_reviews_creator_idx ON creator_reviews (creator_id);
 
+-- Direct messages between a restaurant and a creator. One logical thread per
+-- (restaurant, creator); sender_role says who wrote each line. The per-side
+-- read timestamps drive unread badges.
+CREATE TABLE IF NOT EXISTS messages (
+    id                    BIGSERIAL PRIMARY KEY,
+    restaurant_id         BIGINT NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+    creator_id            BIGINT NOT NULL REFERENCES creators(id) ON DELETE CASCADE,
+    sender_role           TEXT NOT NULL CHECK (sender_role IN ('restaurant', 'creator')),
+    body                  TEXT NOT NULL,
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    read_by_restaurant_at TIMESTAMPTZ,
+    read_by_creator_at    TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS messages_thread_idx ON messages (restaurant_id, creator_id, created_at);
+CREATE INDEX IF NOT EXISTS messages_creator_idx ON messages (creator_id, created_at);
+
 -- ============================================================================
 -- Metrics + view-based billing
 -- ============================================================================

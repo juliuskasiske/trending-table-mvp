@@ -15,6 +15,7 @@ from .routes import (
     creator,
     creators,
     menu,
+    messages,
     metering,
     places,
     restaurants,
@@ -45,6 +46,7 @@ app.include_router(campaigns.router)
 app.include_router(creator.router)
 app.include_router(creators.router)
 app.include_router(menu.router)
+app.include_router(messages.router)
 app.include_router(metering.router)
 app.include_router(admin.router)
 
