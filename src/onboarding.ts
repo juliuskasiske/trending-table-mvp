@@ -197,9 +197,40 @@ export function initOnboarding(): void {
     else showComingSoon("creator");
   });
 
-  byId("gate-form")?.addEventListener("submit", (e) => {
-    e.preventDefault(); // Log in is blocked for now (no dashboard / creator side)
-    showComingSoon(gateRole === "restaurant" ? "restaurantLogin" : "creator");
+  byId("gate-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (gateRole !== "restaurant") {
+      showComingSoon("creator"); // creator side isn't live yet
+      return;
+    }
+    const emailEl = byId<HTMLInputElement>("gate-email");
+    const pwEl = byId<HTMLInputElement>("gate-password");
+    const errEl = byId("gate-error");
+    const btn = byId<HTMLButtonElement>("gate-login");
+    const email = emailEl?.value.trim() ?? "";
+    const password = pwEl?.value ?? "";
+    if (!email || !password) return;
+    if (errEl) errEl.hidden = true;
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = t("gate.loggingIn");
+    }
+    try {
+      await login(email, password, "account");
+      window.location.assign("/account"); // land in account management
+    } catch (err) {
+      if (errEl) {
+        errEl.hidden = false;
+        errEl.textContent =
+          (err as { status?: number }).status === 403
+            ? t("gate.accountDeleted")
+            : t("gate.loginFailed");
+      }
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = t("gate.login");
+      }
+    }
   });
 
   /* ---- Validation ------------------------------------------------------ */
@@ -1423,7 +1454,11 @@ export function initOnboarding(): void {
     if (me && me.role === "account") {
       authed = true;
       principalEmail = me.email;
-      startFlow(1);
+      if (path === "/register") {
+        startFlow(1); // adding another restaurant — skip the account step
+      } else {
+        window.location.assign("/account"); // manage the existing account
+      }
     } else if (path === "/register") {
       startFlow(0);
     } else {

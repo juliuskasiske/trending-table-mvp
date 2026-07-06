@@ -190,6 +190,7 @@ export interface RestaurantSummary {
   name: string;
   status: string;
   spending_limit_eur: number | null;
+  stripe_subscription_status: string | null;
   role: string;
 }
 
@@ -229,6 +230,82 @@ export function putBilling(id: number, spending_limit_eur: number): Promise<{ ok
 
 export function activateRestaurant(id: number): Promise<{ ok: boolean; status: string }> {
   return api(`/api/restaurants/${id}/activate`, { method: "POST" });
+}
+
+/* ---- account management (reads + mutations) ------------------------------ */
+
+export interface RestaurantProfileData {
+  place_id?: string | null;
+  name?: string;
+  address?: string | null;
+  city?: string | null;
+  category?: string | null;
+  tags?: string[];
+  google_rating?: number | null;
+  google_reviews?: number | null;
+  description?: string | null;
+  website?: string | null;
+  logo_url?: string | null;
+  price_level?: string | null;
+}
+
+export function getRestaurant(id: number):
+  Promise<{ id: number; role: string; profile: RestaurantProfileData | null }> {
+  return api(`/api/restaurants/${id}`);
+}
+
+export function getMenu(id: number): Promise<{ items: MenuItem[] }> {
+  return api(`/api/restaurants/${id}/menu`);
+}
+
+export interface GuidelinesData {
+  show: string[];
+  must_include: string[];
+  avoid: string[];
+  handle: string | null;
+  notes: string | null;
+}
+
+export function getGuidelines(id: number): Promise<{ guidelines: GuidelinesData | null }> {
+  return api(`/api/restaurants/${id}/guidelines`);
+}
+
+export function deleteRestaurant(id: number): Promise<{ ok: boolean; status: string }> {
+  return api(`/api/restaurants/${id}`, { method: "DELETE" });
+}
+
+export interface SubDetail {
+  status: string;
+  cadence?: "monthly" | "annual" | null;
+  cancel_at_period_end?: boolean;
+  current_period_end?: number | null;
+  trial_end?: number | null;
+}
+
+export interface BillingDetail {
+  spending_limit_eur: number | null;
+  platform: SubDetail | null;
+  usage: SubDetail | null;
+}
+
+export function getBilling(id: number): Promise<BillingDetail> {
+  return api(`/api/restaurants/${id}/billing`);
+}
+
+export function cancelBilling(id: number): Promise<{ ok: boolean }> {
+  return api(`/api/restaurants/${id}/billing/cancel`, { method: "POST" });
+}
+
+export function updateMe(display_name: string): Promise<{ ok: boolean }> {
+  return api("/api/auth/me", { method: "PATCH", json: { display_name } });
+}
+
+export function changePassword(current_password: string, new_password: string): Promise<{ ok: boolean }> {
+  return api("/api/auth/change-password", { method: "POST", json: { current_password, new_password } });
+}
+
+export function deleteAccount(): Promise<{ ok: boolean }> {
+  return api("/api/auth/delete-account", { method: "POST" });
 }
 
 /* ---- menu digitization (auth-only; not restaurant-scoped) ---------------- */

@@ -58,11 +58,11 @@
           </div>
 
           <form class="gate-login" id="gate-form" novalidate>
-            <input class="input" type="email" placeholder="Email" autocomplete="email"
+            <input class="input" id="gate-email" type="email" placeholder="Email" autocomplete="email"
               data-i18n-ph="gate.email" />
-            <input class="input" type="password" placeholder="Password" autocomplete="current-password"
+            <input class="input" id="gate-password" type="password" placeholder="Password" autocomplete="current-password"
               data-i18n-ph="gate.password" />
-            <button type="submit" class="btn btn-ink" data-i18n="gate.login">Log in</button>
+            <button type="submit" class="btn btn-ink" id="gate-login" data-i18n="gate.login">Log in</button>
             <p class="gate-hint" data-i18n="gate.noAccount">No account yet? Register below:</p>
             <button type="button" class="btn btn-primary" id="gate-signup" data-i18n="gate.signup">Sign up</button>
             <p class="gate-error" id="gate-error" hidden></p>

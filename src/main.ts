@@ -11,8 +11,14 @@ import { initOnboarding } from "./onboarding.ts";
 function boot(): void {
   // Owner control tower is an in-app route, lazy-loaded so it never ships in
   // the customer onboarding path.
-  if (window.location.pathname.replace(/\/+$/, "") === "/admin") {
+  const path = window.location.pathname.replace(/\/+$/, "");
+  if (path === "/admin") {
     void import("./admin.ts").then((m) => m.initAdmin());
+    return;
+  }
+  if (path === "/account") {
+    // Post-login account management, lazy-loaded like the control tower.
+    void import("./account.ts").then((m) => m.initAccount());
     return;
   }
   initI18n(); // translate static markup + wire the EN/DE toggle first
