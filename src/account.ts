@@ -128,31 +128,82 @@ function render(): void {
 }
 
 /** Plausible (blurred) faux content per tab, so the coming-soon screen looks
- * like a real page behind frosted glass rather than empty boxes. */
+ * like a real, densely populated page behind frosted glass. */
 function fauxContent(key: MainView): string {
   const line = (w: string) => `<span class="fx-line" style="width:${w}"></span>`;
   const rep = (n: number, fn: (i: number) => string) => Array.from({ length: n }, (_, i) => fn(i)).join("");
+  const av = (c = "") => `<span class="fx-avatar ${c}"></span>`;
+  const pill = () => `<span class="fx-pill"></span>`;
+  const tag = () => `<span class="fx-tag"></span>`;
+  const btn = (c = "") => `<span class="fx-btn ${c}"></span>`;
+  const toolbar = (right: string) => `<div class="fx-toolbar">${line("200px")}${right}</div>`;
 
   if (key === "dashboard") {
-    const stat = (n: string) => `<div class="card fx-stat"><div class="fx-num">${n}</div>${line("70%")}</div>`;
-    const heights = [45, 72, 58, 88, 64, 96, 52, 78, 68, 92, 48, 82];
+    const stat = (n: string) => `<div class="card fx-stat"><div class="fx-num">${n}</div>${line("64%")}<span class="fx-spark"></span></div>`;
+    const bars = [52, 74, 60, 88, 66, 96, 54, 80, 70, 92, 50, 84, 62, 90]
+      .map((h) => `<span class="fx-bar" style="height:${h}%"></span>`).join("");
     return `
-      <div class="fx-stats">${stat("2.481")}${stat("18")}${stat("€1.240")}</div>
-      <div class="card fx-chart"><div class="fx-bars">${heights.map((h) => `<span class="fx-bar" style="height:${h}%"></span>`).join("")}</div></div>
-      <div class="card fx-rows-card">${rep(4, () => `<div class="fx-row"><span class="fx-avatar sm"></span><span class="fx-body">${line("46%")}${line("28%")}</span><span class="fx-tag"></span></div>`)}</div>`;
+      ${toolbar(btn())}
+      <div class="fx-stats fx-stats-4">${stat("2.481")}${stat("18")}${stat("€1.240")}${stat("7")}</div>
+      <div class="fx-two">
+        <div class="card fx-chart">
+          <div class="fx-legend">${pill()}${pill()}</div>
+          <div class="fx-bars">${bars}</div>
+          <div class="fx-xaxis">${rep(7, () => `<span class="fx-line" style="width:20px"></span>`)}</div>
+        </div>
+        <div class="card fx-side">
+          ${line("52%")}
+          ${rep(6, () => `<div class="fx-row"><span class="fx-avatar sm"></span><span class="fx-body">${line("64%")}</span>${line("20%")}</div>`)}
+        </div>
+      </div>
+      <div class="card fx-table">
+        <div class="fx-tr fx-th">${line("70%")}${line("70%")}${line("60%")}${line("50%")}</div>
+        ${rep(6, () => `<div class="fx-tr"><span class="fx-td">${av("sm")}${line("70%")}</span>${line("60%")}${tag()}${line("55%")}</div>`)}
+      </div>`;
   }
+
   if (key === "creators") {
-    return `<div class="fx-cards">${rep(6, () => `
-      <div class="card fx-creator"><span class="fx-avatar"></span>${line("62%")}${line("40%")}
-        <span class="fx-pills"><span class="fx-pill"></span><span class="fx-pill"></span></span></div>`)}</div>`;
+    const card = () => `
+      <div class="card fx-creator">
+        <div class="fx-crow">${av()}<span class="fx-body">${line("74%")}${line("48%")}</span><span class="fx-num sm">12k</span></div>
+        ${line("94%")}${line("72%")}
+        <div class="fx-pills">${pill()}${pill()}${pill()}</div>
+        <div class="fx-crow2">${line("42%")}${btn("sm")}</div>
+      </div>`;
+    return `
+      ${toolbar(`<span class="fx-search"></span>`)}
+      <div class="fx-filters row">${pill()}${pill()}${pill()}${pill()}</div>
+      <div class="fx-cards">${rep(9, card)}</div>`;
   }
+
   if (key === "bookings") {
-    return `<div class="fx-rows">${rep(7, () => `
-      <div class="card fx-row"><span class="fx-avatar sm"></span><span class="fx-body">${line("52%")}${line("34%")}</span><span class="fx-tag"></span></div>`)}</div>`;
+    return `
+      ${toolbar(btn())}
+      <div class="fx-filters row">${pill()}${pill()}${pill()}${pill()}</div>
+      <div class="card fx-table">
+        <div class="fx-tr book fx-th">${line("70%")}${line("60%")}${line("50%")}${line("50%")}${line("40%")}</div>
+        ${rep(9, () => `<div class="fx-tr book"><span class="fx-td">${av("sm")}${line("72%")}</span>${line("62%")}${pill()}${tag()}${line("55%")}</div>`)}
+      </div>`;
   }
-  // messages
-  return `<div class="fx-rows">${rep(7, () => `
-    <div class="card fx-row"><span class="fx-avatar"></span><span class="fx-body">${line("40%")}${line("74%")}</span><span class="fx-time">${line("100%")}</span></div>`)}</div>`;
+
+  // messages — a two-pane chat app
+  const convo = () => `<div class="fx-convo">${av("sm")}<span class="fx-body">${line("62%")}${line("86%")}</span><span class="fx-time">${line("100%")}</span></div>`;
+  const bubble = (dir: "in" | "out", w: string) => `<span class="fx-bubble ${dir}" style="width:${w}"></span>`;
+  return `
+    <div class="fx-msgapp">
+      <div class="card fx-convos">
+        <span class="fx-search"></span>
+        ${rep(8, convo)}
+      </div>
+      <div class="card fx-thread">
+        <div class="fx-thread-head">${av("sm")}<span class="fx-body">${line("40%")}${line("24%")}</span></div>
+        <div class="fx-bubbles">
+          ${bubble("in", "58%")}${bubble("out", "46%")}${bubble("in", "72%")}${bubble("out", "52%")}
+          ${bubble("in", "38%")}${bubble("out", "64%")}${bubble("in", "50%")}${bubble("out", "44%")}
+        </div>
+        <div class="fx-composer">${line("100%")}${btn("sm")}</div>
+      </div>
+    </div>`;
 }
 
 function renderComingSoon(m: HTMLElement, key: MainView): void {

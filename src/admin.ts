@@ -7,6 +7,7 @@
 import "./styles/theme.css";
 import "./styles/onboarding.css"; // shared shell/topbar/card/input/button styles
 import "./styles/admin.css";
+import { INTRO, SCHEMA_DOC, type Col, type Group, type Table } from "./schema-doc.ts";
 import {
   getAdminAccounts,
   getAdminCreators,
@@ -21,7 +22,7 @@ import {
   type FunnelStage,
 } from "./api.ts";
 
-type View = "overview" | "restaurants" | "creators";
+type View = "overview" | "restaurants" | "creators" | "schema";
 
 const MARKUP = `
 <div class="admin-login-wrap" id="admin-login" hidden>
@@ -47,6 +48,7 @@ const MARKUP = `
       <button type="button" class="nav-item on" data-view="overview">Overview</button>
       <button type="button" class="nav-item" data-view="restaurants">Restaurants</button>
       <button type="button" class="nav-item" data-view="creators">Creators</button>
+      <button type="button" class="nav-item" data-view="schema">Data model</button>
     </nav>
     <button type="button" class="linklike admin-signout" id="admin-logout">Sign out</button>
   </aside>
@@ -87,6 +89,11 @@ const MARKUP = `
     <section class="admin-view" id="view-creators" hidden>
       <h1 class="admin-title">Creators <span class="count" id="crea-count"></span></h1>
       <div class="table-wrap" id="crea-table"></div>
+    </section>
+
+    <section class="admin-view" id="view-schema" hidden>
+      <h1 class="admin-title">Data model</h1>
+      <div id="schema-body"></div>
     </section>
   </main>
 </div>`;
@@ -245,8 +252,47 @@ function renderCreators(cs: AdminCreator[]): void {
   );
 }
 
+const KEY_LABEL: Record<string, string> = { pk: "primary key", fk: "link", uk: "unique" };
+
+function renderSchema(): void {
+  const el = byId("schema-body");
+  if (!el) return;
+  const colRow = ([name, type, desc, key]: Col) => `
+    <tr>
+      <td class="col-name">${esc(name)}${key ? `<span class="col-key ${key}">${KEY_LABEL[key]}</span>` : ""}</td>
+      <td class="col-type">${esc(type)}</td>
+      <td class="col-desc">${esc(desc)}</td>
+    </tr>`;
+  const card = (tb: Table) => {
+    const badge = tb.kind === "view" ? "view" : tb.db;
+    return `
+    <div class="schema-card">
+      <div class="schema-card-head">
+        <h3>${esc(tb.name)}</h3>
+        <span class="db-badge ${badge}">${badge}</span>
+      </div>
+      <p class="schema-summary">${esc(tb.summary)}</p>
+      <table class="schema-cols"><tbody>${tb.cols.map(colRow).join("")}</tbody></table>
+    </div>`;
+  };
+  const group = (g: Group) => `
+    <section class="schema-group">
+      <h2 class="schema-group-title">${esc(g.title)}</h2>
+      <p class="schema-group-blurb">${esc(g.blurb)}</p>
+      <div class="schema-cards">${g.tables.map(card).join("")}</div>
+    </section>`;
+  el.innerHTML = `
+    <p class="schema-intro">${esc(INTRO)}</p>
+    <div class="schema-legend">
+      <span class="db-badge tt_control">tt_control</span><span>shared brain</span>
+      <span class="db-badge tt_app">tt_app</span><span>per-restaurant private data</span>
+      <span class="col-key pk">primary key</span><span class="col-key fk">link</span><span class="col-key uk">unique</span>
+    </div>
+    ${SCHEMA_DOC.map(group).join("")}`;
+}
+
 function setView(view: View): void {
-  (["overview", "restaurants", "creators"] as View[]).forEach((v) => {
+  (["overview", "restaurants", "creators", "schema"] as View[]).forEach((v) => {
     const sec = byId(`view-${v}`);
     if (sec) sec.hidden = v !== view;
   });
@@ -265,11 +311,12 @@ async function loadDashboard(): Promise<void> {
   renderOverview(overview);
   renderRestaurants(restaurants.restaurants, accounts.accounts);
   renderCreators(creators.creators);
+  renderSchema();
 
   byId("admin-login")!.hidden = true;
   byId("admin-app")!.hidden = false;
   const hash = window.location.hash.replace("#", "") as View;
-  setView(["overview", "restaurants", "creators"].includes(hash) ? hash : "overview");
+  setView(["overview", "restaurants", "creators", "schema"].includes(hash) ? hash : "overview");
 }
 
 function showLogin(message?: string): void {

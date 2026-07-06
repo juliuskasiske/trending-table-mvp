@@ -264,3 +264,29 @@ table.admin th:first-child { white-space: nowrap; color: var(--muted); }
   .admin-signout { margin-top: 0; margin-left: auto; }
   .admin-main { padding: 24px 18px 64px; }
 }
+
+/* ---- Data model page --------------------------------------------------- */
+.schema-intro { max-width: 840px; font-size: 16px; line-height: 1.6; margin: 0 0 18px; }
+.schema-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-bottom: 30px; font-size: 13px; color: var(--muted); }
+.schema-group { margin-bottom: 40px; }
+.schema-group-title { font: 800 22px/1 var(--font-display); margin: 0 0 6px; }
+.schema-group-blurb { max-width: 840px; color: var(--muted); margin: 0 0 18px; line-height: 1.55; }
+.schema-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 20px; }
+.schema-card { border: 2px solid var(--line); background: var(--panel); box-shadow: 6px 6px 0 var(--ink); padding: 18px 20px; }
+.schema-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.schema-card-head h3 { font: 800 18px/1 var(--font); margin: 0; }
+.schema-summary { color: var(--muted); font-size: 14px; line-height: 1.5; margin: 0 0 14px; }
+.schema-cols { width: 100%; border-collapse: collapse; font-size: 13px; }
+.schema-cols td { padding: 8px 8px; border-top: 1px solid rgba(23, 23, 23, 0.12); vertical-align: top; }
+.schema-cols tr:first-child td { border-top: 0; }
+.col-name { font-weight: 700; white-space: nowrap; }
+.col-type { color: var(--muted); white-space: nowrap; }
+.col-desc { line-height: 1.45; }
+.db-badge { font: 700 12px/1 var(--font); padding: 4px 9px; border: 2px solid var(--line); white-space: nowrap; }
+.db-badge.tt_control { color: var(--accent-2); border-color: var(--accent-2); }
+.db-badge.tt_app { color: var(--accent); border-color: var(--accent); }
+.db-badge.view { color: var(--muted); border-color: var(--muted); }
+.col-key { display: inline-block; margin-left: 8px; font: 700 11px/1 var(--font); padding: 2px 6px; border: 1px solid; vertical-align: middle; }
+.col-key.pk { color: var(--accent); border-color: var(--accent); }
+.col-key.fk { color: var(--accent-2); border-color: var(--accent-2); }
+.col-key.uk { color: var(--muted); border-color: var(--muted); }
