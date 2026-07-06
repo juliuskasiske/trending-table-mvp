@@ -18,10 +18,13 @@ import {
   digitizeMenuUrl,
   getBilling,
   getGuidelines,
+  getCreator,
   getMe,
   getMenu,
   getRestaurant,
+  inviteCreator,
   listBookings,
+  listCreators,
   listPosts,
   listRestaurants,
   logout,
@@ -30,8 +33,11 @@ import {
   putMenu,
   putProfile,
   resendVerification,
+  reviewCreator,
   type BillingDetail,
   type Booking,
+  type CreatorDetail,
+  type CreatorSummary,
   type Principal,
   type RestaurantPost,
   type RestaurantSummary,
@@ -67,6 +73,19 @@ const ic = {
   image: svg('<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>'),
   external: svg('<path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>'),
   at: svg('<circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/>'),
+  pin: svg('<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>'),
+  people: svg('<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>'),
+  send: svg('<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>'),
+  close: svg('<path d="M18 6 6 18M6 6l12 12"/>'),
+  star: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14l-5-4.87 6.91-1.01L12 2Z"/></svg>',
+  starEmpty: svg('<path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14l-5-4.87 6.91-1.01L12 2Z"/>'),
+};
+
+/** A row of 5 stars, `n` filled (rounded). */
+const starRow = (n: number | null | undefined): string => {
+  const filled = Math.round(n || 0);
+  return `<span class="cr-stars">${Array.from({ length: 5 }, (_, i) =>
+    i < filled ? ic.star : ic.starEmpty).join("")}</span>`;
 };
 
 // Brand-colored platform logos (fill-based, not the stroke icons above).
@@ -126,6 +145,8 @@ let mainView: MainView = "settings";
 let settingsTab: SettingsTab = "restaurants";
 let detail: { id: number; tab: Tab } | null = null;
 let bookingView: number | null = null; // campaign id whose posts are being viewed
+let creatorQuery = ""; // directory search text
+let creatorPlatform = ""; // directory platform filter ("" = all)
 
 const main = () => byId("acct-main")!;
 const restName = () => restaurants[0]?.name || "Restaurant";
@@ -183,6 +204,7 @@ function render(): void {
   setNavActive();
   const m = main();
   if (mainView === "bookings") { void renderBookings(m); return; }
+  if (mainView === "creators") { void renderCreators(m); return; }
   if (mainView !== "settings") return renderComingSoon(m, mainView);
   renderSettings(m);
 }
@@ -417,6 +439,239 @@ async function renderPostView(m: HTMLElement, rid: number, cid: number): Promise
     : `<div class="pl-empty">${esc(t("content.noPosts"))}</div>`;
 
   body.innerHTML = creatorPanel + grid;
+}
+
+/* ---- creators directory (Creator finden) --------------------------------- */
+
+let searchTimer: number | undefined;
+
+async function renderCreators(m: HTMLElement): Promise<void> {
+  const r = activeRestaurant();
+  const chip = (plat: string, label: string) =>
+    `<button type="button" class="pl-chip ${creatorPlatform === plat ? "on" : ""}" data-plat="${plat}">${esc(label)}</button>`;
+  m.innerHTML = `
+    <div class="pl-toolbar">
+      <h1 class="admin-title">${esc(t("account.nav.creators"))}</h1>
+      <input id="cr-search" class="cr-search" type="search" placeholder="${esc(t("creators.search"))}" value="${esc(creatorQuery)}" />
+    </div>
+    <div class="pl-filters">
+      ${chip("", t("creators.all"))}
+      ${chip("instagram", "Instagram")}
+      ${chip("tiktok", "TikTok")}
+      ${chip("youtube", "YouTube")}
+    </div>
+    <div id="cr-grid"><p class="acct-loading">…</p></div>`;
+
+  const search = byId<HTMLInputElement>("cr-search");
+  search?.addEventListener("input", () => {
+    creatorQuery = search.value.trim();
+    window.clearTimeout(searchTimer);
+    searchTimer = window.setTimeout(() => void loadCreatorGrid(r), 300);
+  });
+  m.querySelectorAll<HTMLElement>(".pl-chip").forEach((b) =>
+    b.addEventListener("click", () => {
+      creatorPlatform = b.dataset.plat || "";
+      m.querySelectorAll(".pl-chip").forEach((x) => x.classList.toggle("on", x === b));
+      void loadCreatorGrid(r);
+    }));
+  await loadCreatorGrid(r);
+}
+
+async function loadCreatorGrid(r: RestaurantSummary | null): Promise<void> {
+  const grid = byId("cr-grid");
+  if (!grid) return;
+  let creators: CreatorSummary[];
+  try {
+    creators = (await listCreators({ q: creatorQuery, platform: creatorPlatform })).creators;
+  } catch {
+    grid.innerHTML = `<div class="pl-empty">${esc(t("account.error.load"))}</div>`;
+    return;
+  }
+  if (mainView !== "creators") return;
+  grid.innerHTML = creators.length
+    ? `<div class="cr-grid">${creators.map(creatorCard).join("")}</div>`
+    : `<div class="pl-empty">${esc(t("creators.empty"))}</div>`;
+  grid.querySelectorAll<HTMLElement>(".cr-card").forEach((el) =>
+    el.addEventListener("click", () => void openCreatorModal(Number(el.dataset.cid), r)));
+}
+
+function creatorCard(c: CreatorSummary): string {
+  const name = c.display_name || t("bookings.creatorFallback");
+  const logos = (c.socials || [])
+    .map((s) => `<span class="cr-plat" title="${esc(platformLabel(s.platform))}">${LOGOS[s.platform] || ""}</span>`)
+    .join("");
+  const cats = c.categories.slice(0, 3).map((x) => `<span class="cr-cat">${esc(x)}</span>`).join("");
+  const rating = c.rating_count > 0
+    ? `${starRow(c.rating_avg)}<span class="cr-rating-val">${esc(metricNum(c.rating_avg))}</span><span class="cr-rating-n">(${c.rating_count})</span>`
+    : `<span class="cr-norating">${esc(t("creators.noRating"))}</span>`;
+  const photo = c.avatar_url
+    ? `<div class="cr-photo"${avatarStyle(c.avatar_url)}>`
+    : `<div class="cr-photo cr-photo-blank"><span class="cr-photo-init">${esc(initial(name))}</span>`;
+  return `
+    <article class="cr-card" data-cid="${c.id}">
+      ${photo}<span class="cr-foll">${ic.people}${esc(metricNum(c.follower_total))}</span></div>
+      <div class="cr-body">
+        <div class="cr-name">${esc(name)}</div>
+        ${c.city ? `<div class="cr-loc">${ic.pin}${esc(c.city)}</div>` : ""}
+        ${logos ? `<div class="cr-plats">${logos}</div>` : ""}
+        ${cats ? `<div class="cr-cats">${cats}</div>` : ""}
+        <div class="cr-rating">${rating}</div>
+      </div>
+    </article>`;
+}
+
+/* ---- creator detail modal (profile + socials + rating + invite/review) --- */
+
+async function openCreatorModal(cid: number, r: RestaurantSummary | null): Promise<void> {
+  let ov = byId("cr-modal");
+  if (!ov) {
+    ov = document.createElement("div");
+    ov.id = "cr-modal";
+    ov.className = "crm-overlay";
+    document.body.appendChild(ov);
+    ov.addEventListener("click", (e) => { if (e.target === ov) closeCreatorModal(); });
+  }
+  ov.hidden = false;
+  document.body.classList.add("no-scroll");
+  ov.innerHTML = `<div class="crm-panel"><p class="acct-loading" style="padding:48px">…</p></div>`;
+  await paintCreatorModal(cid, r);
+}
+
+function closeCreatorModal(): void {
+  const ov = byId("cr-modal");
+  if (ov) { ov.hidden = true; ov.innerHTML = ""; }
+  document.body.classList.remove("no-scroll");
+}
+
+async function paintCreatorModal(cid: number, r: RestaurantSummary | null): Promise<void> {
+  const ov = byId("cr-modal");
+  if (!ov) return;
+  let d: CreatorDetail;
+  try {
+    d = await getCreator(cid, r?.id);
+  } catch {
+    ov.innerHTML = `<div class="crm-panel"><button type="button" class="crm-close" id="crm-close">${ic.close}</button><p class="pl-empty">${esc(t("account.error.load"))}</p></div>`;
+    byId("crm-close")?.addEventListener("click", closeCreatorModal);
+    return;
+  }
+  const c = d.creator;
+  const name = c.display_name || t("bookings.creatorFallback");
+  const av = c.avatar_url
+    ? `<div class="crm-avatar"${avatarStyle(c.avatar_url)}></div>`
+    : `<div class="crm-avatar crm-avatar-blank">${esc(initial(name))}</div>`;
+
+  const socialRows = d.socials.map((s) => `
+    <div class="crm-social">
+      <span class="crm-social-logo">${LOGOS[s.platform] || ""}</span>
+      <span class="crm-social-handle">${esc(s.handle || platformLabel(s.platform))}</span>
+      <span class="crm-social-foll">${esc(metricNum(s.follower_count))}</span>
+    </div>`).join("");
+
+  const chips = (arr: string[]) => arr.map((x) => `<span class="cd-tag">${esc(x)}</span>`).join("");
+
+  const ratingBlock = d.rating_count > 0
+    ? `<div class="crm-rating">
+         <div class="crm-rating-top">${starRow(d.rating_avg)}<span class="crm-rating-val">${esc(metricNum(d.rating_avg))}</span></div>
+         <span class="crm-rating-n">${esc(t("creators.reviewCount", { n: String(d.rating_count) }))}</span>
+       </div>`
+    : `<div class="crm-rating crm-rating-none">${esc(t("creators.noRating"))}</div>`;
+
+  const reviews = d.reviews.length
+    ? `<div class="crm-reviews">
+        <div class="cd-section-title">${esc(t("creators.reviews"))}</div>
+        ${d.reviews.map((rv) => `
+          <div class="crm-review">
+            <div class="crm-review-head">${starRow(rv.rating)}<span class="crm-review-rest">${esc(rv.restaurant_name)}</span></div>
+            ${rv.comment ? `<p class="crm-review-body">${esc(rv.comment)}</p>` : ""}
+          </div>`).join("")}
+      </div>`
+    : "";
+
+  // Invite button state
+  const inviteBtn = d.already_invited
+    ? `<button type="button" class="btn-invite" disabled>${ic.send}<span>${esc(t("creators.invited"))}</span></button>`
+    : `<button type="button" class="btn-invite" id="crm-invite">${ic.send}<span>${esc(t("creators.invite"))}</span></button>`;
+
+  // Review form — only after a completed collaboration
+  let reviewForm = "";
+  if (d.can_review) {
+    const cur = d.my_review?.rating || 0;
+    const starBtns = Array.from({ length: 5 }, (_, i) =>
+      `<button type="button" class="crm-star ${i < cur ? "on" : ""}" data-star="${i + 1}">${i < cur ? ic.star : ic.starEmpty}</button>`).join("");
+    reviewForm = `
+      <div class="crm-reviewform" data-rating="${cur}">
+        <div class="cd-section-title">${esc(d.my_review ? t("creators.yourRating") : t("creators.rate"))}</div>
+        <div class="crm-stars-pick" id="crm-stars">${starBtns}</div>
+        <textarea class="crm-comment" id="crm-comment" rows="2" placeholder="${esc(t("creators.commentPlaceholder"))}">${esc(d.my_review?.comment || "")}</textarea>
+        <div class="crm-review-actions">
+          <button type="button" class="btn-review" id="crm-submit">${esc(d.my_review ? t("creators.updateReview") : t("creators.submitReview"))}</button>
+          <span class="crm-review-msg" id="crm-review-msg"></span>
+        </div>
+      </div>`;
+  }
+
+  ov.innerHTML = `
+    <div class="crm-panel">
+      <button type="button" class="crm-close" id="crm-close">${ic.close}</button>
+      <div class="crm-head">
+        ${av}
+        <div class="crm-head-info">
+          <div class="crm-name">${esc(name)}</div>
+          ${c.city ? `<div class="crm-loc">${ic.pin}${esc(c.city)}</div>` : ""}
+          ${ratingBlock}
+        </div>
+      </div>
+      ${c.bio ? `<p class="crm-bio">${esc(c.bio)}</p>` : ""}
+      ${c.categories.length ? `<div class="cd-section-title">${esc(t("creators.specialties"))}</div><div class="cd-tags">${chips(c.categories)}</div>` : ""}
+      ${socialRows ? `<div class="cd-section-title">${esc(t("creators.channels"))}</div><div class="crm-socials">${socialRows}</div>` : ""}
+      ${reviewForm}
+      ${reviews}
+      <div class="crm-foot">${inviteBtn}</div>
+    </div>`;
+
+  byId("crm-close")?.addEventListener("click", closeCreatorModal);
+  byId("crm-invite")?.addEventListener("click", async () => {
+    if (!r) return;
+    const btn = byId<HTMLButtonElement>("crm-invite")!;
+    btn.disabled = true;
+    try {
+      await inviteCreator(r.id, cid);
+      await paintCreatorModal(cid, r); // reflects already_invited
+    } catch {
+      btn.disabled = false;
+    }
+  });
+
+  // Review star picker + submit
+  const form = ov.querySelector<HTMLElement>(".crm-reviewform");
+  if (form) {
+    ov.querySelectorAll<HTMLElement>(".crm-star").forEach((s) =>
+      s.addEventListener("click", () => {
+        const val = Number(s.dataset.star);
+        form.dataset.rating = String(val);
+        ov.querySelectorAll<HTMLElement>(".crm-star").forEach((x, i) => {
+          const on = i < val;
+          x.classList.toggle("on", on);
+          x.innerHTML = on ? ic.star : ic.starEmpty;
+        });
+      }));
+    byId("crm-submit")?.addEventListener("click", async () => {
+      const rating = Number(form.dataset.rating);
+      const msg = byId("crm-review-msg")!;
+      if (!rating) { msg.textContent = t("creators.pickStars"); return; }
+      if (!r) return;
+      const comment = byId<HTMLTextAreaElement>("crm-comment")?.value || "";
+      const btn = byId<HTMLButtonElement>("crm-submit")!;
+      btn.disabled = true;
+      try {
+        await reviewCreator(r.id, cid, rating, comment);
+        await paintCreatorModal(cid, r);
+      } catch (e) {
+        btn.disabled = false;
+        msg.textContent = (e as Error).message || t("account.error.save");
+      }
+    });
+  }
 }
 
 function renderSettings(m: HTMLElement): void {
@@ -815,6 +1070,7 @@ function navTo(v: MainView): void {
   mainView = v;
   bookingView = null;
   closeRestMenu();
+  closeCreatorModal();
   render();
 }
 function openSettings(tab: SettingsTab): void {
