@@ -1,12 +1,13 @@
 /**
- * Account management — the only thing a logged-in restaurant sees until the
- * platform is ready. In-app route `/account`, lazy-loaded by the SPA. Left nav
- * toggles "Your restaurants" and "Account & security"; picking a restaurant
- * opens Profile / Menu / Guidelines / Billing. Mirrors the `/admin` scaffolding.
+ * The logged-in restaurant "app" shell. Until the platform (dashboard,
+ * creators, bookings, messages) is live, those nav tabs show a blurred
+ * "coming soon" screen; the working account management lives under the
+ * restaurant selector's Einstellungen (Settings) as two sub-tabs:
+ * Restaurants and Konto. In-app route `/account`, lazy-loaded by the SPA.
  */
 import "./styles/theme.css";
 import "./styles/onboarding.css"; // shared card / field / input / button / chip
-import "./styles/admin.css"; // shared app shell (nav + main)
+import "./styles/admin.css"; // shared .admin-title + .pill
 import "./styles/account.css";
 import {
   cancelBilling,
@@ -46,39 +47,118 @@ const locale = () => (getLang() === "de" ? "de-DE" : "en-US");
 const fmtDate = (unix: number | null | undefined): string =>
   unix ? new Intl.DateTimeFormat(locale(), { day: "numeric", month: "long", year: "numeric" }).format(new Date(unix * 1000)) : "—";
 
+const svg = (paths: string) =>
+  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+const ic = {
+  dashboard: svg('<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>'),
+  creators: svg('<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/>'),
+  bookings: svg('<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 9h18"/><path d="m9 15 2 2 4-4"/>'),
+  messages: svg('<path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z"/>'),
+  settings: svg('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'),
+  food: svg('<path d="M4 3v6a2 2 0 0 0 2 2 2 2 0 0 0 2-2V3M6 11v10M17 3c-1.7 0-3 2-3 4.5S15.3 12 17 12m0-9v18"/>'),
+  chevron: svg('<path d="m6 9 6 6 6-6"/>'),
+  logout: svg('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/>'),
+};
+
 /* ---- state --------------------------------------------------------------- */
+
+type MainView = "dashboard" | "creators" | "bookings" | "messages" | "settings";
+type SettingsTab = "restaurants" | "account";
+type Tab = "profile" | "menu" | "guidelines" | "billing";
 
 let me: Principal | null = null;
 let restaurants: RestaurantSummary[] = [];
-type View = { name: "restaurants" } | { name: "detail"; id: number; tab: Tab } | { name: "account" };
-type Tab = "profile" | "menu" | "guidelines" | "billing";
-let view: View = { name: "restaurants" };
+let mainView: MainView = "settings";
+let settingsTab: SettingsTab = "restaurants";
+let detail: { id: number; tab: Tab } | null = null;
 
-/* ---- shell --------------------------------------------------------------- */
+const main = () => byId("acct-main")!;
+const restName = () => restaurants[0]?.name || "Restaurant";
+
+/* ---- shell (dark platform nav) ------------------------------------------- */
 
 function shell(): string {
+  const item = (v: MainView, badge = "") =>
+    `<button type="button" class="pnav-item" data-view="${v}">${ic[v as keyof typeof ic]}<span>${esc(t(`account.nav.${v}`))}</span>${badge}</button>`;
   return `
-<div class="admin-app account-app">
-  <aside class="admin-nav">
-    <a href="/" class="brand-logo">trending table<span class="dot">.</span></a>
-    <p class="admin-nav-tag">${esc(t("account.nav.tag"))}</p>
-    <nav class="admin-nav-list">
-      <button type="button" class="nav-item" data-nav="restaurants">${esc(t("account.nav.restaurants"))}</button>
-      <button type="button" class="nav-item" data-nav="account">${esc(t("account.nav.account"))}</button>
+<div class="platform-app">
+  <aside class="pnav">
+    <div class="pnav-logo">tt<span class="dot">.</span></div>
+    <nav class="pnav-list">
+      ${item("dashboard")}
+      ${item("creators")}
+      ${item("bookings")}
+      ${item("messages", `<span class="pnav-badge">3</span>`)}
     </nav>
-    <div class="account-nav-foot">
-      <div class="lang-toggle account-lang" id="acct-lang" role="group" aria-label="Language">
-        <button type="button" data-lang="de">DE</button>
-        <button type="button" data-lang="en">EN</button>
+    <div class="pnav-foot">
+      <div class="rest-menu" id="rest-menu" hidden>
+        <button type="button" class="rest-menu-item" id="menu-settings">${ic.settings}<span>${esc(t("account.nav.settings"))}</span></button>
+        <div class="rest-menu-lang">
+          <span>${esc(t("account.language"))}</span>
+          <div class="account-lang" id="acct-lang"><button type="button" data-lang="de">DE</button><button type="button" data-lang="en">EN</button></div>
+        </div>
+        <button type="button" class="rest-menu-item" id="menu-logout">${ic.logout}<span>${esc(t("account.signout"))}</span></button>
       </div>
-      <button type="button" class="linklike admin-signout" id="acct-logout">${esc(t("account.signout"))}</button>
+      <button type="button" class="rest-selector" id="rest-selector">
+        <span class="rest-food">${ic.food}</span>
+        <span class="rest-name">${esc(restName())}</span>
+        <span class="rest-chevron">${ic.chevron}</span>
+      </button>
     </div>
   </aside>
-  <main class="admin-main account-main" id="acct-main"></main>
+  <main class="platform-main" id="acct-main"></main>
 </div>`;
 }
 
-/* ---- restaurants list ---------------------------------------------------- */
+function setNavActive(): void {
+  document.querySelectorAll<HTMLElement>(".pnav-item").forEach((b) =>
+    b.classList.toggle("on", b.dataset.view === mainView),
+  );
+  const sel = byId("rest-selector");
+  if (sel) sel.classList.toggle("on", mainView === "settings");
+}
+
+/* ---- render -------------------------------------------------------------- */
+
+function render(): void {
+  setNavActive();
+  const m = main();
+  if (mainView !== "settings") return renderComingSoon(m, mainView);
+  renderSettings(m);
+}
+
+function renderComingSoon(m: HTMLElement, key: MainView): void {
+  const block = `<div class="coming-card"></div>`;
+  m.innerHTML = `
+    <div class="coming-wrap">
+      <div class="coming-blur" aria-hidden="true">
+        <h1 class="admin-title">${esc(t(`account.nav.${key}`))}</h1>
+        <div class="coming-grid">${block.repeat(6)}</div>
+      </div>
+      <div class="coming-overlay">
+        <div class="coming-badge">${esc(t("account.comingSoon"))}</div>
+        <p>${esc(t("account.comingSoonSub"))}</p>
+      </div>
+    </div>`;
+}
+
+function renderSettings(m: HTMLElement): void {
+  const tab = (id: SettingsTab) =>
+    `<button type="button" class="acct-subtab ${settingsTab === id ? "on" : ""}" data-st="${id}">${esc(t(`account.settings.${id}`))}</button>`;
+  m.innerHTML = `
+    <h1 class="admin-title">${esc(t("account.nav.settings"))}</h1>
+    <div class="acct-subtabs">${tab("restaurants")}${tab("account")}</div>
+    <div id="settings-body"><p class="acct-loading">…</p></div>`;
+  m.querySelectorAll<HTMLElement>(".acct-subtab").forEach((b) =>
+    b.addEventListener("click", () => openSettings(b.dataset.st as SettingsTab)),
+  );
+  const body = byId("settings-body")!;
+  if (settingsTab === "account") renderAccountView(body);
+  else if (detail) renderDetail(detail.id, detail.tab, body);
+  else renderRestaurantsList(body);
+}
+
+/* ---- settings › restaurants --------------------------------------------- */
 
 function planLabel(status: string | null): string {
   const key = `account.plan.${status ?? "none"}`;
@@ -86,7 +166,7 @@ function planLabel(status: string | null): string {
   return label === key ? (status ?? t("account.plan.none")) : label;
 }
 
-function renderRestaurants(): void {
+function renderRestaurantsList(body: HTMLElement): void {
   const cards = restaurants.length
     ? restaurants
         .map(
@@ -101,36 +181,33 @@ function renderRestaurants(): void {
         )
         .join("")
     : `<p class="acct-empty">${esc(t("account.rest.empty"))}</p>`;
-  main().innerHTML = `
-    <h1 class="admin-title">${esc(t("account.rest.title"))}</h1>
+  body.innerHTML = `
     <div class="acct-cards">${cards}</div>
     <a class="btn btn-primary acct-add" href="/register">${esc(t("account.rest.add"))}</a>`;
-  main()
-    .querySelectorAll<HTMLElement>("[data-open]")
-    .forEach((b) => b.addEventListener("click", () => go({ name: "detail", id: Number(b.dataset.open), tab: "profile" })));
+  body.querySelectorAll<HTMLElement>("[data-open]").forEach((b) =>
+    b.addEventListener("click", () => openRestaurant(Number(b.dataset.open))),
+  );
 }
 
-/* ---- restaurant detail --------------------------------------------------- */
-
-function detailChrome(id: number, tab: Tab): void {
+function renderDetail(id: number, tab: Tab, body: HTMLElement): void {
   const r = restaurants.find((x) => x.id === id);
   const tabs: Tab[] = ["profile", "menu", "guidelines", "billing"];
-  main().innerHTML = `
-    <button type="button" class="linklike acct-back" id="acct-back">← ${esc(t("account.rest.title"))}</button>
-    <h1 class="admin-title">${esc(r?.name || "—")}</h1>
+  body.innerHTML = `
+    <button type="button" class="linklike acct-back" id="acct-back">← ${esc(t("account.settings.restaurants"))}</button>
+    <h2 class="acct-detail-name">${esc(r?.name || "—")}</h2>
     <div class="acct-tabs">
       ${tabs.map((tb) => `<button type="button" class="acct-tab ${tb === tab ? "on" : ""}" data-tab="${tb}">${esc(t(`account.tab.${tb}`))}</button>`).join("")}
     </div>
     <div class="acct-tab-body" id="acct-tab-body"><p class="acct-loading">…</p></div>`;
-  byId("acct-back")?.addEventListener("click", () => go({ name: "restaurants" }));
-  main()
-    .querySelectorAll<HTMLElement>(".acct-tab")
-    .forEach((b) => b.addEventListener("click", () => go({ name: "detail", id, tab: b.dataset.tab as Tab })));
-  const body = byId("acct-tab-body")!;
-  if (tab === "profile") void renderProfile(id, body);
-  else if (tab === "menu") void renderMenu(id, body);
-  else if (tab === "guidelines") void renderGuidelines(id, body);
-  else void renderBilling(id, body);
+  byId("acct-back")?.addEventListener("click", () => backToList());
+  body.querySelectorAll<HTMLElement>(".acct-tab").forEach((b) =>
+    b.addEventListener("click", () => setDetailTab(b.dataset.tab as Tab)),
+  );
+  const tb = byId("acct-tab-body")!;
+  if (tab === "profile") void renderProfile(id, tb);
+  else if (tab === "menu") void renderMenu(id, tb);
+  else if (tab === "guidelines") void renderGuidelines(id, tb);
+  else void renderBilling(id, tb);
 }
 
 /** A labelled input row. */
@@ -145,7 +222,7 @@ function saveButton(id: string): string {
   return `<div class="acct-save-row"><button type="button" class="btn btn-ink" id="${id}">${esc(t("account.save"))}</button><span class="acct-saved" id="${id}-ok" hidden>${esc(t("account.saved"))}</span></div>`;
 }
 
-async function flashSaved(okId: string): Promise<void> {
+function flashSaved(okId: string): void {
   const ok = byId(okId);
   if (!ok) return;
   ok.hidden = false;
@@ -181,7 +258,7 @@ async function renderProfile(id: number, body: HTMLElement): Promise<void> {
     });
     const r = restaurants.find((x) => x.id === id);
     if (r) r.name = val("pf-name") || r.name;
-    void flashSaved("pf-save-ok");
+    flashSaved("pf-save-ok");
   });
 }
 
@@ -191,7 +268,7 @@ async function renderMenu(id: number, body: HTMLElement): Promise<void> {
 
   const draw = () => {
     body.innerHTML = `
-      <div class="menu-editor" id="menu-rows">
+      <div class="menu-editor">
         ${rows
           .map(
             (it, i) => `
@@ -214,7 +291,6 @@ async function renderMenu(id: number, body: HTMLElement): Promise<void> {
         <p class="acct-note" id="menu-scan-note" hidden></p>
       </div>
       ${saveButton("menu-save")}`;
-    // sync edits back into rows
     body.querySelectorAll<HTMLElement>(".menu-row").forEach((row) => {
       const i = Number(row.dataset.i);
       row.querySelectorAll<HTMLInputElement>("input[data-f]").forEach((inp) => {
@@ -254,7 +330,7 @@ async function renderMenu(id: number, body: HTMLElement): Promise<void> {
     });
     byId("menu-save")?.addEventListener("click", async () => {
       await putMenu(id, rows.filter((r) => r.name.trim()));
-      void flashSaved("menu-save-ok");
+      flashSaved("menu-save-ok");
     });
   };
   draw();
@@ -281,7 +357,7 @@ async function renderGuidelines(id: number, body: HTMLElement): Promise<void> {
       handle: byId<HTMLInputElement>("g-handle")?.value.trim() || undefined,
       notes: byId<HTMLTextAreaElement>("g-notes")?.value.trim() || undefined,
     });
-    void flashSaved("g-save-ok");
+    flashSaved("g-save-ok");
   });
 }
 
@@ -319,16 +395,15 @@ async function renderBilling(id: number, body: HTMLElement): Promise<void> {
   byId("bill-save")?.addEventListener("click", async () => {
     const val = Number(byId<HTMLInputElement>("bill-limit")?.value);
     if (Number.isFinite(val) && val >= 0) await putBilling(id, val);
-    void flashSaved("bill-save-ok");
+    flashSaved("bill-save-ok");
   });
   byId("bill-cancel")?.addEventListener("click", () => {
     confirmBox(t("account.billing.cancelConfirmTitle"), t("account.billing.cancelConfirm"), null, async () => {
       await cancelBilling(id);
-      go({ name: "detail", id, tab: "billing" });
+      render();
     });
   });
 
-  // Danger zone: delete this restaurant (type the name to confirm).
   const r = restaurants.find((x) => x.id === id);
   const danger = document.createElement("div");
   danger.className = "danger-zone";
@@ -345,19 +420,17 @@ async function renderBilling(id: number, body: HTMLElement): Promise<void> {
       async () => {
         await deleteRestaurant(id);
         restaurants = restaurants.filter((x) => x.id !== id);
-        go({ name: "restaurants" });
+        backToList();
       },
     );
   });
 }
 
-/* ---- account & security -------------------------------------------------- */
+/* ---- settings › account -------------------------------------------------- */
 
-function renderAccount(): void {
+function renderAccountView(body: HTMLElement): void {
   const verified = me?.email_verified;
-  main().innerHTML = `
-    <h1 class="admin-title">${esc(t("account.nav.account"))}</h1>
-
+  body.innerHTML = `
     <section class="card acct-section">
       ${field("ac-name", t("account.acct.displayName"), me?.display_name ?? "")}
       ${saveButton("ac-name-save")}
@@ -391,11 +464,11 @@ function renderAccount(): void {
     const name = byId<HTMLInputElement>("ac-name")?.value.trim() ?? "";
     await updateMe(name);
     if (me) me.display_name = name || null;
-    void flashSaved("ac-name-save-ok");
+    flashSaved("ac-name-save-ok");
   });
   byId("ac-resend")?.addEventListener("click", async () => {
     await resendVerification();
-    void flashSaved("ac-resend-ok");
+    flashSaved("ac-resend-ok");
   });
   byId("ac-pw-save")?.addEventListener("click", async () => {
     const cur = byId<HTMLInputElement>("ac-cur")?.value ?? "";
@@ -406,7 +479,7 @@ function renderAccount(): void {
       await changePassword(cur, nw);
       byId<HTMLInputElement>("ac-cur")!.value = "";
       byId<HTMLInputElement>("ac-new")!.value = "";
-      void flashSaved("ac-pw-ok");
+      flashSaved("ac-pw-ok");
     } catch (e) {
       if (err) {
         err.hidden = false;
@@ -429,8 +502,6 @@ function renderAccount(): void {
 
 /* ---- confirm dialog ------------------------------------------------------ */
 
-/** Modal confirm. If `matchWord` is set, the action stays disabled until the
- * user types it exactly (used for deletes — no all-caps token, the name/email). */
 function confirmBox(title: string, message: string, matchWord: string | null, onConfirm: () => Promise<void>): void {
   const wrap = document.createElement("div");
   wrap.className = "confirm-wrap";
@@ -472,38 +543,59 @@ function confirmBox(title: string, message: string, matchWord: string | null, on
   });
 }
 
-/* ---- routing / render ---------------------------------------------------- */
+/* ---- navigation ---------------------------------------------------------- */
 
-const main = () => byId("acct-main")!;
-
-function setNavActive(): void {
-  const active = view.name === "account" ? "account" : "restaurants";
-  document.querySelectorAll<HTMLElement>(".nav-item").forEach((b) => b.classList.toggle("on", b.dataset.nav === active));
+function navTo(v: MainView): void {
+  mainView = v;
+  closeRestMenu();
+  render();
 }
-
-function render(): void {
-  setNavActive();
-  if (view.name === "restaurants") renderRestaurants();
-  else if (view.name === "detail") detailChrome(view.id, view.tab);
-  else renderAccount();
+function openSettings(tab: SettingsTab): void {
+  mainView = "settings";
+  settingsTab = tab;
+  detail = null;
+  closeRestMenu();
+  render();
 }
-
-function go(next: View): void {
-  view = next;
+function openRestaurant(id: number): void {
+  mainView = "settings";
+  settingsTab = "restaurants";
+  detail = { id, tab: "profile" };
+  render();
+}
+function setDetailTab(tab: Tab): void {
+  if (detail) detail.tab = tab;
+  render();
+}
+function backToList(): void {
+  detail = null;
   render();
 }
 
+function closeRestMenu(): void {
+  byId("rest-menu")!.hidden = true;
+}
+
 function wireShell(): void {
-  document.querySelectorAll<HTMLElement>(".nav-item").forEach((b) =>
-    b.addEventListener("click", () => go(b.dataset.nav === "account" ? { name: "account" } : { name: "restaurants" })),
+  document.querySelectorAll<HTMLElement>(".pnav-item").forEach((b) =>
+    b.addEventListener("click", () => navTo(b.dataset.view as MainView)),
   );
-  byId("acct-logout")?.addEventListener("click", async () => {
+  const menu = byId("rest-menu")!;
+  byId("rest-selector")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    menu.hidden = !menu.hidden;
+  });
+  document.addEventListener("click", (e) => {
+    if (!menu.hidden && !(e.target as HTMLElement).closest(".pnav-foot")) menu.hidden = true;
+  });
+  byId("menu-settings")?.addEventListener("click", () => openSettings(settingsTab));
+  byId("menu-logout")?.addEventListener("click", async () => {
     await logout();
     window.location.assign("/login");
   });
   byId("acct-lang")
     ?.querySelectorAll<HTMLButtonElement>("button[data-lang]")
-    .forEach((b) => b.addEventListener("click", () => setLang(b.dataset.lang as "en" | "de")));
+    .forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); setLang(b.dataset.lang as "en" | "de"); }));
   syncLangToggle();
 }
 
@@ -527,7 +619,6 @@ export async function initAccount(): Promise<void> {
   document.body.innerHTML = shell();
   wireShell();
   render();
-  // Re-render on language switch (rebuild shell chrome + current view).
   onLangChange(() => {
     document.title = t("account.pageTitle");
     document.body.innerHTML = shell();
