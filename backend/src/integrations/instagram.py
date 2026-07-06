@@ -7,6 +7,7 @@ which are the *Instagram* app's id/secret, not the top-level Meta app id.
 """
 from __future__ import annotations
 
+import re
 from urllib.parse import urlencode
 
 import httpx
@@ -72,3 +73,55 @@ def profile(token: str) -> dict:
     }, timeout=_TIMEOUT)
     r.raise_for_status()
     return r.json()  # { user_id, username, account_type, followers_count, media_count }
+
+
+_MEDIA_FIELDS = (
+    "id,permalink,media_type,media_product_type,thumbnail_url,media_url,"
+    "caption,timestamp,like_count,comments_count"
+)
+
+
+def _shortcode(url: str) -> str | None:
+    """The stable id in an Instagram post URL: /p/<x>, /reel/<x>, or /tv/<x>."""
+    m = re.search(r"instagram\.com/(?:p|reel|reels|tv)/([A-Za-z0-9_-]+)", url or "")
+    return m.group(1) if m else None
+
+
+def media_by_permalink(token: str, permalink: str) -> dict | None:
+    """Resolve a submitted post URL to the creator's media object. The URL's
+    shortcode is not the API media id, so we page /me/media and match on the
+    permalink's shortcode. Returns the media dict (with the real id) or None."""
+    target = _shortcode(permalink)
+    if not target:
+        return None
+    url = f"{_GRAPH}/me/media"
+    params = {"fields": _MEDIA_FIELDS, "limit": 50, "access_token": token}
+    for _ in range(6):  # up to ~300 recent posts
+        r = httpx.get(url, params=params, timeout=_TIMEOUT)
+        r.raise_for_status()
+        body = r.json()
+        for m in body.get("data", []):
+            if _shortcode(m.get("permalink", "")) == target:
+                return m
+        nxt = (body.get("paging") or {}).get("next")
+        if not nxt:
+            break
+        url, params = nxt, None  # `next` is a fully-formed URL
+    return None
+
+
+def media_insights(token: str, media_id: str, product_type: str | None) -> dict:
+    """Live counts for one media. Reels expose 'views'; older/other media fall
+    back to 'reach'. Best-effort — returns {} if insights aren't available."""
+    metrics = "views,reach,total_interactions" if (product_type or "").upper() == "REELS" else "reach"
+    try:
+        r = httpx.get(f"{_GRAPH}/{media_id}/insights",
+                      params={"metric": metrics, "access_token": token}, timeout=_TIMEOUT)
+        r.raise_for_status()
+        out: dict = {}
+        for row in r.json().get("data", []):
+            vals = row.get("values") or [{}]
+            out[row.get("name")] = vals[0].get("value")
+        return out
+    except Exception:
+        return {}

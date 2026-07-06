@@ -167,11 +167,16 @@ CREATE TABLE IF NOT EXISTS campaigns (
     status          TEXT NOT NULL DEFAULT 'proposed'
                     CHECK (status IN ('proposed', 'accepted', 'live', 'completed', 'cancelled')),
     brief           JSONB NOT NULL DEFAULT '{}'::jsonb,
+    deliverable     TEXT,                      -- e.g. "1 Reel + Story" (the booking ask)
+    scheduled_date  DATE,                      -- the collaboration date (calendar)
     agreed_rate_eur NUMERIC(12, 2),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS campaigns_restaurant_idx ON campaigns (restaurant_id);
 CREATE INDEX IF NOT EXISTS campaigns_creator_idx    ON campaigns (creator_id);
+-- Additive booking fields for older DBs (idempotent).
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS deliverable TEXT;
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS scheduled_date DATE;
 
 -- THE billable unit: one creator post about a restaurant. The restaurant pays
 -- for views on posts tied to it. billed_views is the high-water mark already
@@ -181,10 +186,13 @@ CREATE TABLE IF NOT EXISTS posts (
     campaign_id      BIGINT REFERENCES campaigns(id) ON DELETE SET NULL,
     restaurant_id    BIGINT NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
     creator_id       BIGINT NOT NULL REFERENCES creators(id) ON DELETE CASCADE,
-    platform         TEXT NOT NULL CHECK (platform IN ('instagram', 'tiktok')),
+    platform         TEXT NOT NULL CHECK (platform IN ('instagram', 'tiktok', 'youtube')),
     platform_post_id TEXT,
     permalink        TEXT,
     caption          TEXT,
+    thumbnail_url    TEXT,                     -- cover image for the restaurant's post view
+    media_type       TEXT,                     -- IMAGE | VIDEO | CAROUSEL_ALBUM
+    media_product_type TEXT,                   -- REELS | FEED | STORY
     posted_at        TIMESTAMPTZ,
     status           TEXT NOT NULL DEFAULT 'live'
                      CHECK (status IN ('detected', 'live', 'removed')),
@@ -194,6 +202,13 @@ CREATE TABLE IF NOT EXISTS posts (
 );
 CREATE INDEX IF NOT EXISTS posts_restaurant_idx ON posts (restaurant_id);
 CREATE INDEX IF NOT EXISTS posts_creator_idx    ON posts (creator_id);
+-- Additive media fields + widened platform for older DBs (idempotent).
+ALTER TABLE posts ADD COLUMN IF NOT EXISTS thumbnail_url TEXT;
+ALTER TABLE posts ADD COLUMN IF NOT EXISTS media_type TEXT;
+ALTER TABLE posts ADD COLUMN IF NOT EXISTS media_product_type TEXT;
+ALTER TABLE posts DROP CONSTRAINT IF EXISTS posts_platform_check;
+ALTER TABLE posts ADD CONSTRAINT posts_platform_check
+    CHECK (platform IN ('instagram', 'tiktok', 'youtube'));
 
 -- ============================================================================
 -- Metrics + view-based billing

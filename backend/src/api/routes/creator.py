@@ -243,6 +243,43 @@ def my_campaigns(principal: dict = Depends(deps.require_creator)) -> dict:
         return {"campaigns": cur.fetchall()}
 
 
+def _parse_ig_ts(s: str | None) -> datetime | None:
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(s.replace("+0000", "+00:00"))
+    except Exception:
+        return None
+
+
+def _resolve_ig_media(conn, creator_id: int, permalink: str) -> dict | None:
+    """Best-effort: use the creator's connected Instagram token to fetch the
+    post's media (thumbnail, type, caption, counts). None if not resolvable."""
+    if not instagram.enabled():
+        return None
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT access_token_enc FROM social_accounts"
+            " WHERE creator_id = %s AND platform = 'instagram' AND status = 'connected'",
+            (creator_id,),
+        )
+        row = cur.fetchone()
+    if not row or not row[0]:
+        return None
+    try:
+        token = crypto.decrypt(row[0])
+        media = instagram.media_by_permalink(token, permalink)
+        if not media:
+            return None
+        ins = instagram.media_insights(token, media["id"], media.get("media_product_type"))
+        media["_views"] = ins.get("views") or ins.get("reach") or 0
+        media["_token"] = token
+        return media
+    except Exception:
+        _log.exception("Instagram media resolve failed")
+        return None
+
+
 @router.post("/posts")
 def submit_post(body: PostIn, principal: dict = Depends(deps.require_creator)) -> dict:
     try:
@@ -258,17 +295,33 @@ def submit_post(body: PostIn, principal: dict = Depends(deps.require_creator)) -
             campaign = cur.fetchone()
             if not campaign:
                 raise HTTPException(status_code=404, detail="Campaign not found.")
+
+            media = _resolve_ig_media(conn, principal["id"], body.url) if platform == "instagram" else None
+            # Prefer the real API media id + fetched fields when we have them.
+            pid = str(media["id"]) if media else platform_post_id
+            caption = (media or {}).get("caption") or body.caption
+            posted_at = _parse_ig_ts((media or {}).get("timestamp"))
+
             cur.execute(
                 "INSERT INTO posts (campaign_id, restaurant_id, creator_id, platform,"
-                "   platform_post_id, permalink, caption, status, posted_at)"
-                " VALUES (%s, %s, %s, %s, %s, %s, %s, 'live', NOW())"
+                "   platform_post_id, permalink, caption, thumbnail_url, media_type,"
+                "   media_product_type, status, posted_at)"
+                " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'live', COALESCE(%s, NOW()))"
                 " ON CONFLICT (platform, platform_post_id) DO UPDATE SET permalink = EXCLUDED.permalink,"
-                "   caption = EXCLUDED.caption"
-                " RETURNING id, platform, platform_post_id, permalink, status, billed_views",
-                (body.campaign_id, campaign["restaurant_id"], principal["id"], platform,
-                 platform_post_id, body.url, body.caption),
+                "   caption = EXCLUDED.caption, thumbnail_url = EXCLUDED.thumbnail_url,"
+                "   media_type = EXCLUDED.media_type, media_product_type = EXCLUDED.media_product_type"
+                " RETURNING id, platform, platform_post_id, permalink, thumbnail_url, media_type, status, billed_views",
+                (body.campaign_id, campaign["restaurant_id"], principal["id"], platform, pid, body.url,
+                 caption, (media or {}).get("thumbnail_url") or (media or {}).get("media_url"),
+                 (media or {}).get("media_type"), (media or {}).get("media_product_type"), posted_at),
             )
             post = cur.fetchone()
+            if media:  # seed an initial metric snapshot from the API
+                cur.execute(
+                    "INSERT INTO post_metrics (post_id, views, likes, comments)"
+                    " VALUES (%s, %s, %s, %s)",
+                    (post["id"], media.get("_views"), media.get("like_count"), media.get("comments_count")),
+                )
             cur.execute("UPDATE campaigns SET status = 'live' WHERE id = %s AND status IN ('proposed','accepted')",
                         (body.campaign_id,))
         conn.commit()

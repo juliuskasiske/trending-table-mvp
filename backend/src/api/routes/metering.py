@@ -60,15 +60,26 @@ def restaurant_spend(ctx: dict = Depends(restaurant_ctx)) -> dict:
 
 
 @router.get("/restaurants/{restaurant_id}/posts")
-def restaurant_posts(ctx: dict = Depends(restaurant_ctx)) -> dict:
+def restaurant_posts(ctx: dict = Depends(restaurant_ctx), campaign_id: int | None = None) -> dict:
+    """Posts published for this restaurant, enriched for the post view: creator
+    identity, media (thumbnail/type), latest views/likes, and the booking they
+    belong to. Optionally filtered to one campaign (booking)."""
     rid = ctx["restaurant_id"]
     with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
-            "SELECT p.id, p.platform, p.permalink, p.status, p.billed_views, p.creator_id,"
-            "   (SELECT views FROM post_metrics m WHERE m.post_id = p.id"
-            "    ORDER BY captured_at DESC LIMIT 1) AS latest_views"
-            " FROM posts p WHERE p.restaurant_id = %s ORDER BY p.created_at DESC",
-            (rid,),
+            "SELECT p.id, p.platform, p.permalink, p.caption, p.thumbnail_url, p.media_type,"
+            "   p.media_product_type, p.status, p.billed_views, p.posted_at, p.campaign_id,"
+            "   p.creator_id, cr.display_name AS creator_name, cp.avatar_url AS creator_avatar,"
+            "   sa.handle AS creator_handle, m.views AS latest_views, m.likes AS latest_likes"
+            " FROM posts p"
+            "   JOIN creators cr ON cr.id = p.creator_id"
+            "   LEFT JOIN creator_profiles cp ON cp.creator_id = p.creator_id"
+            "   LEFT JOIN social_accounts sa ON sa.creator_id = p.creator_id AND sa.platform = p.platform"
+            "   LEFT JOIN LATERAL (SELECT views, likes FROM post_metrics"
+            "       WHERE post_id = p.id ORDER BY captured_at DESC LIMIT 1) m ON true"
+            " WHERE p.restaurant_id = %s AND (%s::bigint IS NULL OR p.campaign_id = %s)"
+            " ORDER BY p.created_at DESC",
+            (rid, campaign_id, campaign_id),
         )
         return {"posts": cur.fetchall()}
 
