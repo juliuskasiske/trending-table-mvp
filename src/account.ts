@@ -9,6 +9,7 @@ import "./styles/theme.css";
 import "./styles/onboarding.css"; // shared card / field / input / button / chip
 import "./styles/admin.css"; // shared .admin-title + .pill
 import "./styles/account.css";
+import "./styles/platform.css";
 import {
   cancelBilling,
   changePassword,
@@ -20,6 +21,8 @@ import {
   getMe,
   getMenu,
   getRestaurant,
+  listBookings,
+  listPosts,
   listRestaurants,
   logout,
   putBilling,
@@ -28,7 +31,9 @@ import {
   putProfile,
   resendVerification,
   type BillingDetail,
+  type Booking,
   type Principal,
+  type RestaurantPost,
   type RestaurantSummary,
 } from "./api.ts";
 import { MenuItem } from "./types.ts";
@@ -57,6 +62,56 @@ const ic = {
   food: svg('<path d="M4 3v6a2 2 0 0 0 2 2 2 2 0 0 0 2-2V3M6 11v10M17 3c-1.7 0-3 2-3 4.5S15.3 12 17 12m0-9v18"/>'),
   chevron: svg('<path d="m6 9 6 6 6-6"/>'),
   logout: svg('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/>'),
+  eye: svg('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>'),
+  heart: svg('<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8Z"/>'),
+  image: svg('<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>'),
+  external: svg('<path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>'),
+  at: svg('<circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/>'),
+};
+
+// Brand-colored platform logos (fill-based, not the stroke icons above).
+const LOGOS: Record<string, string> = {
+  instagram: `<svg viewBox="0 0 24 24"><defs><linearGradient id="ig" x1="0%" y1="100%" x2="100%" y2="0%"><stop offset="0%" stop-color="#feda75"/><stop offset="25%" stop-color="#fa7e1e"/><stop offset="50%" stop-color="#d62976"/><stop offset="75%" stop-color="#962fbf"/><stop offset="100%" stop-color="#4f5bd5"/></linearGradient></defs><path fill="url(#ig)" d="M12 2.2c3.2 0 3.6 0 4.9.1 1.2.1 1.8.3 2.2.4.6.2 1 .5 1.4.9.4.4.7.8.9 1.4.2.4.3 1 .4 2.2.1 1.3.1 1.7.1 4.9s0 3.6-.1 4.9c-.1 1.2-.3 1.8-.4 2.2-.2.6-.5 1-.9 1.4-.4.4-.8.7-1.4.9-.4.2-1 .3-2.2.4-1.3.1-1.7.1-4.9.1s-3.6 0-4.9-.1c-1.2-.1-1.8-.3-2.2-.4-.6-.2-1-.5-1.4-.9-.4-.4-.7-.8-.9-1.4-.2-.4-.3-1-.4-2.2C2.2 15.6 2.2 15.2 2.2 12s0-3.6.1-4.9c.1-1.2.3-1.8.4-2.2.2-.6.5-1 .9-1.4.4-.4.8-.7 1.4-.9.4-.2 1-.3 2.2-.4C8.4 2.2 8.8 2.2 12 2.2m0 5.3A4.5 4.5 0 1 0 16.5 12 4.5 4.5 0 0 0 12 7.5m0 7.4A2.9 2.9 0 1 1 14.9 12 2.9 2.9 0 0 1 12 14.9m4.7-7.6a1.05 1.05 0 1 0 1.05 1.05A1.05 1.05 0 0 0 16.7 7.3"/></svg>`,
+  tiktok: `<svg viewBox="0 0 24 24"><path fill="#171717" d="M16.6 5.8a4.3 4.3 0 0 1-1-2.8h-3v12.3a2.5 2.5 0 1 1-2.5-2.5c.26 0 .5.04.74.11V9.8a5.6 5.6 0 0 0-.74-.05A5.6 5.6 0 1 0 15.7 15.3V9.3a7.3 7.3 0 0 0 4.3 1.4V7.7a4.3 4.3 0 0 1-3.4-1.9"/></svg>`,
+  youtube: `<svg viewBox="0 0 24 24"><path fill="#FF0000" d="M23.5 6.5a3 3 0 0 0-2.1-2.1C19.5 3.9 12 3.9 12 3.9s-7.5 0-9.4.5A3 3 0 0 0 .5 6.5 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.5 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.5"/><path fill="#fff" d="M9.6 15.5V8.5l6.2 3.5z"/></svg>`,
+};
+const platformLabel = (p: string): string =>
+  ({ instagram: "Instagram", tiktok: "TikTok", youtube: "YouTube" })[p] || p;
+
+/** Compact metric count: 12345 → "12,3k" (de) / "12.3k" (en). */
+const metricNum = (n: number | null | undefined): string => {
+  if (n == null) return "—";
+  const dec = (v: number) => v.toFixed(1).replace(/\.0$/, "").replace(".", getLang() === "de" ? "," : ".");
+  if (n >= 1_000_000) return dec(n / 1_000_000) + "M";
+  if (n >= 1_000) return dec(n / 1_000) + "k";
+  return new Intl.NumberFormat(locale()).format(n);
+};
+
+/** ISO "YYYY-MM-DD" → localized date (bookings scheduled_date is a date, not unix). */
+const fmtISODate = (iso: string | null | undefined): string => {
+  if (!iso) return "—";
+  const [y, m, d] = iso.split("-").map(Number);
+  if (!y || !m || !d) return "—";
+  return new Intl.DateTimeFormat(locale(), { day: "numeric", month: "long", year: "numeric" })
+    .format(new Date(y, m - 1, d));
+};
+
+/** Full ISO datetime string (e.g. posted_at "2026-07-06T21:27:16+02:00") → localized date. */
+const fmtDateTime = (iso: string | null | undefined): string => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return isNaN(d.getTime())
+    ? ""
+    : new Intl.DateTimeFormat(locale(), { day: "numeric", month: "long", year: "numeric" }).format(d);
+};
+
+// campaign status → mockup pill class + i18n label key
+const statusMeta = (s: string): { cls: string; key: string } => {
+  const map: Record<string, string> = {
+    proposed: "pending", accepted: "confirmed", live: "live",
+    completed: "completed", cancelled: "cancelled",
+  };
+  return { cls: map[s] || "pending", key: s };
 };
 
 /* ---- state --------------------------------------------------------------- */
@@ -70,9 +125,14 @@ let restaurants: RestaurantSummary[] = [];
 let mainView: MainView = "settings";
 let settingsTab: SettingsTab = "restaurants";
 let detail: { id: number; tab: Tab } | null = null;
+let bookingView: number | null = null; // campaign id whose posts are being viewed
 
 const main = () => byId("acct-main")!;
 const restName = () => restaurants[0]?.name || "Restaurant";
+const activeRestaurant = (): RestaurantSummary | null => restaurants[0] || null;
+const initial = (s: string | null | undefined) => (s || "?").trim().charAt(0).toUpperCase();
+const avatarStyle = (url: string | null | undefined) =>
+  url ? ` style="background-image:url('${esc(url)}')"` : "";
 
 /* ---- shell (dark platform nav) ------------------------------------------- */
 
@@ -122,6 +182,7 @@ function setNavActive(): void {
 function render(): void {
   setNavActive();
   const m = main();
+  if (mainView === "bookings") { void renderBookings(m); return; }
   if (mainView !== "settings") return renderComingSoon(m, mainView);
   renderSettings(m);
 }
@@ -217,6 +278,145 @@ function renderComingSoon(m: HTMLElement, key: MainView): void {
         <p>${esc(t("account.comingSoonSub"))}</p>
       </div>
     </div>`;
+}
+
+/* ---- bookings (Buchungen) ------------------------------------------------ */
+
+async function renderBookings(m: HTMLElement): Promise<void> {
+  const r = activeRestaurant();
+  if (!r) {
+    m.innerHTML = `<h1 class="admin-title">${esc(t("account.nav.bookings"))}</h1>
+      <div class="pl-empty">${esc(t("bookings.noRestaurant"))}</div>`;
+    return;
+  }
+  if (bookingView !== null) return renderPostView(m, r.id, bookingView);
+
+  m.innerHTML = `
+    <div class="pl-toolbar"><h1 class="admin-title">${esc(t("account.nav.bookings"))}</h1></div>
+    <p class="pl-sub">${esc(t("bookings.sub"))}</p>
+    <div id="pl-body"><p class="acct-loading">…</p></div>`;
+  const body = byId("pl-body")!;
+
+  let bookings: Booking[];
+  try {
+    bookings = (await listBookings(r.id)).campaigns;
+  } catch {
+    body.innerHTML = `<div class="pl-empty">${esc(t("account.error.load"))}</div>`;
+    return;
+  }
+  if (bookingView !== null || mainView !== "bookings") return; // navigated away while loading
+  if (!bookings.length) {
+    body.innerHTML = `<div class="pl-empty">${esc(t("bookings.empty"))}</div>`;
+    return;
+  }
+
+  const row = (b: Booking): string => {
+    const sm = statusMeta(b.status);
+    const name = b.creator_name || b.creator_email || t("bookings.creatorFallback");
+    const av = b.creator_avatar
+      ? `<span class="bk-avatar"${avatarStyle(b.creator_avatar)}></span>`
+      : `<span class="bk-avatar">${esc(initial(name))}</span>`;
+    const content = b.post_count > 0
+      ? `<button type="button" class="bk-view-link" data-cid="${b.id}">${esc(t("bookings.viewContent", { n: String(b.post_count) }))}</button>`
+      : `<span class="bk-muted">${esc(b.status === "cancelled" ? "—" : t("bookings.awaiting"))}</span>`;
+    return `<tr>
+      <td><span class="bk-creator">${av}<span>${esc(name)}</span></span></td>
+      <td>${b.deliverable ? esc(b.deliverable) : '<span class="bk-muted">—</span>'}</td>
+      <td>${b.scheduled_date ? esc(fmtISODate(b.scheduled_date)) : '<span class="bk-muted">—</span>'}</td>
+      <td><span class="bk-status ${sm.cls}">${esc(t(`bookings.status.${sm.key}`))}</span></td>
+      <td>${content}</td>
+    </tr>`;
+  };
+
+  body.innerHTML = `
+    <div class="bk-wrap"><table class="bk-table">
+      <thead><tr>
+        <th>${esc(t("bookings.col.creator"))}</th>
+        <th>${esc(t("bookings.col.deliverable"))}</th>
+        <th>${esc(t("bookings.col.date"))}</th>
+        <th>${esc(t("bookings.col.status"))}</th>
+        <th>${esc(t("bookings.col.content"))}</th>
+      </tr></thead>
+      <tbody>${bookings.map(row).join("")}</tbody>
+    </table></div>`;
+
+  body.querySelectorAll<HTMLElement>(".bk-view-link").forEach((btn) =>
+    btn.addEventListener("click", () => { bookingView = Number(btn.dataset.cid); render(); }));
+}
+
+/* ---- post view (the restaurant sees the creator's published posts) ------- */
+
+async function renderPostView(m: HTMLElement, rid: number, cid: number): Promise<void> {
+  m.innerHTML = `
+    <button type="button" class="ct-back" id="ct-back">← ${esc(t("content.back"))}</button>
+    <div id="pl-body"><p class="acct-loading">…</p></div>`;
+  byId("ct-back")!.addEventListener("click", () => { bookingView = null; render(); });
+  const body = byId("pl-body")!;
+
+  let bookings: Booking[];
+  let posts: RestaurantPost[];
+  try {
+    [bookings, posts] = await Promise.all([
+      listBookings(rid).then((r) => r.campaigns),
+      listPosts(rid, cid).then((r) => r.posts),
+    ]);
+  } catch {
+    body.innerHTML = `<div class="pl-empty">${esc(t("account.error.load"))}</div>`;
+    return;
+  }
+  if (bookingView !== cid || mainView !== "bookings") return; // navigated away while loading
+
+  const bk = bookings.find((c) => c.id === cid);
+  const name = bk?.creator_name || bk?.creator_email || t("bookings.creatorFallback");
+  const handle = posts[0]?.creator_handle || null;
+  const avatar = bk?.creator_avatar || posts[0]?.creator_avatar || null;
+  const av = avatar
+    ? `<div class="ct-avatar"${avatarStyle(avatar)}></div>`
+    : `<div class="ct-avatar">${esc(initial(name))}</div>`;
+
+  const creatorPanel = `
+    <div class="ct-panel ct-creator">
+      ${av}
+      <div class="ct-creator-info">
+        <div class="ct-name">${esc(name)}</div>
+        ${handle ? `<div class="ct-handle">${ic.at}${esc(handle.replace(/^@/, ""))}</div>` : ""}
+      </div>
+    </div>`;
+
+  const stat = (icon: string, val: string, lbl: string) => `
+    <div class="ct-stat"><span class="ct-stat-ic">${icon}</span><span class="ct-stat-txt">
+      <span class="ct-stat-val">${esc(val)}</span><span class="ct-stat-lbl">${esc(lbl)}</span>
+    </span></div>`;
+
+  const card = (p: RestaurantPost): string => {
+    const type = p.media_product_type || p.media_type || "";
+    const shot = p.thumbnail_url
+      ? `<div class="ct-shot"${avatarStyle(p.thumbnail_url)}>`
+      : `<div class="ct-shot"><span class="ct-shot-empty">${ic.image}</span>`;
+    const logo = LOGOS[p.platform] ? `<span class="ct-logo">${LOGOS[p.platform]}</span>` : "";
+    const typeBadge = type ? `<span class="ct-type">${esc(type.toLowerCase())}</span>` : "";
+    const watch = p.permalink
+      ? `<a class="ct-watch" href="${esc(p.permalink)}" target="_blank" rel="noopener noreferrer">${ic.external}${esc(t("content.watchOn", { platform: platformLabel(p.platform) }))}</a>`
+      : "";
+    return `
+      <div class="ct-post">
+        ${shot}${typeBadge}${logo}</div>
+        <div class="ct-stats">
+          ${stat(ic.eye, metricNum(p.latest_views), t("content.views"))}
+          ${stat(ic.heart, metricNum(p.latest_likes), t("content.likes"))}
+        </div>
+        <div class="ct-foot">
+          <span class="ct-date">${esc(fmtDateTime(p.posted_at))}</span>
+          ${watch}
+        </div>
+      </div>`;
+  };
+
+  const grid = posts.length
+    ? `<h2 class="ct-section-title">${esc(t("content.published"))}</h2><div class="ct-grid">${posts.map(card).join("")}</div>`
+    : `<div class="pl-empty">${esc(t("content.noPosts"))}</div>`;
+
+  body.innerHTML = creatorPanel + grid;
 }
 
 function renderSettings(m: HTMLElement): void {
@@ -613,6 +813,7 @@ function confirmBox(title: string, message: string, matchWord: string | null, on
 
 function navTo(v: MainView): void {
   mainView = v;
+  bookingView = null;
   closeRestMenu();
   render();
 }

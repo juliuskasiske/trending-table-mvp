@@ -232,6 +232,51 @@ export function activateRestaurant(id: number): Promise<{ ok: boolean; status: s
   return api(`/api/restaurants/${id}/activate`, { method: "POST" });
 }
 
+/* ---- bookings (campaigns) + post view ------------------------------------ */
+
+export interface Booking {
+  id: number;
+  creator_id: number;
+  creator_name: string | null;
+  creator_email: string | null;
+  creator_avatar: string | null;
+  status: string; // proposed | accepted | live | completed | cancelled
+  agreed_rate_eur: number | null;
+  deliverable: string | null;
+  scheduled_date: string | null; // ISO "YYYY-MM-DD"
+  created_at: string; // ISO datetime
+  post_count: number;
+}
+
+export function listBookings(restaurantId: number): Promise<{ campaigns: Booking[] }> {
+  return api(`/api/restaurants/${restaurantId}/campaigns`);
+}
+
+export interface RestaurantPost {
+  id: number;
+  platform: string; // instagram | tiktok | youtube
+  permalink: string | null;
+  caption: string | null;
+  thumbnail_url: string | null;
+  media_type: string | null; // IMAGE | VIDEO | CAROUSEL_ALBUM
+  media_product_type: string | null; // REELS | FEED | STORY
+  status: string;
+  billed_views: number | null;
+  posted_at: string | null; // ISO datetime
+  campaign_id: number | null;
+  creator_id: number;
+  creator_name: string | null;
+  creator_avatar: string | null;
+  creator_handle: string | null;
+  latest_views: number | null;
+  latest_likes: number | null;
+}
+
+export function listPosts(restaurantId: number, campaignId?: number): Promise<{ posts: RestaurantPost[] }> {
+  const q = campaignId ? `?campaign_id=${campaignId}` : "";
+  return api(`/api/restaurants/${restaurantId}/posts${q}`);
+}
+
 /* ---- account management (reads + mutations) ------------------------------ */
 
 export interface RestaurantProfileData {
