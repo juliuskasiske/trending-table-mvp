@@ -326,6 +326,53 @@ body {
   color: var(--accent);
 }
 
+/* Live monthly-price readout — reflects cadence + promo, flashes on change */
+.price-tag {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 18px 0 2px;
+}
+.price-old {
+  font: 600 18px/1 var(--font);
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.price-amount {
+  font: 800 clamp(30px, 6vw, 40px) / 1 var(--font-display);
+  color: var(--ink);
+}
+.price-per {
+  font: 600 15px/1 var(--font);
+  color: var(--muted);
+}
+.price-badge {
+  align-self: center;
+  font: 800 13px/1 var(--font);
+  background: var(--accent);
+  color: var(--on-accent);
+  padding: 4px 9px;
+}
+.price-caption {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+@keyframes pricePulse {
+  0% { transform: scale(1); }
+  30% { transform: scale(1.07); }
+  100% { transform: scale(1); }
+}
+.price-tag.flash .price-amount {
+  display: inline-block;
+  transform-origin: left center;
+  animation: pricePulse 0.35s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .price-tag.flash .price-amount { animation: none; }
+}
+
 /* ---- Progress ---------------------------------------------------------- */
 
 .progress {

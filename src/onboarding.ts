@@ -791,6 +791,7 @@ export function initOnboarding(): void {
       b.classList.toggle("on", on);
       b.setAttribute("aria-pressed", String(on));
     });
+    renderPriceHighlight();
     const note = byId("cadence-note");
     if (!note) return;
     if (cadence === "annual") {
@@ -814,6 +815,7 @@ export function initOnboarding(): void {
     renderCadence();
     applyWelcomeNote();
     syncStripeAmount();
+    flashPrice();
     save();
   });
 
@@ -850,7 +852,9 @@ export function initOnboarding(): void {
         btn.disabled = false;
         btn.textContent = t("pay.promoApply");
       }
+      renderPriceHighlight();
       syncStripeAmount();
+      flashPrice();
     }
   });
 
@@ -872,6 +876,57 @@ export function initOnboarding(): void {
       cents = Math.round(cents * (1 - appliedPromo.percentOff / 100)) - appliedPromo.amountOff;
     }
     return Math.max(0, cents);
+  }
+
+  /** The effective monthly price the current cadence + promo imply, in cents.
+   * Annual shows its monthly-equivalent; a monthly promo shows the reduced fee. */
+  function effectiveMonthlyCents(): number {
+    if (cadence === "annual") return Math.round(feeAnnualCents() / 12);
+    if (appliedPromo) {
+      return Math.max(0, Math.round(feeMonthlyCents() * (1 - appliedPromo.percentOff / 100)) - appliedPromo.amountOff);
+    }
+    return feeMonthlyCents();
+  }
+
+  /** Update the highlighted monthly-price readout: the effective price, the
+   * struck-through regular price and a −X% badge whenever a discount applies. */
+  function renderPriceHighlight(): void {
+    const amountEl = byId("price-amount");
+    if (!amountEl) return;
+    const reg = feeMonthlyCents();
+    const eff = effectiveMonthlyCents();
+    const discounted = eff < reg;
+    amountEl.textContent = eur2(eff / 100);
+    const oldEl = byId("price-old");
+    if (oldEl) {
+      oldEl.hidden = !discounted;
+      oldEl.textContent = eur2(reg / 100);
+    }
+    const badgeEl = byId("price-badge");
+    if (badgeEl) {
+      badgeEl.hidden = !discounted;
+      if (discounted) badgeEl.textContent = "−" + Math.round((1 - eff / reg) * 100) + "%";
+    }
+    const capEl = byId("price-caption");
+    if (capEl) {
+      const cap =
+        cadence === "annual"
+          ? t("price.annualCaption", { yearly: eur2(feeAnnualCents() / 100) })
+          : appliedPromo
+            ? t("price.firstMonthCaption", { regular: eur2(reg / 100) })
+            : "";
+      capEl.textContent = cap;
+      capEl.hidden = !cap;
+    }
+  }
+
+  /** Brief pulse on the price when the user toggles cadence or applies a code. */
+  function flashPrice(): void {
+    const el = byId("price-highlight");
+    if (!el) return;
+    el.classList.remove("flash");
+    void el.offsetWidth; // reflow so the animation restarts
+    el.classList.add("flash");
   }
 
   /** Keep the Payment Element's amount in sync when the cadence toggles.
@@ -1345,6 +1400,7 @@ export function initOnboarding(): void {
     applyFeeStrings();
     applyStartNote();
     applyWelcomeNote();
+    renderPriceHighlight();
     if (searchNotice) {
       searchNotice.hidden = config.placesEnabled;
       searchNotice.className = config.placesEnabled || configLoaded ? "notice" : "notice error";
