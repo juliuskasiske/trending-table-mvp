@@ -23,5 +23,7 @@ def config() -> dict:
         # so the card is saved now (SetupIntent) and first charged then.
         "subscriptionDeferredStart": stripe_client.deferred_start(),
         "subscriptionStart": config.STRIPE_SUBSCRIPTION_START or None,
+        # Auto-applied "Welcome" first-month discount (monthly plan only).
+        "stripeWelcome": stripe_client.welcome_discount(),
         "pricing": {"ratePerView": 0.01, "platformFee": 50, "creatorPerView": 0.002},
     }

@@ -19,6 +19,8 @@ export interface AppConfig {
   // now, first charged on that date. Collect via SetupIntent, not PaymentIntent.
   subscriptionDeferredStart?: boolean;
   subscriptionStart?: string | null;
+  // Auto-applied "Welcome" first-month discount on the monthly plan.
+  stripeWelcome?: { percentOff: number } | null;
   pricing: { ratePerView: number; platformFee: number; creatorPerView?: number };
 }
 

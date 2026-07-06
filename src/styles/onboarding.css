@@ -311,6 +311,13 @@ body {
   color: var(--ink);
 }
 
+.pay-welcome {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
 /* ---- Progress ---------------------------------------------------------- */
 
 .progress {

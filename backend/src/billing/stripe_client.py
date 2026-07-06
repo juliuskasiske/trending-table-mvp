@@ -34,6 +34,25 @@ def deferred_start() -> bool:
     return _trial_end_ts() is not None
 
 
+_welcome_cache: dict = {}
+
+
+def welcome_discount() -> dict | None:
+    """The auto-applied first-month discount (monthly plan), read from the
+    Stripe coupon and cached. Shape: {"percentOff": 20}. None if unconfigured."""
+    cid = config.STRIPE_WELCOME_COUPON
+    if not cid or not _secret():
+        return None
+    if "d" not in _welcome_cache:
+        _client()
+        try:
+            c = stripe.Coupon.retrieve(cid)
+            _welcome_cache["d"] = {"percentOff": c.percent_off} if (c.valid and c.percent_off) else None
+        except Exception:
+            _welcome_cache["d"] = None
+    return _welcome_cache["d"]
+
+
 def _secret() -> str:
     return os.environ.get("STRIPE_SECRET_KEY", "")
 
@@ -122,6 +141,10 @@ def create_subscription(customer_id: str, cadence: str) -> dict:
         # Trial until the launch date → no charge now; first payment lands then.
         kwargs["trial_end"] = trial_ts
         kwargs["trial_settings"] = {"end_behavior": {"missing_payment_method": "cancel"}}
+    # "Welcome" first-month discount — monthly plan only (duration=once lands on
+    # the first real invoice, not the €0 trial invoice).
+    if cadence == "monthly" and config.STRIPE_WELCOME_COUPON:
+        kwargs["discounts"] = [{"coupon": config.STRIPE_WELCOME_COUPON}]
     sub = stripe.Subscription.create(**kwargs)
 
     # With a trial the first invoice is €0, so Stripe gives a SetupIntent to

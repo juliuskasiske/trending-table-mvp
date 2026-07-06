@@ -811,6 +811,7 @@ export function initOnboarding(): void {
     if (!btn) return;
     cadence = btn.dataset.cadence === "annual" ? "annual" : "monthly";
     renderCadence();
+    applyWelcomeNote();
     syncStripeAmount();
     save();
   });
@@ -822,10 +823,21 @@ export function initOnboarding(): void {
     return cadence === "annual" ? feeAnnualCents() : feeMonthlyCents();
   }
 
+  /** The "Welcome" first-month discount percent — monthly plan only. */
+  function welcomePercentOff(): number {
+    return cadence === "monthly" ? (config?.stripeWelcome?.percentOff ?? 0) : 0;
+  }
+
+  /** What Stripe actually charges on the first invoice, in cents — the fee less
+   * the Welcome discount. The Payment Element's amount must match this. */
+  function firstChargeCents(): number {
+    return Math.round(feeCents() * (1 - welcomePercentOff() / 100));
+  }
+
   /** Keep the Payment Element's amount in sync when the cadence toggles.
    * (In setup mode there's no amount — the card is saved, charged later.) */
   function syncStripeAmount(): void {
-    if (elements && stripeMode === "subscription") elements.update({ amount: feeCents() });
+    if (elements && stripeMode === "subscription") elements.update({ amount: firstChargeCents() });
   }
 
   async function ensureStripe(): Promise<void> {
@@ -853,7 +865,7 @@ export function initOnboarding(): void {
       stripeMode = config.subscriptionDeferredStart ? "setup" : "subscription";
       elements = stripe.elements({
         ...(stripeMode === "subscription"
-          ? { mode: "subscription" as const, amount: feeCents() }
+          ? { mode: "subscription" as const, amount: firstChargeCents() }
           : { mode: "setup" as const }),
         currency: "eur",
         // Card only — it can be charged the variable monthly usage later.
@@ -1272,10 +1284,28 @@ export function initOnboarding(): void {
     }
   }
 
+  /** Show the auto-applied "Welcome" first-month discount (monthly plan only). */
+  function applyWelcomeNote(): void {
+    const el = byId("pay-welcome-note");
+    if (!el) return;
+    const pct = welcomePercentOff();
+    if (pct > 0) {
+      el.textContent = t("pay.welcome", {
+        percent: pct,
+        first: eur2(firstChargeCents() / 100),
+        regular: eur2(feeMonthlyEur()),
+      });
+      el.hidden = false;
+    } else {
+      el.hidden = true;
+    }
+  }
+
   function applyConfigUi(): void {
     if (!config) return;
     applyFeeStrings();
     applyStartNote();
+    applyWelcomeNote();
     if (searchNotice) {
       searchNotice.hidden = config.placesEnabled;
       searchNotice.className = config.placesEnabled || configLoaded ? "notice" : "notice error";

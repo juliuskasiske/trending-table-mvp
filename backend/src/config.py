@@ -55,6 +55,9 @@ STRIPE_METER_EVENT_NAME = os.environ.get("STRIPE_METER_EVENT_NAME", "")
 # future, the platform-fee subscription trials until this date, so the first
 # payment lands on it. Once past, new subscriptions start (and bill) immediately.
 STRIPE_SUBSCRIPTION_START = os.environ.get("STRIPE_SUBSCRIPTION_START", "")
+# "Welcome" first-month discount coupon (duration=once) auto-applied to the
+# MONTHLY platform fee. Empty = no discount.
+STRIPE_WELCOME_COUPON = os.environ.get("STRIPE_WELCOME_COUPON", "")
 
 _INSECURE_SESSION_DEFAULTS = {"dev-insecure-secret-change-me", "dev-session-secret-change-me"}
 
