@@ -20,6 +20,7 @@ import {
   getPlaceDetails,
   improveMenuWithAi,
   login,
+  logout,
   placePhotoUrl,
   putBilling,
   putGuidelines,
@@ -1218,13 +1219,19 @@ export function initOnboarding(): void {
         }
         await persistGuidelines(); // ensure the latest brief is saved
         await activateRestaurant(restaurantId);
-        const name = val("rname").trim();
-        const doneTitle = byId("done-title");
-        const doneEmail = byId("done-email");
-        doneName = name; // remembered so a language switch re-renders the title
-        if (doneTitle) doneTitle.textContent = name ? t("done.titleName", { name }) : t("done.title");
-        if (doneEmail) doneEmail.textContent = principalEmail || val("email");
-        show(doneIndex);
+
+        // Registration done — hand off to the login screen so the user signs in
+        // with the account they just created and lands in account management.
+        const email = principalEmail || val("email");
+        await logout(); // clear the signup session; the login below is the real one
+        authed = false;
+        selectRole("restaurant");
+        const gateEmail = byId<HTMLInputElement>("gate-email");
+        const gatePw = byId<HTMLInputElement>("gate-password");
+        if (gateEmail) gateEmail.value = email;
+        if (gatePw) gatePw.value = "";
+        showBanner(t("gate.registered"), "ok");
+        showGate();
       } catch (err) {
         stepError("review", err);
       } finally {
