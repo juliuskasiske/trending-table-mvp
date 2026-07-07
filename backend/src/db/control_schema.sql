@@ -254,8 +254,10 @@ CREATE TABLE IF NOT EXISTS outreach_leads (
     stage         TEXT NOT NULL DEFAULT 'l1'
                   CHECK (stage IN ('l1', 'l2', 'l3', 'l4', 'l5')),
     planned_l3    DATE,
+    planned_l5    DATE,
     status        TEXT NOT NULL DEFAULT 'active',
     cancel_reason TEXT,
+    comment       TEXT,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -266,6 +268,8 @@ ALTER TABLE outreach_leads DROP COLUMN IF EXISTS actual_l1;
 -- Lead status: active, or cancelled with a reason. Idempotent add + checks.
 ALTER TABLE outreach_leads ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
 ALTER TABLE outreach_leads ADD COLUMN IF NOT EXISTS cancel_reason TEXT;
+ALTER TABLE outreach_leads ADD COLUMN IF NOT EXISTS planned_l5 DATE;
+ALTER TABLE outreach_leads ADD COLUMN IF NOT EXISTS comment TEXT;
 ALTER TABLE outreach_leads DROP CONSTRAINT IF EXISTS outreach_leads_status_check;
 ALTER TABLE outreach_leads ADD CONSTRAINT outreach_leads_status_check
     CHECK (status IN ('active', 'cancelled'));

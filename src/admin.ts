@@ -432,8 +432,10 @@ function renderLeads(leads: OutreachLead[]): void {
     mount.innerHTML = `<p class="muted" style="padding:14px">No leads yet — search a restaurant above to add your first.</p>`;
     return;
   }
-  const dateCell = (l: OutreachLead, field: "outreach_date" | "planned_l3") =>
+  const dateCell = (l: OutreachLead, field: "outreach_date" | "planned_l3" | "planned_l5") =>
     `<input type="date" class="crm-cell" data-id="${l.id}" data-field="${field}" value="${esc(l[field] ?? "")}" />`;
+  const commentCell = (l: OutreachLead) =>
+    `<input type="text" class="crm-cell crm-comment" data-id="${l.id}" data-field="comment" maxlength="500" placeholder="Add a note…" value="${esc(l.comment ?? "")}" />`;
   const stageCell = (l: OutreachLead) => `<div class="crm-stage-cell">
       <select class="crm-stage-sel" data-id="${l.id}">${
         STAGES.map((s) => `<option value="${s.code}"${l.stage === s.code ? " selected" : ""}>${esc(stageLabel(s))}</option>`).join("")
@@ -454,12 +456,14 @@ function renderLeads(leads: OutreachLead[]): void {
       <td>${dateCell(l, "outreach_date")}</td>
       <td>${stageCell(l)}</td>
       <td>${dateCell(l, "planned_l3")}</td>
+      <td>${dateCell(l, "planned_l5")}</td>
       <td class="crm-prog-cell">${progression(l.events)}</td>
+      <td>${commentCell(l)}</td>
       <td><button type="button" class="crm-del" data-id="${l.id}" title="Delete lead" aria-label="Delete lead">✕</button></td>
     </tr>`).join("");
   mount.innerHTML = `<table class="admin crm-table"><thead><tr>
       <th>Restaurant</th><th>Address</th><th>Status</th><th>Outreach</th><th>Stage</th>
-      <th>Planned L3</th><th>Progression</th><th></th>
+      <th>Planned L3</th><th>Planned L5</th><th>Progression</th><th>Comment</th><th></th>
     </tr></thead><tbody>${rows}</tbody></table>`;
 
   mount.querySelectorAll<HTMLInputElement>(".crm-cell").forEach((el) =>

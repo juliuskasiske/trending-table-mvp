@@ -23,9 +23,9 @@ _REASONS = ("social_presence", "closing", "no_need", "sub_cost",
 # Fields a generic PATCH may touch (dates, status, cancel reason). Stage changes
 # go through the dedicated /stage endpoint so they get logged. Names are fixed
 # here, never from the client, so interpolating them is safe.
-_PATCHABLE = ("outreach_date", "planned_l3", "status", "cancel_reason")
-_COLS = ("id, place_id, name, address, outreach_date, stage, planned_l3,"
-         " status, cancel_reason, created_at")
+_PATCHABLE = ("outreach_date", "planned_l3", "planned_l5", "status", "cancel_reason", "comment")
+_COLS = ("id, place_id, name, address, outreach_date, stage, planned_l3, planned_l5,"
+         " status, cancel_reason, comment, created_at")
 # The lead columns plus the timestamped stage-transition log, oldest first.
 _LEAD_WITH_EVENTS = (
     f"SELECT {_COLS},"
@@ -81,8 +81,10 @@ def create_lead(body: LeadIn, _: None = Depends(deps.require_admin)) -> dict:
 class LeadPatch(BaseModel):
     outreach_date: str | None = None
     planned_l3: str | None = None
+    planned_l5: str | None = None
     status: str | None = None
     cancel_reason: str | None = None
+    comment: str | None = None
 
 
 @router.patch("/leads/{lead_id}")
@@ -96,7 +98,7 @@ def update_lead(lead_id: int, body: LeadPatch, _: None = Depends(deps.require_ad
     if "cancel_reason" in fields and fields["cancel_reason"] not in ("", None, *_REASONS):
         raise HTTPException(status_code=400, detail="Invalid cancel reason.")
     set_clause = ", ".join(f"{k} = %s" for k in fields)
-    values = [(v or None) for v in fields.values()]  # "" → NULL
+    values = [(None if v == "" else v) for v in fields.values()]  # "" → NULL, keep e.g. "0"
     with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             f"UPDATE outreach_leads SET {set_clause}, updated_at = NOW() WHERE id = %s"

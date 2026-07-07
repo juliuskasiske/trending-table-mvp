@@ -333,6 +333,8 @@ table.admin th:first-child { white-space: nowrap; color: var(--muted); }
 }
 .crm-cell:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(255, 61, 134, 0.18); }
 input.crm-cell[type="date"] { min-width: 132px; }
+input.crm-comment { min-width: 220px; width: 100%; }
+.admin.crm-table td:has(> .crm-comment) { min-width: 220px; }
 select.crm-stage { min-width: 92px; cursor: pointer; }
 .crm-cell.crm-saved { border-color: #16a34a; }
 .crm-cell.crm-error { border-color: var(--accent); }

@@ -677,8 +677,10 @@ export interface OutreachLead {
   outreach_date: string | null;
   stage: string; // l1..l5
   planned_l3: string | null;
+  planned_l5: string | null;
   status: string; // active | cancelled
   cancel_reason: string | null; // reason code when cancelled
+  comment: string | null;
   created_at: string;
   events: StageEvent[]; // stage-transition log, oldest first
 }
