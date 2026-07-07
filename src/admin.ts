@@ -32,16 +32,27 @@ import type { PlaceSuggestion } from "./types.ts";
 
 type View = "overview" | "restaurants" | "creators" | "outreach" | "schema";
 
-// Stage gates — the single place to rename L4/L5 when they're defined.
+// Stage gates — the single place to rename them.
 const STAGES: Array<{ code: string; short: string; full: string }> = [
-  { code: "l1", short: "L1", full: "Vague interest, follow up planned" },
-  { code: "l2", short: "L2", full: "Firm interest, follow up planned" },
-  { code: "l3", short: "L3", full: "Demo given" },
-  { code: "l4", short: "L4", full: "" },
-  { code: "l5", short: "L5", full: "" },
+  { code: "l1", short: "L1", full: "Outreach" },
+  { code: "l2", short: "L2", full: "Virtual follow up" },
+  { code: "l3", short: "L3", full: "Demo" },
+  { code: "l4", short: "L4", full: "Negotiations" },
+  { code: "l5", short: "L5", full: "Subscribed" },
 ];
 const stageLabel = (s: { short: string; full: string }) =>
   s.full ? `${s.short} · ${s.full}` : s.short;
+
+// Cancellation reasons (code → label). Editable in one place.
+const REASONS: Array<{ code: string; label: string }> = [
+  { code: "social_presence", label: "Already gets lots of social media presence" },
+  { code: "closing", label: "Closing or selling soon" },
+  { code: "no_need", label: "Doesn't want / need social media presence" },
+  { code: "sub_cost", label: "Subscription cost too high" },
+  { code: "usage_cost", label: "Usage price too high" },
+  { code: "low_control", label: "Too little control over content" },
+  { code: "other", label: "Other" },
+];
 
 const MARKUP = `
 <div class="admin-login-wrap" id="admin-login" hidden>
@@ -429,9 +440,20 @@ function renderLeads(leads: OutreachLead[]): void {
       }</select>
       <button type="button" class="crm-stage-btn" data-id="${l.id}">Update stage</button>
     </div>`;
-  const rows = leads.map((l) => `<tr>
+  const statusCell = (l: OutreachLead) => `<div class="crm-status-inner">
+      <select class="crm-status-sel" data-id="${l.id}">
+        <option value="active"${l.status === "active" ? " selected" : ""}>Active</option>
+        <option value="cancelled"${l.status === "cancelled" ? " selected" : ""}>Cancelled</option>
+      </select>
+      <select class="crm-reason-sel" data-id="${l.id}"${l.status === "cancelled" ? "" : " hidden"}>
+        <option value="">Reason…</option>
+        ${REASONS.map((r) => `<option value="${r.code}"${l.cancel_reason === r.code ? " selected" : ""}>${esc(r.label)}</option>`).join("")}
+      </select>
+    </div>`;
+  const rows = leads.map((l) => `<tr class="${l.status === "cancelled" ? "crm-cancelled" : ""}">
       <td class="crm-name">${esc(l.name)}</td>
       <td class="crm-addr">${esc(l.address ?? "—")}</td>
+      <td class="crm-status-cell">${statusCell(l)}</td>
       <td>${dateCell(l, "outreach_date")}</td>
       <td>${stageCell(l)}</td>
       <td>${dateCell(l, "planned_l3")}</td>
@@ -439,7 +461,7 @@ function renderLeads(leads: OutreachLead[]): void {
       <td><button type="button" class="crm-del" data-id="${l.id}" title="Delete lead" aria-label="Delete lead">✕</button></td>
     </tr>`).join("");
   mount.innerHTML = `<table class="admin crm-table"><thead><tr>
-      <th>Restaurant</th><th>Address</th><th>Outreach</th><th>Stage</th>
+      <th>Restaurant</th><th>Address</th><th>Status</th><th>Outreach</th><th>Stage</th>
       <th>Planned L3</th><th>Progression</th><th></th>
     </tr></thead><tbody>${rows}</tbody></table>`;
 
@@ -468,6 +490,29 @@ function renderLeads(leads: OutreachLead[]): void {
       } catch {
         b.disabled = false;
       }
+    }));
+  mount.querySelectorAll<HTMLSelectElement>(".crm-status-sel").forEach((sel) =>
+    sel.addEventListener("change", async () => {
+      const id = Number(sel.dataset.id);
+      const reason = sel.closest("td")?.querySelector<HTMLSelectElement>(".crm-reason-sel");
+      const tr = sel.closest("tr");
+      try {
+        if (sel.value === "active") {
+          await updateLead(id, { status: "active", cancel_reason: "" });
+          if (reason) { reason.value = ""; reason.hidden = true; }
+          tr?.classList.remove("crm-cancelled");
+        } else {
+          await updateLead(id, { status: "cancelled", cancel_reason: reason?.value || "" });
+          if (reason) reason.hidden = false;
+          tr?.classList.add("crm-cancelled");
+        }
+      } catch { /* ignore */ }
+    }));
+  mount.querySelectorAll<HTMLSelectElement>(".crm-reason-sel").forEach((sel) =>
+    sel.addEventListener("change", async () => {
+      try {
+        await updateLead(Number(sel.dataset.id), { cancel_reason: sel.value });
+      } catch { /* ignore */ }
     }));
   mount.querySelectorAll<HTMLElement>(".crm-del").forEach((b) =>
     b.addEventListener("click", async () => {

@@ -355,6 +355,16 @@ select.crm-stage { min-width: 92px; cursor: pointer; }
 .crm-stage-btn:hover:not(:disabled) { filter: brightness(1.08); }
 .crm-stage-btn:disabled { opacity: 0.5; cursor: default; }
 
+/* status cell: active/cancelled + a reason select shown only when cancelled */
+.crm-status-inner { display: flex; flex-direction: column; gap: 6px; min-width: 150px; }
+.crm-status-sel, .crm-reason-sel {
+  font: 500 13px/1.2 var(--font); color: var(--ink); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; cursor: pointer; max-width: 240px;
+}
+.crm-status-sel:focus, .crm-reason-sel:focus { outline: none; border-color: var(--accent-2); }
+.crm-cancelled td.crm-name { color: var(--muted); text-decoration: line-through; }
+.crm-cancelled .crm-status-sel { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+
 /* progression: the gates reached, oldest → newest, with their logged dates */
 .crm-prog-cell { min-width: 200px; }
 .crm-prog {

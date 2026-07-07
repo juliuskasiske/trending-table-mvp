@@ -254,6 +254,8 @@ CREATE TABLE IF NOT EXISTS outreach_leads (
     stage         TEXT NOT NULL DEFAULT 'l1'
                   CHECK (stage IN ('l1', 'l2', 'l3', 'l4', 'l5')),
     planned_l3    DATE,
+    status        TEXT NOT NULL DEFAULT 'active',
+    cancel_reason TEXT,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -261,6 +263,16 @@ CREATE TABLE IF NOT EXISTS outreach_leads (
 -- not hand-entered (idempotent drop for DBs created with the old columns).
 ALTER TABLE outreach_leads DROP COLUMN IF EXISTS actual_l3;
 ALTER TABLE outreach_leads DROP COLUMN IF EXISTS actual_l1;
+-- Lead status: active, or cancelled with a reason. Idempotent add + checks.
+ALTER TABLE outreach_leads ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
+ALTER TABLE outreach_leads ADD COLUMN IF NOT EXISTS cancel_reason TEXT;
+ALTER TABLE outreach_leads DROP CONSTRAINT IF EXISTS outreach_leads_status_check;
+ALTER TABLE outreach_leads ADD CONSTRAINT outreach_leads_status_check
+    CHECK (status IN ('active', 'cancelled'));
+ALTER TABLE outreach_leads DROP CONSTRAINT IF EXISTS outreach_leads_cancel_reason_check;
+ALTER TABLE outreach_leads ADD CONSTRAINT outreach_leads_cancel_reason_check
+    CHECK (cancel_reason IS NULL OR cancel_reason IN
+        ('social_presence', 'closing', 'no_need', 'sub_cost', 'usage_cost', 'low_control', 'other'));
 
 -- Every stage transition, timestamped — the source of truth for when a lead
 -- actually reached each gate (auto-logged when the team hits "Update stage").
