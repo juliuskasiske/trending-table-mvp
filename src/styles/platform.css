@@ -329,3 +329,36 @@ body.no-scroll { overflow: hidden; }
 }
 .btn-msg:hover { background: var(--accent-2); color: #fff; }
 .btn-msg svg { width: 16px; height: 16px; }
+
+/* ---- campaigns (restaurant) ---------------------------------------------- */
+.camp-create {
+  border: 2px solid var(--ink); background: var(--panel); box-shadow: 6px 6px 0 var(--ink);
+  padding: 20px; margin-bottom: 22px; max-width: 640px; display: flex; flex-direction: column; gap: 14px;
+}
+.camp-field { display: flex; flex-direction: column; gap: 6px; }
+.camp-field label { font: 800 12px/1 var(--font); text-transform: none; letter-spacing: 0.01em; }
+.camp-row { display: flex; gap: 14px; flex-wrap: wrap; }
+.camp-row .camp-field { flex: 1 1 160px; }
+.camp-estimate { margin: 0; font: 800 14px/1.2 var(--font-display); color: var(--accent-2); }
+.camp-actions { display: flex; justify-content: flex-end; }
+
+.camp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 18px; }
+.camp-card {
+  text-align: left; border: 2px solid var(--ink); background: var(--panel); box-shadow: 5px 5px 0 var(--ink);
+  padding: 18px; cursor: pointer; display: flex; flex-direction: column; gap: 12px; font-family: var(--font);
+}
+.camp-card:hover { transform: translate(-2px, -2px); box-shadow: 7px 7px 0 var(--accent); }
+.camp-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.camp-card-title { font: 800 17px/1.15 var(--font-display); letter-spacing: -0.01em; }
+.camp-card-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+.camp-card-stats span { font-size: 12.5px; color: var(--muted); }
+.camp-card-stats b { display: block; font: 800 16px/1.1 var(--font-display); color: var(--ink); }
+.camp-card-deadline { display: flex; align-items: center; gap: 6px; color: var(--muted); font-weight: 600; font-size: 12.5px; }
+.camp-card-deadline svg { width: 14px; height: 14px; }
+
+.camp-detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+.camp-detail-head .ct-name { margin-bottom: 8px; }
+.camp-detail-stats { grid-template-columns: repeat(4, 1fr); }
+.camp-guidelines { margin: 16px 0 0; font-size: 14px; line-height: 1.5; color: var(--ink); }
+.ct-post-creator { padding: 10px 16px 0; font-weight: 800; font-size: 13px; }
+@media (max-width: 720px) { .camp-detail-stats { grid-template-columns: repeat(2, 1fr); } }

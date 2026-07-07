@@ -248,33 +248,75 @@ export interface Booking {
   post_count: number;
 }
 
-export function listBookings(restaurantId: number): Promise<{ campaigns: Booking[] }> {
-  return api(`/api/restaurants/${restaurantId}/campaigns`);
+/* ---- campaigns (redesign) ------------------------------------------------ */
+
+export interface Campaign {
+  id: number;
+  restaurant_id: number;
+  title: string | null;
+  budget_eur: string; // numeric serialized as string, e.g. "500.00"
+  content_deadline: string | null; // ISO YYYY-MM-DD
+  guidelines: Record<string, unknown>;
+  estimated_views: number;
+  status: string; // draft | active | completed | cancelled
+  fee_paid_at: string | null;
+  created_at: string;
+  // list-only headline counts:
+  creators_count?: number;
+  posted_count?: number;
+  total_views?: number;
 }
 
-export interface RestaurantPost {
+export interface CampaignPost {
   id: number;
-  platform: string; // instagram | tiktok | youtube
+  platform: string;
   permalink: string | null;
   caption: string | null;
   thumbnail_url: string | null;
-  media_type: string | null; // IMAGE | VIDEO | CAROUSEL_ALBUM
-  media_product_type: string | null; // REELS | FEED | STORY
-  status: string;
-  billed_views: number | null;
-  posted_at: string | null; // ISO datetime
-  campaign_id: number | null;
+  media_type: string | null;
+  media_product_type: string | null;
+  posted_at: string | null;
   creator_id: number;
+  campaign_creator_id: number | null;
   creator_name: string | null;
-  creator_avatar: string | null;
-  creator_handle: string | null;
   latest_views: number | null;
   latest_likes: number | null;
 }
 
-export function listPosts(restaurantId: number, campaignId?: number): Promise<{ posts: RestaurantPost[] }> {
-  const q = campaignId ? `?campaign_id=${campaignId}` : "";
-  return api(`/api/restaurants/${restaurantId}/posts${q}`);
+export interface CampaignAssignment {
+  id: number;
+  creator_id: number;
+  status: string;
+  restaurant_charge_eur: string | null;
+  creator_name: string | null;
+  creator_avatar: string | null;
+  posted_at: string | null;
+  approved_at: string | null;
+}
+
+export interface CampaignDetail {
+  campaign: Campaign;
+  assignments: CampaignAssignment[];
+  posts: CampaignPost[];
+}
+
+export function createCampaign(
+  restaurantId: number,
+  body: { title: string; budget_eur: number; content_deadline: string | null; guidelines: Record<string, unknown> },
+): Promise<Campaign> {
+  return api(`/api/restaurants/${restaurantId}/campaigns`, { method: "POST", json: body });
+}
+
+export function listCampaigns(restaurantId: number): Promise<{ campaigns: Campaign[] }> {
+  return api(`/api/restaurants/${restaurantId}/campaigns`);
+}
+
+export function getCampaign(restaurantId: number, campaignId: number): Promise<CampaignDetail> {
+  return api(`/api/restaurants/${restaurantId}/campaigns/${campaignId}`);
+}
+
+export function launchCampaign(restaurantId: number, campaignId: number): Promise<Campaign> {
+  return api(`/api/restaurants/${restaurantId}/campaigns/${campaignId}/launch`, { method: "POST" });
 }
 
 /* ---- creators directory + reviews ---------------------------------------- */
