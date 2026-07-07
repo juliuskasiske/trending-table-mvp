@@ -66,6 +66,13 @@ CREATE TABLE IF NOT EXISTS restaurants (
 -- Additive columns for DBs created before these flows (idempotent).
 ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS stripe_subscription_status TEXT;
 ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS stripe_usage_subscription_id TEXT;
+-- Redesign: the saved card used for the €9.99 launch fee + off-session
+-- per-approval charges. The old subscription/spending-limit columns above are
+-- deprecated (kept for back-compat; no longer written).
+ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS stripe_payment_method_id TEXT;
+-- Redesign: creator payouts via Stripe Connect (Express).
+ALTER TABLE creators ADD COLUMN IF NOT EXISTS stripe_account_id TEXT;
+ALTER TABLE creators ADD COLUMN IF NOT EXISTS payouts_enabled BOOLEAN NOT NULL DEFAULT false;
 -- Soft-delete tombstone for accounts (rows are kept, login is revoked).
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 
@@ -178,6 +185,53 @@ CREATE INDEX IF NOT EXISTS campaigns_creator_idx    ON campaigns (creator_id);
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS deliverable TEXT;
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS scheduled_date DATE;
 
+-- Redesign: a campaign is now a restaurant thing with a budget + deadline +
+-- per-campaign guidelines, and 0..many creators (see campaign_creators). It is
+-- no longer one-creator, and no longer billed per view. creator_id is retained
+-- (nullable) only for back-compat with old rows.
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS title TEXT;
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS budget_eur NUMERIC(12, 2);
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS content_deadline DATE;  -- post-by date
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS guidelines JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS estimated_views BIGINT;
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS fee_payment_intent_id TEXT;
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS fee_paid_at TIMESTAMPTZ;
+ALTER TABLE campaigns ALTER COLUMN creator_id DROP NOT NULL;
+-- New status set: draft (created, unpaid) → active (launched) → completed | cancelled.
+-- Drop the old CHECK first, then remap legacy statuses, then add the new CHECK.
+ALTER TABLE campaigns DROP CONSTRAINT IF EXISTS campaigns_status_check;
+UPDATE campaigns SET status = CASE
+    WHEN status IN ('proposed', 'accepted') THEN 'draft'
+    WHEN status = 'live' THEN 'active'
+    ELSE status END
+  WHERE status IN ('proposed', 'accepted', 'live');
+ALTER TABLE campaigns ALTER COLUMN status SET DEFAULT 'draft';
+ALTER TABLE campaigns ADD CONSTRAINT campaigns_status_check
+    CHECK (status IN ('draft', 'active', 'completed', 'cancelled'));
+
+-- The internal assignment: which creators are on a campaign, what the restaurant
+-- is charged, and what the creator is paid, each fired on restaurant approval.
+-- (Creators are matched internally via the control tower for now.)
+CREATE TABLE IF NOT EXISTS campaign_creators (
+    id                     BIGSERIAL PRIMARY KEY,
+    campaign_id            BIGINT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+    creator_id             BIGINT NOT NULL REFERENCES creators(id) ON DELETE CASCADE,
+    restaurant_charge_eur  NUMERIC(12, 2),  -- billed to the restaurant on approval
+    creator_payout_eur     NUMERIC(12, 2),  -- transferred to the creator on approval
+    status                 TEXT NOT NULL DEFAULT 'contacted'
+                           CHECK (status IN ('contacted', 'posted', 'approved', 'paid',
+                                             'declined', 'cancelled', 'payment_action')),
+    contacted_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    posted_at              TIMESTAMPTZ,
+    approved_at            TIMESTAMPTZ,
+    paid_at                TIMESTAMPTZ,
+    charge_payment_intent_id TEXT,
+    transfer_id            TEXT,
+    UNIQUE (campaign_id, creator_id)
+);
+CREATE INDEX IF NOT EXISTS campaign_creators_campaign_idx ON campaign_creators (campaign_id);
+CREATE INDEX IF NOT EXISTS campaign_creators_creator_idx  ON campaign_creators (creator_id);
+
 -- THE billable unit: one creator post about a restaurant. The restaurant pays
 -- for views on posts tied to it. billed_views is the high-water mark already
 -- charged (see Phase 6 metering). Creators submit posts by pasting the URL.
@@ -206,6 +260,9 @@ CREATE INDEX IF NOT EXISTS posts_creator_idx    ON posts (creator_id);
 ALTER TABLE posts ADD COLUMN IF NOT EXISTS thumbnail_url TEXT;
 ALTER TABLE posts ADD COLUMN IF NOT EXISTS media_type TEXT;
 ALTER TABLE posts ADD COLUMN IF NOT EXISTS media_product_type TEXT;
+-- Which campaign assignment this submitted post belongs to (redesign).
+ALTER TABLE posts ADD COLUMN IF NOT EXISTS campaign_creator_id BIGINT
+    REFERENCES campaign_creators(id) ON DELETE SET NULL;
 ALTER TABLE posts DROP CONSTRAINT IF EXISTS posts_platform_check;
 ALTER TABLE posts ADD CONSTRAINT posts_platform_check
     CHECK (platform IN ('instagram', 'tiktok', 'youtube'));
@@ -348,6 +405,11 @@ CREATE TABLE IF NOT EXISTS usage_events (
 );
 CREATE INDEX IF NOT EXISTS usage_events_restaurant_idx ON usage_events (restaurant_id, occurred_at DESC);
 CREATE INDEX IF NOT EXISTS usage_events_post_idx       ON usage_events (post_id);
+-- Redesign: unified ledger now records the €9.99 campaign fee + per-approval
+-- creator charges (view rows are deprecated). Widen the kind CHECK.
+ALTER TABLE usage_events DROP CONSTRAINT IF EXISTS usage_events_kind_check;
+ALTER TABLE usage_events ADD CONSTRAINT usage_events_kind_check
+    CHECK (kind IN ('view', 'platform_fee', 'adjustment', 'campaign_fee', 'creator_charge'));
 
 -- The creator's cut: €0.002/view (20% of the restaurant's €0.01).
 CREATE TABLE IF NOT EXISTS creator_earnings (

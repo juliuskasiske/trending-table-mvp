@@ -67,9 +67,18 @@ INSTAGRAM_APP_ID = os.environ.get("INSTAGRAM_APP_ID", "")
 INSTAGRAM_APP_SECRET = os.environ.get("INSTAGRAM_APP_SECRET", "")
 INSTAGRAM_REDIRECT_URI = os.environ.get("INSTAGRAM_REDIRECT_URI", "")
 
+# Campaign redesign: internal rate used only to turn a campaign budget into an
+# expected-views estimate (budget ÷ rate). NEVER exposed to restaurants — they
+# see the view number, never the €/view. €0.015 = 1.5¢/view.
+from decimal import Decimal as _Decimal
+
+VIEW_ESTIMATE_RATE_EUR = _Decimal(os.environ.get("VIEW_ESTIMATE_RATE_EUR", "0.015"))
+# The one-time fee (in cents) to launch a campaign. €9.99.
+CAMPAIGN_FEE_CENTS = int(os.environ.get("CAMPAIGN_FEE_CENTS", "999"))
+
 # Metrics poller: how often (seconds) the API polls live posts for fresh view
-# counts and bills the delta. 0 / unset = disabled (default), so dev doesn't
-# accrue mock charges. In production set e.g. 900 (15 min).
+# counts (analytics only now). 0 / unset = disabled (default). In production
+# set e.g. 900 (15 min).
 try:
     METRICS_POLL_INTERVAL_SECONDS = int(os.environ.get("METRICS_POLL_INTERVAL_SECONDS", "0") or 0)
 except ValueError:
