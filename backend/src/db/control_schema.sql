@@ -288,6 +288,16 @@ CREATE TABLE IF NOT EXISTS lead_stage_events (
 );
 CREATE INDEX IF NOT EXISTS lead_stage_events_lead_idx ON lead_stage_events (lead_id, changed_at);
 
+-- Backfill: L1 (Outreach) events adopt the lead's entered outreach_date, so
+-- leads created before that rule get corrected too. Idempotent — only touches
+-- rows that still diverge, and is a no-op once everything is in sync.
+UPDATE lead_stage_events e
+   SET changed_at = (l.outreach_date + TIME '12:00')
+  FROM outreach_leads l
+ WHERE e.lead_id = l.id AND e.stage = 'l1'
+   AND l.outreach_date IS NOT NULL
+   AND e.changed_at::date <> l.outreach_date;
+
 -- Single-row settings for the pipeline chart's L5 (Subscribed) ramp-up target.
 CREATE TABLE IF NOT EXISTS pipeline_settings (
     id          INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
