@@ -19,6 +19,7 @@ import {
   getAdminRestaurants,
   listLeads,
   setAdminKey,
+  setLeadStage,
   updateLead,
   type AdminAccount,
   type AdminCreator,
@@ -118,7 +119,14 @@ const MARKUP = `
             placeholder="Search a restaurant on Google Maps…" />
           <div class="crm-results" id="crm-results" hidden></div>
         </div>
-        <p class="crm-hint">Search by name, pick the right location, and it's added as a lead.</p>
+        <p class="crm-hint">Search by name, pick the right location, and it's added as a lead.
+          <button type="button" class="linklike" id="crm-manual-toggle">Can't find it? Add manually</button>
+        </p>
+        <div class="crm-manual" id="crm-manual" hidden>
+          <input class="input" id="crm-manual-name" type="text" placeholder="Restaurant name" />
+          <input class="input" id="crm-manual-address" type="text" placeholder="Address (optional)" />
+          <button type="button" class="btn btn-primary" id="crm-manual-add">Add lead</button>
+        </div>
       </div>
       <div class="crm-legend" id="crm-legend"></div>
       <div class="table-wrap" id="crm-table"></div>
@@ -338,7 +346,42 @@ async function loadOutreach(): Promise<void> {
       ).join("");
   }
   wireCrmSearch();
+  wireCrmManual();
   await refreshLeads();
+}
+
+let crmManualWired = false;
+
+function wireCrmManual(): void {
+  if (crmManualWired) return;
+  crmManualWired = true;
+  const toggle = byId("crm-manual-toggle");
+  const panel = byId("crm-manual");
+  const nameEl = byId<HTMLInputElement>("crm-manual-name");
+  const addrEl = byId<HTMLInputElement>("crm-manual-address");
+  const addBtn = byId<HTMLButtonElement>("crm-manual-add");
+  toggle?.addEventListener("click", () => {
+    if (panel) panel.hidden = !panel.hidden;
+    if (panel && !panel.hidden) nameEl?.focus();
+  });
+  const submit = async () => {
+    const name = nameEl?.value.trim() ?? "";
+    if (!name || !addBtn) return;
+    addBtn.disabled = true;
+    try {
+      await createLead(null, name, addrEl?.value.trim() || null);
+      if (nameEl) nameEl.value = "";
+      if (addrEl) addrEl.value = "";
+      if (panel) panel.hidden = true;
+      await refreshLeads();
+    } finally {
+      addBtn.disabled = false;
+    }
+  };
+  addBtn?.addEventListener("click", () => void submit());
+  addrEl?.addEventListener("keydown", (e) => {
+    if ((e as KeyboardEvent).key === "Enter") void submit();
+  });
 }
 
 async function refreshLeads(): Promise<void> {
@@ -351,6 +394,22 @@ async function refreshLeads(): Promise<void> {
   }
 }
 
+const fmtDay = (iso: string | null): string => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? "" : d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+};
+
+/** Actual progression: the earliest date each gate was reached, in gate order. */
+function progression(events: OutreachLead["events"]): string {
+  const firstByStage = new Map<string, string>();
+  for (const e of events) if (!firstByStage.has(e.stage)) firstByStage.set(e.stage, e.changed_at);
+  const parts = STAGES.filter((s) => firstByStage.has(s.code)).map((s) =>
+    `<span class="crm-prog"><b>${esc(s.short)}</b> ${esc(fmtDay(firstByStage.get(s.code)!))}</span>`);
+  return parts.length ? parts.join("") : `<span class="muted">—</span>`;
+}
+
 function renderLeads(leads: OutreachLead[]): void {
   const count = byId("crm-count");
   if (count) count.textContent = leads.length ? String(leads.length) : "";
@@ -360,28 +419,29 @@ function renderLeads(leads: OutreachLead[]): void {
     mount.innerHTML = `<p class="muted" style="padding:14px">No leads yet — search a restaurant above to add your first.</p>`;
     return;
   }
-  const dateCell = (l: OutreachLead, field: keyof OutreachLead) =>
+  const dateCell = (l: OutreachLead, field: "outreach_date" | "planned_l3") =>
     `<input type="date" class="crm-cell" data-id="${l.id}" data-field="${field}" value="${esc(l[field] ?? "")}" />`;
-  const stageCell = (l: OutreachLead) =>
-    `<select class="crm-cell crm-stage" data-id="${l.id}" data-field="stage">${
-      STAGES.map((s) => `<option value="${s.code}"${l.stage === s.code ? " selected" : ""}>${esc(stageLabel(s))}</option>`).join("")
-    }</select>`;
+  const stageCell = (l: OutreachLead) => `<div class="crm-stage-cell">
+      <select class="crm-stage-sel" data-id="${l.id}">${
+        STAGES.map((s) => `<option value="${s.code}"${l.stage === s.code ? " selected" : ""}>${esc(stageLabel(s))}</option>`).join("")
+      }</select>
+      <button type="button" class="crm-stage-btn" data-id="${l.id}">Update stage</button>
+    </div>`;
   const rows = leads.map((l) => `<tr>
       <td class="crm-name">${esc(l.name)}</td>
       <td class="crm-addr">${esc(l.address ?? "—")}</td>
       <td>${dateCell(l, "outreach_date")}</td>
       <td>${stageCell(l)}</td>
       <td>${dateCell(l, "planned_l3")}</td>
-      <td>${dateCell(l, "actual_l3")}</td>
-      <td>${dateCell(l, "actual_l1")}</td>
+      <td class="crm-prog-cell">${progression(l.events)}</td>
       <td><button type="button" class="crm-del" data-id="${l.id}" title="Delete lead" aria-label="Delete lead">✕</button></td>
     </tr>`).join("");
   mount.innerHTML = `<table class="admin crm-table"><thead><tr>
       <th>Restaurant</th><th>Address</th><th>Outreach</th><th>Stage</th>
-      <th>Planned L3</th><th>Actual L3</th><th>Actual L1</th><th></th>
+      <th>Planned L3</th><th>Progression</th><th></th>
     </tr></thead><tbody>${rows}</tbody></table>`;
 
-  mount.querySelectorAll<HTMLInputElement | HTMLSelectElement>(".crm-cell").forEach((el) =>
+  mount.querySelectorAll<HTMLInputElement>(".crm-cell").forEach((el) =>
     el.addEventListener("change", async () => {
       const id = Number(el.dataset.id);
       const field = el.dataset.field as string;
@@ -392,6 +452,19 @@ function renderLeads(leads: OutreachLead[]): void {
         window.setTimeout(() => el.classList.remove("crm-saved"), 800);
       } catch {
         el.classList.add("crm-error");
+      }
+    }));
+  mount.querySelectorAll<HTMLButtonElement>(".crm-stage-btn").forEach((b) =>
+    b.addEventListener("click", async () => {
+      const id = Number(b.dataset.id);
+      const sel = b.parentElement?.querySelector<HTMLSelectElement>("select.crm-stage-sel");
+      if (!sel) return;
+      b.disabled = true;
+      try {
+        await setLeadStage(id, sel.value);
+        await refreshLeads(); // reflects the new progression entry
+      } catch {
+        b.disabled = false;
       }
     }));
   mount.querySelectorAll<HTMLElement>(".crm-del").forEach((b) =>

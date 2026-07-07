@@ -664,6 +664,11 @@ export const getAdminCreators = () =>
 
 /* ---- outreach CRM (control tower) ---------------------------------------- */
 
+export interface StageEvent {
+  stage: string; // l1..l5
+  changed_at: string; // ISO timestamp
+}
+
 export interface OutreachLead {
   id: number;
   place_id: string | null;
@@ -672,9 +677,8 @@ export interface OutreachLead {
   outreach_date: string | null;
   stage: string; // l1..l5
   planned_l3: string | null;
-  actual_l3: string | null;
-  actual_l1: string | null;
   created_at: string;
+  events: StageEvent[]; // stage-transition log, oldest first
 }
 
 export const crmSearchPlaces = (q: string) =>
@@ -692,6 +696,11 @@ export const createLead = (place_id: string | null, name: string, address: strin
 export const updateLead = (id: number, patch: Record<string, string | null>) =>
   api<OutreachLead>(`/api/admin/leads/${id}`, {
     method: "PATCH", json: patch, headers: adminHeaders(),
+  });
+
+export const setLeadStage = (id: number, stage: string) =>
+  api<OutreachLead>(`/api/admin/leads/${id}/stage`, {
+    method: "POST", json: { stage }, headers: adminHeaders(),
   });
 
 export const deleteLead = (id: number) =>
