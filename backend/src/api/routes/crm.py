@@ -17,11 +17,19 @@ from ...integrations import places
 router = APIRouter(prefix="/api/admin", tags=["crm"])
 
 _STAGES = ("l1", "l2", "l3", "l4", "l5")
-# Columns a PATCH may touch (dates + stage); names are fixed here, never from
-# the client, so interpolating them into the UPDATE is safe.
-_PATCHABLE = ("outreach_date", "stage", "planned_l3", "actual_l3", "actual_l1")
-_COLS = ("id, place_id, name, address, outreach_date, stage,"
-         " planned_l3, actual_l3, actual_l1, created_at")
+# Fields a generic PATCH may touch (the manual date + the planned target).
+# Stage changes go through the dedicated /stage endpoint so they get logged.
+# Names are fixed here, never from the client, so interpolating them is safe.
+_PATCHABLE = ("outreach_date", "planned_l3")
+_COLS = "id, place_id, name, address, outreach_date, stage, planned_l3, created_at"
+# The lead columns plus the timestamped stage-transition log, oldest first.
+_LEAD_WITH_EVENTS = (
+    f"SELECT {_COLS},"
+    "   COALESCE((SELECT json_agg(json_build_object('stage', e.stage,"
+    "       'changed_at', e.changed_at) ORDER BY e.changed_at)"
+    "     FROM lead_stage_events e WHERE e.lead_id = outreach_leads.id), '[]') AS events"
+    " FROM outreach_leads"
+)
 
 
 @router.get("/places/search")
@@ -42,21 +50,25 @@ class LeadIn(BaseModel):
 @router.get("/leads")
 def list_leads(_: None = Depends(deps.require_admin)) -> dict:
     with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
-        cur.execute(f"SELECT {_COLS} FROM outreach_leads ORDER BY created_at DESC")
+        cur.execute(f"{_LEAD_WITH_EVENTS} ORDER BY created_at DESC")
         return {"leads": cur.fetchall()}
 
 
 @router.post("/leads")
 def create_lead(body: LeadIn, _: None = Depends(deps.require_admin)) -> dict:
+    """Create a lead (from a Google pick or a manual name/address) at stage L1,
+    logging the L1 entry so progression has a start date."""
     name = (body.name or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="Name is required.")
     with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
-            f"INSERT INTO outreach_leads (place_id, name, address) VALUES (%s, %s, %s)"
-            f" RETURNING {_COLS}",
-            (body.place_id, name, body.address),
+            "INSERT INTO outreach_leads (place_id, name, address) VALUES (%s, %s, %s) RETURNING id",
+            (body.place_id, name, body.address or None),
         )
+        lead_id = cur.fetchone()["id"]
+        cur.execute("INSERT INTO lead_stage_events (lead_id, stage) VALUES (%s, 'l1')", (lead_id,))
+        cur.execute(f"{_LEAD_WITH_EVENTS} WHERE id = %s", (lead_id,))
         lead = cur.fetchone()
         conn.commit()
     return lead
@@ -64,10 +76,7 @@ def create_lead(body: LeadIn, _: None = Depends(deps.require_admin)) -> dict:
 
 class LeadPatch(BaseModel):
     outreach_date: str | None = None
-    stage: str | None = None
     planned_l3: str | None = None
-    actual_l3: str | None = None
-    actual_l1: str | None = None
 
 
 @router.patch("/leads/{lead_id}")
@@ -76,19 +85,44 @@ def update_lead(lead_id: int, body: LeadPatch, _: None = Depends(deps.require_ad
     fields = {k: v for k, v in body.model_dump(exclude_unset=True).items() if k in _PATCHABLE}
     if not fields:
         raise HTTPException(status_code=400, detail="No fields to update.")
-    if "stage" in fields and fields["stage"] not in _STAGES:
-        raise HTTPException(status_code=400, detail="Invalid stage.")
     set_clause = ", ".join(f"{k} = %s" for k in fields)
     values = [(v or None) for v in fields.values()]  # "" → NULL
     with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
-            f"UPDATE outreach_leads SET {set_clause}, updated_at = NOW()"
-            f" WHERE id = %s RETURNING {_COLS}",
+            f"UPDATE outreach_leads SET {set_clause}, updated_at = NOW() WHERE id = %s"
+            f" RETURNING {_COLS}",
             (*values, lead_id),
         )
         lead = cur.fetchone()
         if not lead:
             raise HTTPException(status_code=404, detail="Lead not found.")
+        conn.commit()
+    return lead
+
+
+class StageIn(BaseModel):
+    stage: str
+
+
+@router.post("/leads/{lead_id}/stage")
+def set_stage(lead_id: int, body: StageIn, _: None = Depends(deps.require_admin)) -> dict:
+    """Move a lead to a stage AND log the transition (this is the only place a
+    stage changes — so the timestamp becomes the lead's actual date for it)."""
+    if body.stage not in _STAGES:
+        raise HTTPException(status_code=400, detail="Invalid stage.")
+    with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            "UPDATE outreach_leads SET stage = %s, updated_at = NOW() WHERE id = %s RETURNING id",
+            (body.stage, lead_id),
+        )
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Lead not found.")
+        cur.execute(
+            "INSERT INTO lead_stage_events (lead_id, stage) VALUES (%s, %s)",
+            (lead_id, body.stage),
+        )
+        cur.execute(f"{_LEAD_WITH_EVENTS} WHERE id = %s", (lead_id,))
+        lead = cur.fetchone()
         conn.commit()
     return lead
 

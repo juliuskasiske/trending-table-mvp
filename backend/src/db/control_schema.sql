@@ -254,11 +254,23 @@ CREATE TABLE IF NOT EXISTS outreach_leads (
     stage         TEXT NOT NULL DEFAULT 'l1'
                   CHECK (stage IN ('l1', 'l2', 'l3', 'l4', 'l5')),
     planned_l3    DATE,
-    actual_l3     DATE,
-    actual_l1     DATE,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+-- The actual date a lead reached each gate is derived from the stage log below,
+-- not hand-entered (idempotent drop for DBs created with the old columns).
+ALTER TABLE outreach_leads DROP COLUMN IF EXISTS actual_l3;
+ALTER TABLE outreach_leads DROP COLUMN IF EXISTS actual_l1;
+
+-- Every stage transition, timestamped — the source of truth for when a lead
+-- actually reached each gate (auto-logged when the team hits "Update stage").
+CREATE TABLE IF NOT EXISTS lead_stage_events (
+    id         BIGSERIAL PRIMARY KEY,
+    lead_id    BIGINT NOT NULL REFERENCES outreach_leads(id) ON DELETE CASCADE,
+    stage      TEXT NOT NULL CHECK (stage IN ('l1', 'l2', 'l3', 'l4', 'l5')),
+    changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS lead_stage_events_lead_idx ON lead_stage_events (lead_id, changed_at);
 
 -- ============================================================================
 -- Metrics + view-based billing
