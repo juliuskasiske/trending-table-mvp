@@ -293,8 +293,10 @@ table.admin th:first-child { white-space: nowrap; color: var(--muted); }
 
 /* ---- Outreach CRM -------------------------------------------------------- */
 .crm-add { margin-bottom: 14px; }
-.crm-search-box { position: relative; max-width: 520px; }
-#crm-search { width: 100%; }
+.crm-search-box { position: relative; max-width: 560px; }
+.crm-search-row { display: flex; gap: 10px; }
+#crm-search { flex: 1; }
+#crm-search-btn { flex: 0 0 auto; }
 .crm-hint { color: var(--muted); font-size: 12.5px; margin: 8px 0 0; }
 .crm-hint .linklike { font-size: 12.5px; margin-left: 4px; }
 .crm-manual { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; max-width: 640px; }

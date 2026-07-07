@@ -115,8 +115,11 @@ const MARKUP = `
       <h1 class="admin-title">Outreach CRM <span class="count" id="crm-count"></span></h1>
       <div class="crm-add">
         <div class="crm-search-box">
-          <input class="input" id="crm-search" type="text" autocomplete="off"
-            placeholder="Search a restaurant on Google Maps…" />
+          <div class="crm-search-row">
+            <input class="input" id="crm-search" type="text" autocomplete="off"
+              placeholder="Search a restaurant on Google Maps…" />
+            <button type="button" class="btn btn-primary" id="crm-search-btn">Search</button>
+          </div>
           <div class="crm-results" id="crm-results" hidden></div>
         </div>
         <p class="crm-hint">Search by name, pick the right location, and it's added as a lead.
@@ -334,7 +337,6 @@ function renderSchema(): void {
 
 /* ---- outreach CRM -------------------------------------------------------- */
 
-let crmSearchTimer: number | undefined;
 let crmSearchWired = false;
 
 async function loadOutreach(): Promise<void> {
@@ -481,38 +483,48 @@ function wireCrmSearch(): void {
   if (crmSearchWired) return;
   crmSearchWired = true;
   const input = byId<HTMLInputElement>("crm-search");
+  const button = byId<HTMLButtonElement>("crm-search-btn");
   const results = byId("crm-results");
-  if (!input || !results) return;
+  if (!input || !button || !results) return;
 
   const showResults = (html: string) => { results.innerHTML = html; results.hidden = false; };
-  input.addEventListener("input", () => {
+
+  // Google Places is a paid API — only call it when the button (or Enter) is
+  // pressed, never on every keystroke.
+  const runSearch = async () => {
     const q = input.value.trim();
-    window.clearTimeout(crmSearchTimer);
-    if (q.length < 2) { results.hidden = true; results.innerHTML = ""; return; }
-    crmSearchTimer = window.setTimeout(async () => {
-      let places: PlaceSuggestion[];
-      try {
-        places = (await crmSearchPlaces(q)).results;
-      } catch {
-        showResults(`<div class="crm-result-empty">Search failed — check GOOGLE_MAPS_API_KEY.</div>`);
-        return;
-      }
-      if (!places.length) { showResults(`<div class="crm-result-empty">No matches.</div>`); return; }
-      showResults(places.map((p) =>
-        `<button type="button" class="crm-result" data-place="${esc(p.placeId)}">
-          <span class="crm-result-name">${esc(p.name)}</span>
-          <span class="crm-result-addr">${esc(p.address)}</span></button>`).join(""));
-      results.querySelectorAll<HTMLElement>(".crm-result").forEach((el) =>
-        el.addEventListener("click", async () => {
-          const p = places.find((x) => x.placeId === el.dataset.place);
-          if (!p) return;
-          results.hidden = true; results.innerHTML = ""; input.value = "";
-          try {
-            await createLead(p.placeId, p.name, p.address);
-            await refreshLeads();
-          } catch { /* ignore */ }
-        }));
-    }, 300);
+    if (q.length < 2) { showResults(`<div class="crm-result-empty">Type at least 2 characters.</div>`); return; }
+    button.disabled = true;
+    showResults(`<div class="crm-result-empty">Searching…</div>`);
+    let places: PlaceSuggestion[];
+    try {
+      places = (await crmSearchPlaces(q)).results;
+    } catch {
+      showResults(`<div class="crm-result-empty">Search failed — check GOOGLE_MAPS_API_KEY.</div>`);
+      return;
+    } finally {
+      button.disabled = false;
+    }
+    if (!places.length) { showResults(`<div class="crm-result-empty">No matches.</div>`); return; }
+    showResults(places.map((p) =>
+      `<button type="button" class="crm-result" data-place="${esc(p.placeId)}">
+        <span class="crm-result-name">${esc(p.name)}</span>
+        <span class="crm-result-addr">${esc(p.address)}</span></button>`).join(""));
+    results.querySelectorAll<HTMLElement>(".crm-result").forEach((el) =>
+      el.addEventListener("click", async () => {
+        const p = places.find((x) => x.placeId === el.dataset.place);
+        if (!p) return;
+        results.hidden = true; results.innerHTML = ""; input.value = "";
+        try {
+          await createLead(p.placeId, p.name, p.address);
+          await refreshLeads();
+        } catch { /* ignore */ }
+      }));
+  };
+
+  button.addEventListener("click", () => void runSearch());
+  input.addEventListener("keydown", (e) => {
+    if ((e as KeyboardEvent).key === "Enter") { e.preventDefault(); void runSearch(); }
   });
   document.addEventListener("click", (e) => {
     if (!(e.target as HTMLElement).closest(".crm-search-box")) results.hidden = true;
