@@ -661,3 +661,38 @@ export const getAdminAccounts = () =>
   api<{ accounts: AdminAccount[] }>("/api/admin/accounts", { headers: adminHeaders() });
 export const getAdminCreators = () =>
   api<{ creators: AdminCreator[] }>("/api/admin/creators", { headers: adminHeaders() });
+
+/* ---- outreach CRM (control tower) ---------------------------------------- */
+
+export interface OutreachLead {
+  id: number;
+  place_id: string | null;
+  name: string;
+  address: string | null;
+  outreach_date: string | null;
+  stage: string; // l1..l5
+  planned_l3: string | null;
+  actual_l3: string | null;
+  actual_l1: string | null;
+  created_at: string;
+}
+
+export const crmSearchPlaces = (q: string) =>
+  api<{ results: PlaceSuggestion[] }>(
+    `/api/admin/places/search?q=${encodeURIComponent(q)}`, { headers: adminHeaders() });
+
+export const listLeads = () =>
+  api<{ leads: OutreachLead[] }>("/api/admin/leads", { headers: adminHeaders() });
+
+export const createLead = (place_id: string | null, name: string, address: string | null) =>
+  api<OutreachLead>("/api/admin/leads", {
+    method: "POST", json: { place_id, name, address }, headers: adminHeaders(),
+  });
+
+export const updateLead = (id: number, patch: Record<string, string | null>) =>
+  api<OutreachLead>(`/api/admin/leads/${id}`, {
+    method: "PATCH", json: patch, headers: adminHeaders(),
+  });
+
+export const deleteLead = (id: number) =>
+  api<{ ok: boolean }>(`/api/admin/leads/${id}`, { method: "DELETE", headers: adminHeaders() });

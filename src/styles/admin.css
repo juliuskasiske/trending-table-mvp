@@ -290,3 +290,45 @@ table.admin th:first-child { white-space: nowrap; color: var(--muted); }
 .col-key.pk { color: var(--accent); border-color: var(--accent); }
 .col-key.fk { color: var(--accent-2); border-color: var(--accent-2); }
 .col-key.uk { color: var(--muted); border-color: var(--muted); }
+
+/* ---- Outreach CRM -------------------------------------------------------- */
+.crm-add { margin-bottom: 14px; }
+.crm-search-box { position: relative; max-width: 520px; }
+#crm-search { width: 100%; }
+.crm-hint { color: var(--muted); font-size: 12.5px; margin: 8px 0 0; }
+.crm-results {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 30;
+  background: var(--panel); border: 2px solid var(--line); border-radius: 12px;
+  overflow: hidden auto; max-height: 320px; box-shadow: 0 8px 24px rgba(23, 23, 23, 0.14);
+}
+.crm-result {
+  display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left;
+  padding: 10px 14px; background: var(--panel); border: 0; border-bottom: 1px solid #e6e2da; cursor: pointer;
+}
+.crm-result:last-child { border-bottom: 0; }
+.crm-result:hover { background: var(--bg); }
+.crm-result-name { font-weight: 700; font-size: 14px; color: var(--ink); }
+.crm-result-addr { font-size: 12.5px; color: var(--muted); }
+.crm-result-empty { padding: 12px 14px; color: var(--muted); font-size: 13px; }
+
+.crm-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 0 0 16px; font-size: 12.5px; color: var(--muted); }
+.crm-legend-tag { font: 700 11px/1 var(--font); text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink); }
+.crm-legend-item b { color: var(--ink); margin-right: 5px; }
+
+/* More columns than fit — let the CRM table scroll sideways (the shared
+   .table-wrap hides overflow, which would clip the last columns). */
+#crm-table { overflow-x: auto; }
+.admin.crm-table th, .admin.crm-table td { padding: 9px 10px; }
+.admin.crm-table td.crm-name { white-space: nowrap; color: var(--ink); font-weight: 700; }
+.admin.crm-table td.crm-addr { color: var(--muted); font-size: 12.5px; min-width: 150px; max-width: 230px; }
+.crm-cell {
+  font: 500 13px/1.2 var(--font); color: var(--ink); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px;
+}
+.crm-cell:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(255, 61, 134, 0.18); }
+input.crm-cell[type="date"] { min-width: 132px; }
+select.crm-stage { min-width: 92px; cursor: pointer; }
+.crm-cell.crm-saved { border-color: #16a34a; }
+.crm-cell.crm-error { border-color: var(--accent); }
+.crm-del { border: 0; background: none; color: var(--muted); font-size: 14px; cursor: pointer; padding: 5px 8px; border-radius: 8px; line-height: 1; }
+.crm-del:hover { color: #fff; background: var(--accent); }

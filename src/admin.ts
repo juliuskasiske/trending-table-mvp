@@ -9,20 +9,38 @@ import "./styles/onboarding.css"; // shared shell/topbar/card/input/button style
 import "./styles/admin.css";
 import { INTRO, SCHEMA_DOC, type Col, type Group, type Table } from "./schema-doc.ts";
 import {
+  createLead,
+  crmSearchPlaces,
+  deleteLead,
   getAdminAccounts,
   getAdminCreators,
   getAdminKey,
   getAdminOverview,
   getAdminRestaurants,
+  listLeads,
   setAdminKey,
+  updateLead,
   type AdminAccount,
   type AdminCreator,
   type AdminOverview,
   type AdminRestaurant,
   type FunnelStage,
+  type OutreachLead,
 } from "./api.ts";
+import type { PlaceSuggestion } from "./types.ts";
 
-type View = "overview" | "restaurants" | "creators" | "schema";
+type View = "overview" | "restaurants" | "creators" | "outreach" | "schema";
+
+// Stage gates — the single place to rename L4/L5 when they're defined.
+const STAGES: Array<{ code: string; short: string; full: string }> = [
+  { code: "l1", short: "L1", full: "Vague interest, follow up planned" },
+  { code: "l2", short: "L2", full: "Firm interest, follow up planned" },
+  { code: "l3", short: "L3", full: "Demo given" },
+  { code: "l4", short: "L4", full: "" },
+  { code: "l5", short: "L5", full: "" },
+];
+const stageLabel = (s: { short: string; full: string }) =>
+  s.full ? `${s.short} · ${s.full}` : s.short;
 
 const MARKUP = `
 <div class="admin-login-wrap" id="admin-login" hidden>
@@ -48,6 +66,7 @@ const MARKUP = `
       <button type="button" class="nav-item on" data-view="overview">Overview</button>
       <button type="button" class="nav-item" data-view="restaurants">Restaurants</button>
       <button type="button" class="nav-item" data-view="creators">Creators</button>
+      <button type="button" class="nav-item" data-view="outreach">Outreach</button>
       <button type="button" class="nav-item" data-view="schema">Data model</button>
     </nav>
     <button type="button" class="linklike admin-signout" id="admin-logout">Sign out</button>
@@ -89,6 +108,20 @@ const MARKUP = `
     <section class="admin-view" id="view-creators" hidden>
       <h1 class="admin-title">Creators <span class="count" id="crea-count"></span></h1>
       <div class="table-wrap" id="crea-table"></div>
+    </section>
+
+    <section class="admin-view" id="view-outreach" hidden>
+      <h1 class="admin-title">Outreach CRM <span class="count" id="crm-count"></span></h1>
+      <div class="crm-add">
+        <div class="crm-search-box">
+          <input class="input" id="crm-search" type="text" autocomplete="off"
+            placeholder="Search a restaurant on Google Maps…" />
+          <div class="crm-results" id="crm-results" hidden></div>
+        </div>
+        <p class="crm-hint">Search by name, pick the right location, and it's added as a lead.</p>
+      </div>
+      <div class="crm-legend" id="crm-legend"></div>
+      <div class="table-wrap" id="crm-table"></div>
     </section>
 
     <section class="admin-view" id="view-schema" hidden>
@@ -291,8 +324,130 @@ function renderSchema(): void {
     ${SCHEMA_DOC.map(group).join("")}`;
 }
 
+/* ---- outreach CRM -------------------------------------------------------- */
+
+let crmSearchTimer: number | undefined;
+let crmSearchWired = false;
+
+async function loadOutreach(): Promise<void> {
+  const legend = byId("crm-legend");
+  if (legend) {
+    legend.innerHTML = "<span class=\"crm-legend-tag\">Stage gates</span>" +
+      STAGES.map((s) =>
+        `<span class="crm-legend-item"><b>${esc(s.short)}</b>${s.full ? " " + esc(s.full) : ""}</span>`,
+      ).join("");
+  }
+  wireCrmSearch();
+  await refreshLeads();
+}
+
+async function refreshLeads(): Promise<void> {
+  try {
+    const { leads } = await listLeads();
+    renderLeads(leads);
+  } catch {
+    const mount = byId("crm-table");
+    if (mount) mount.innerHTML = `<p class="muted" style="padding:14px">Couldn't load leads.</p>`;
+  }
+}
+
+function renderLeads(leads: OutreachLead[]): void {
+  const count = byId("crm-count");
+  if (count) count.textContent = leads.length ? String(leads.length) : "";
+  const mount = byId("crm-table");
+  if (!mount) return;
+  if (!leads.length) {
+    mount.innerHTML = `<p class="muted" style="padding:14px">No leads yet — search a restaurant above to add your first.</p>`;
+    return;
+  }
+  const dateCell = (l: OutreachLead, field: keyof OutreachLead) =>
+    `<input type="date" class="crm-cell" data-id="${l.id}" data-field="${field}" value="${esc(l[field] ?? "")}" />`;
+  const stageCell = (l: OutreachLead) =>
+    `<select class="crm-cell crm-stage" data-id="${l.id}" data-field="stage">${
+      STAGES.map((s) => `<option value="${s.code}"${l.stage === s.code ? " selected" : ""}>${esc(stageLabel(s))}</option>`).join("")
+    }</select>`;
+  const rows = leads.map((l) => `<tr>
+      <td class="crm-name">${esc(l.name)}</td>
+      <td class="crm-addr">${esc(l.address ?? "—")}</td>
+      <td>${dateCell(l, "outreach_date")}</td>
+      <td>${stageCell(l)}</td>
+      <td>${dateCell(l, "planned_l3")}</td>
+      <td>${dateCell(l, "actual_l3")}</td>
+      <td>${dateCell(l, "actual_l1")}</td>
+      <td><button type="button" class="crm-del" data-id="${l.id}" title="Delete lead" aria-label="Delete lead">✕</button></td>
+    </tr>`).join("");
+  mount.innerHTML = `<table class="admin crm-table"><thead><tr>
+      <th>Restaurant</th><th>Address</th><th>Outreach</th><th>Stage</th>
+      <th>Planned L3</th><th>Actual L3</th><th>Actual L1</th><th></th>
+    </tr></thead><tbody>${rows}</tbody></table>`;
+
+  mount.querySelectorAll<HTMLInputElement | HTMLSelectElement>(".crm-cell").forEach((el) =>
+    el.addEventListener("change", async () => {
+      const id = Number(el.dataset.id);
+      const field = el.dataset.field as string;
+      el.classList.remove("crm-saved", "crm-error");
+      try {
+        await updateLead(id, { [field]: el.value });
+        el.classList.add("crm-saved");
+        window.setTimeout(() => el.classList.remove("crm-saved"), 800);
+      } catch {
+        el.classList.add("crm-error");
+      }
+    }));
+  mount.querySelectorAll<HTMLElement>(".crm-del").forEach((b) =>
+    b.addEventListener("click", async () => {
+      if (!window.confirm("Delete this lead?")) return;
+      try {
+        await deleteLead(Number(b.dataset.id));
+        await refreshLeads();
+      } catch { /* leave the row */ }
+    }));
+}
+
+function wireCrmSearch(): void {
+  if (crmSearchWired) return;
+  crmSearchWired = true;
+  const input = byId<HTMLInputElement>("crm-search");
+  const results = byId("crm-results");
+  if (!input || !results) return;
+
+  const showResults = (html: string) => { results.innerHTML = html; results.hidden = false; };
+  input.addEventListener("input", () => {
+    const q = input.value.trim();
+    window.clearTimeout(crmSearchTimer);
+    if (q.length < 2) { results.hidden = true; results.innerHTML = ""; return; }
+    crmSearchTimer = window.setTimeout(async () => {
+      let places: PlaceSuggestion[];
+      try {
+        places = (await crmSearchPlaces(q)).results;
+      } catch {
+        showResults(`<div class="crm-result-empty">Search failed — check GOOGLE_MAPS_API_KEY.</div>`);
+        return;
+      }
+      if (!places.length) { showResults(`<div class="crm-result-empty">No matches.</div>`); return; }
+      showResults(places.map((p) =>
+        `<button type="button" class="crm-result" data-place="${esc(p.placeId)}">
+          <span class="crm-result-name">${esc(p.name)}</span>
+          <span class="crm-result-addr">${esc(p.address)}</span></button>`).join(""));
+      results.querySelectorAll<HTMLElement>(".crm-result").forEach((el) =>
+        el.addEventListener("click", async () => {
+          const p = places.find((x) => x.placeId === el.dataset.place);
+          if (!p) return;
+          results.hidden = true; results.innerHTML = ""; input.value = "";
+          try {
+            await createLead(p.placeId, p.name, p.address);
+            await refreshLeads();
+          } catch { /* ignore */ }
+        }));
+    }, 300);
+  });
+  document.addEventListener("click", (e) => {
+    if (!(e.target as HTMLElement).closest(".crm-search-box")) results.hidden = true;
+  });
+}
+
 function setView(view: View): void {
-  (["overview", "restaurants", "creators", "schema"] as View[]).forEach((v) => {
+  (["overview", "restaurants", "creators", "outreach", "schema"] as View[]).forEach((v) => {
     const sec = byId(`view-${v}`);
     if (sec) sec.hidden = v !== view;
   });
@@ -312,11 +467,12 @@ async function loadDashboard(): Promise<void> {
   renderRestaurants(restaurants.restaurants, accounts.accounts);
   renderCreators(creators.creators);
   renderSchema();
+  void loadOutreach();
 
   byId("admin-login")!.hidden = true;
   byId("admin-app")!.hidden = false;
   const hash = window.location.hash.replace("#", "") as View;
-  setView(["overview", "restaurants", "creators", "schema"].includes(hash) ? hash : "overview");
+  setView(["overview", "restaurants", "creators", "outreach", "schema"].includes(hash) ? hash : "overview");
 }
 
 function showLogin(message?: string): void {
