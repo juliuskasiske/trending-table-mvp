@@ -14,6 +14,7 @@ from .routes import (
     config as config_routes,
     creator,
     creators,
+    crm,
     menu,
     messages,
     metering,
@@ -45,6 +46,7 @@ app.include_router(billing.webhook_router)
 app.include_router(campaigns.router)
 app.include_router(creator.router)
 app.include_router(creators.router)
+app.include_router(crm.router)
 app.include_router(menu.router)
 app.include_router(messages.router)
 app.include_router(metering.router)

@@ -242,6 +242,24 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS messages_thread_idx ON messages (restaurant_id, creator_id, created_at);
 CREATE INDEX IF NOT EXISTS messages_creator_idx ON messages (creator_id, created_at);
 
+-- Restaurant-outreach CRM (control-tower only). Each row is a prospect the team
+-- is working through the sales funnel; the restaurant is identified via Google
+-- Places (place_id + name + address). Stage gates L1..L5; dates are team-set.
+CREATE TABLE IF NOT EXISTS outreach_leads (
+    id            BIGSERIAL PRIMARY KEY,
+    place_id      TEXT,
+    name          TEXT NOT NULL,
+    address       TEXT,
+    outreach_date DATE,
+    stage         TEXT NOT NULL DEFAULT 'l1'
+                  CHECK (stage IN ('l1', 'l2', 'l3', 'l4', 'l5')),
+    planned_l3    DATE,
+    actual_l3     DATE,
+    actual_l1     DATE,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- ============================================================================
 -- Metrics + view-based billing
 -- ============================================================================
