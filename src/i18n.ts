@@ -149,7 +149,7 @@ const en: Dict = {
   "review.must": "Must include",
   "review.avoid": "Avoid",
   "review.consent":
-    'I agree to the <a href="#" tabindex="-1">Terms</a> and <a href="#" tabindex="-1">Privacy Policy</a>, and to a {fee} monthly platform fee plus €0.01 per view while my account is active.',
+    "I agree to the Terms and Privacy Policy. Creating a restaurant is free; launching a campaign costs a €9.99 fee.",
   "review.consent.err": "Please accept the terms to continue.",
 
   // Success
@@ -604,7 +604,7 @@ const de: Dict = {
   "review.must": "Muss enthalten",
   "review.avoid": "Vermeiden",
   "review.consent":
-    'Ich stimme den <a href="#" tabindex="-1">AGB</a> und der <a href="#" tabindex="-1">Datenschutzerklärung</a> zu sowie einer monatlichen Plattformgebühr von {fee} plus 0,01 € pro View, solange mein Konto aktiv ist.',
+    "Ich stimme den AGB und der Datenschutzerklärung zu. Ein Restaurant anzulegen ist kostenlos; eine Kampagne zu starten kostet 9,99 €.",
   "review.consent.err": "Bitte akzeptiere die Bedingungen, um fortzufahren.",
 
   "done.title": "Du bist dabei.",

@@ -72,7 +72,14 @@ export function initOnboarding(): void {
   const form = document.querySelector<HTMLFormElement>("#onboarding");
   if (!form) return;
 
-  const steps = Array.from(form.querySelectorAll<HTMLElement>(".step"));
+  // Campaign redesign: no €50 subscription and no card at signup, and content
+  // guidelines are per-campaign now — so the billing + guidelines steps are
+  // dropped from the flow (account → restaurant → review → done). Their DOM is
+  // kept in place (billing helper code still references the slider etc.) but
+  // hidden and excluded from the step sequence.
+  const SKIP_STEPS = new Set(["billing", "guidelines"]);
+  const steps = Array.from(form.querySelectorAll<HTMLElement>(".step"))
+    .filter((s) => !SKIP_STEPS.has(s.dataset.step || ""));
   const doneIndex = steps.findIndex((s) => s.dataset.step === "done");
   const flowCount = doneIndex;
 
@@ -1137,30 +1144,9 @@ export function initOnboarding(): void {
         ? t("review.menuItems", { n: menuItems.length })
         : val("menuUrl") || t("review.addedLater"),
     );
-    const { limit: lim, views } = budget();
-    put("r-limit", t("review.limitMonth", { v: eur(lim) }));
-    put("r-views", t("review.viewsMonth", { v: nf.format(views) }));
-    put(
-      "r-billing",
-      cadence === "annual"
-        ? t("review.cycle.annual", { discounted: eur2(annualFee().discounted) })
-        : t("review.cycle.monthly", { fee: eur2(feeMonthlyEur()) }),
-    );
-    put(
-      "r-payment",
-      payment.connected
-        ? payment.last4
-          ? `${(payment.brand ?? "card").toUpperCase()} •••• ${payment.last4}`
-          : t("review.cardSaved")
-        : config?.stripeEnabled
-          ? t("review.notAdded")
-          : t("review.addedBeforeLaunch"),
-    );
-    const g = guidelines();
-    const joinChips = (vals: string[]) => vals.map(tChip).join(", ");
-    put("r-show", joinChips(g.show));
-    put("r-must", joinChips(g.mustInclude));
-    put("r-avoid", joinChips(g.avoid) || t("review.none"));
+    // Budget / billing / payment / guidelines are no longer part of onboarding
+    // (campaign model): the €50 subscription is gone and guidelines are set
+    // per-campaign. Those review rows are removed from the markup.
   }
 
   /* ---- Persistence ----------------------------------------------------- */
@@ -1333,7 +1319,6 @@ export function initOnboarding(): void {
           show(1); // safety: no restaurant provisioned yet
           return;
         }
-        await persistGuidelines(); // ensure the latest brief is saved
         await activateRestaurant(restaurantId);
 
         // Registration done — hand off to the login screen so the user signs in
