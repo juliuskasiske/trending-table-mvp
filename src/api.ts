@@ -662,6 +662,26 @@ export const getAdminAccounts = () =>
 export const getAdminCreators = () =>
   api<{ creators: AdminCreator[] }>("/api/admin/creators", { headers: adminHeaders() });
 
+/* ---- pipeline chart ------------------------------------------------------ */
+
+export interface PipelineDay {
+  date: string; // YYYY-MM-DD
+  l1: number; l2: number; l3: number; l4: number; l5: number;
+}
+export interface PipelineSettings {
+  l5_target: number;
+  target_date: string;
+  start_date: string | null;
+  curve_shape: string; // s | linear
+}
+export const getPipeline = () =>
+  api<{ days: PipelineDay[]; settings: PipelineSettings; first_day: string | null }>(
+    "/api/admin/pipeline", { headers: adminHeaders() });
+export const putPipelineSettings = (patch: Record<string, string | number | null>) =>
+  api<PipelineSettings>("/api/admin/pipeline/settings", {
+    method: "PUT", json: patch, headers: adminHeaders(),
+  });
+
 /* ---- outreach CRM (control tower) ---------------------------------------- */
 
 export interface StageEvent {

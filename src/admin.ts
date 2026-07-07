@@ -17,7 +17,9 @@ import {
   getAdminKey,
   getAdminOverview,
   getAdminRestaurants,
+  getPipeline,
   listLeads,
+  putPipelineSettings,
   setAdminKey,
   setLeadStage,
   updateLead,
@@ -27,10 +29,12 @@ import {
   type AdminRestaurant,
   type FunnelStage,
   type OutreachLead,
+  type PipelineDay,
+  type PipelineSettings,
 } from "./api.ts";
 import type { PlaceSuggestion } from "./types.ts";
 
-type View = "overview" | "restaurants" | "creators" | "outreach" | "schema";
+type View = "overview" | "pipeline" | "restaurants" | "creators" | "outreach" | "schema";
 
 // Stage gates — the single place to rename them.
 const STAGES: Array<{ code: string; short: string; full: string }> = [
@@ -76,6 +80,7 @@ const MARKUP = `
     <p class="admin-nav-tag">Control tower</p>
     <nav class="admin-nav-list">
       <button type="button" class="nav-item on" data-view="overview">Overview</button>
+      <button type="button" class="nav-item" data-view="pipeline">Pipeline</button>
       <button type="button" class="nav-item" data-view="restaurants">Restaurants</button>
       <button type="button" class="nav-item" data-view="creators">Creators</button>
       <button type="button" class="nav-item" data-view="outreach">Outreach</button>
@@ -108,6 +113,12 @@ const MARKUP = `
         <span class="status-row-label">Restaurants by status</span>
         <div class="pill-row" id="status-pills"></div>
       </div>
+    </section>
+
+    <section class="admin-view" id="view-pipeline" hidden>
+      <h1 class="admin-title">Pipeline</h1>
+      <div class="pl-controls" id="pl-controls"></div>
+      <div class="pl-chart-wrap" id="pl-chart"></div>
     </section>
 
     <section class="admin-view" id="view-restaurants" hidden>
@@ -566,8 +577,165 @@ function wireCrmSearch(): void {
   });
 }
 
+/* ---- pipeline chart ------------------------------------------------------ */
+
+const GATE_COLORS: Record<string, string> = {
+  l1: "#1f7a3f", l2: "#74c48b", l3: "#2f8f97", l4: "#2b46d0", l5: "#12206b",
+};
+const TARGET_COLOR = "#d81b60";
+
+async function loadPipeline(): Promise<void> {
+  const chart = byId("pl-chart");
+  const controls = byId("pl-controls");
+  if (!chart || !controls) return;
+  let data;
+  try {
+    data = await getPipeline();
+  } catch {
+    chart.innerHTML = `<p class="muted" style="padding:14px">Couldn't load the pipeline.</p>`;
+    return;
+  }
+  renderPipelineControls(controls, data.settings);
+  chart.innerHTML = data.days.length
+    ? buildPipelineSVG(data.days, data.settings, data.first_day)
+    : `<p class="muted" style="padding:14px">No active leads yet — add leads in Outreach to build the pipeline.</p>`;
+}
+
+function renderPipelineControls(mount: HTMLElement, s: PipelineSettings): void {
+  mount.innerHTML = `
+    <label class="pl-ctrl">L5 target <input class="input pl-num" id="pl-l5-target" type="number" min="0" value="${s.l5_target}" /></label>
+    <label class="pl-ctrl">by <input class="input pl-date" id="pl-target-date" type="date" value="${esc(s.target_date)}" /></label>
+    <label class="pl-ctrl">ramp from <input class="input pl-date" id="pl-start-date" type="date" value="${esc(s.start_date ?? "")}" /></label>
+    <label class="pl-ctrl">shape
+      <select class="input pl-shape" id="pl-shape">
+        <option value="s"${s.curve_shape === "s" ? " selected" : ""}>S-curve</option>
+        <option value="linear"${s.curve_shape === "linear" ? " selected" : ""}>Linear</option>
+      </select></label>
+    <button type="button" class="btn btn-primary" id="pl-save">Save target</button>
+    <span class="pl-note">Each bar = active leads that day, by L-gate. Cancelled leads excluded.</span>`;
+  byId("pl-save")?.addEventListener("click", async () => {
+    const btn = byId<HTMLButtonElement>("pl-save")!;
+    btn.disabled = true;
+    try {
+      await putPipelineSettings({
+        l5_target: Number(byId<HTMLInputElement>("pl-l5-target")?.value || 0),
+        target_date: byId<HTMLInputElement>("pl-target-date")?.value || "",
+        start_date: byId<HTMLInputElement>("pl-start-date")?.value || "",
+        curve_shape: byId<HTMLSelectElement>("pl-shape")?.value || "s",
+      });
+      await loadPipeline();
+    } catch {
+      btn.disabled = false;
+    }
+  });
+}
+
+function niceNum(x: number): number {
+  if (x <= 0) return 1;
+  const e = Math.pow(10, Math.floor(Math.log10(x)));
+  const f = x / e;
+  const nf = f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10;
+  return nf * e;
+}
+
+function buildPipelineSVG(days: PipelineDay[], s: PipelineSettings, firstDay: string | null): string {
+  const W = 980, H = 460, mL = 52, mR = 168, mT = 28, mB = 44;
+  const plotW = W - mL - mR, plotH = H - mT - mB, plotB = mT + plotH;
+  const ms = (d: string) => new Date(d + "T00:00:00").getTime();
+  const DAY = 86400000;
+
+  const lastDay = days[days.length - 1].date;
+  const rampStart = ms(s.start_date || firstDay || days[0].date);
+  const domStart = Math.min(ms(days[0].date), rampStart);
+  let domEnd = Math.max(ms(s.target_date), ms(lastDay) + DAY);
+  if (domEnd <= domStart) domEnd = domStart + DAY;
+
+  const totals = days.map((d) => d.l1 + d.l2 + d.l3 + d.l4 + d.l5);
+  const maxTotal = Math.max(1, ...totals);
+  const rawMax = Math.max(maxTotal, s.l5_target) * 1.12;
+  const step = niceNum(rawMax / 5);
+  const yMax = Math.ceil(rawMax / step) * step;
+
+  const x = (t: number) => mL + ((t - domStart) / (domEnd - domStart)) * plotW;
+  const y = (v: number) => plotB - (v / yMax) * plotH;
+  const dayPx = (plotW * DAY) / (domEnd - domStart);
+  const barW = Math.max(3, Math.min(dayPx * 0.82, 30));
+
+  let grid = "";
+  for (let v = 0; v <= yMax + 0.001; v += step) {
+    const yy = y(v);
+    grid += `<line x1="${mL}" y1="${yy.toFixed(1)}" x2="${mL + plotW}" y2="${yy.toFixed(1)}" stroke="#e6e2da" stroke-width="1"/>`
+      + `<text x="${mL - 8}" y="${(yy + 4).toFixed(1)}" text-anchor="end" class="pl-axis">${v % 1 ? v.toFixed(1) : v}</text>`;
+  }
+
+  let xlabels = "";
+  const N = 7;
+  for (let i = 0; i <= N; i++) {
+    const t = domStart + ((domEnd - domStart) * i) / N;
+    const lab = new Date(t).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+    xlabels += `<text x="${x(t).toFixed(1)}" y="${plotB + 18}" text-anchor="middle" class="pl-axis">${esc(lab)}</text>`;
+  }
+
+  const order: Array<keyof PipelineDay> = ["l5", "l4", "l3", "l2", "l1"];
+  let bars = "";
+  days.forEach((d, i) => {
+    const cx = x(ms(d.date));
+    let running = 0;
+    for (const k of order) {
+      const seg = d[k] as number;
+      if (seg > 0) {
+        const yTop = y(running + seg), h = y(running) - y(running + seg);
+        bars += `<rect x="${(cx - barW / 2).toFixed(1)}" y="${yTop.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(0, h).toFixed(1)}" fill="${GATE_COLORS[k]}"><title>${k.toUpperCase()} · ${d.date}: ${seg}</title></rect>`;
+        running += seg;
+      }
+    }
+    if (barW >= 15 && totals[i] > 0) {
+      bars += `<text x="${cx.toFixed(1)}" y="${(y(running) - 5).toFixed(1)}" text-anchor="middle" class="pl-total">${totals[i]}</text>`;
+    }
+  });
+
+  const goal = s.l5_target;
+  const targetMs = ms(s.target_date);
+  const ease = (f: number) => (s.curve_shape === "linear" ? f : f * f * (3 - 2 * f));
+  const val = (t: number) => {
+    if (t <= rampStart) return 0;
+    if (t >= targetMs) return goal;
+    return goal * ease((t - rampStart) / (targetMs - rampStart));
+  };
+  let path = "";
+  const STEPS = 140;
+  for (let i = 0; i <= STEPS; i++) {
+    const t = domStart + ((domEnd - domStart) * i) / STEPS;
+    path += `${i ? "L" : "M"}${x(t).toFixed(1)} ${y(val(t)).toFixed(1)} `;
+  }
+  const goalLine = `<line x1="${mL}" y1="${y(goal).toFixed(1)}" x2="${mL + plotW}" y2="${y(goal).toFixed(1)}" stroke="${TARGET_COLOR}" stroke-width="1" stroke-dasharray="5 4" opacity="0.5"/>`
+    + `<text x="${mL + plotW - 2}" y="${(y(goal) - 6).toFixed(1)}" text-anchor="end" class="pl-target-lbl">L5 target: ${goal}</text>`;
+  const curve = `<path d="${path.trim()}" fill="none" stroke="${TARGET_COLOR}" stroke-width="2.5"/>`;
+
+  const lx = mL + plotW + 16;
+  let legend = "";
+  STAGES.forEach((st, i) => {
+    const ly = mT + 6 + i * 22;
+    legend += `<rect x="${lx}" y="${ly}" width="13" height="13" fill="${GATE_COLORS[st.code]}"/>`
+      + `<text x="${lx + 19}" y="${ly + 11}" class="pl-legend">${st.short} · ${esc(st.full)}</text>`;
+  });
+  const lyc = mT + 6 + 5 * 22 + 6;
+  legend += `<line x1="${lx}" y1="${lyc + 6}" x2="${lx + 13}" y2="${lyc + 6}" stroke="${TARGET_COLOR}" stroke-width="2.5"/>`
+    + `<text x="${lx + 19}" y="${(lyc + 10).toFixed(1)}" class="pl-legend">L5 ramp-up target</text>`;
+
+  return `<svg viewBox="0 0 ${W} ${H}" class="pl-svg" role="img" aria-label="Pipeline by L-gate over time">
+    ${grid}
+    <line x1="${mL}" y1="${plotB}" x2="${mL + plotW}" y2="${plotB}" stroke="#171717" stroke-width="1.5"/>
+    ${bars}
+    ${goalLine}
+    ${curve}
+    ${xlabels}
+    ${legend}
+  </svg>`;
+}
+
 function setView(view: View): void {
-  (["overview", "restaurants", "creators", "outreach", "schema"] as View[]).forEach((v) => {
+  (["overview", "pipeline", "restaurants", "creators", "outreach", "schema"] as View[]).forEach((v) => {
     const sec = byId(`view-${v}`);
     if (sec) sec.hidden = v !== view;
   });
@@ -588,11 +756,12 @@ async function loadDashboard(): Promise<void> {
   renderCreators(creators.creators);
   renderSchema();
   void loadOutreach();
+  void loadPipeline();
 
   byId("admin-login")!.hidden = true;
   byId("admin-app")!.hidden = false;
   const hash = window.location.hash.replace("#", "") as View;
-  setView(["overview", "restaurants", "creators", "outreach", "schema"].includes(hash) ? hash : "overview");
+  setView(["overview", "pipeline", "restaurants", "creators", "outreach", "schema"].includes(hash) ? hash : "overview");
 }
 
 function showLogin(message?: string): void {
