@@ -288,6 +288,17 @@ CREATE TABLE IF NOT EXISTS lead_stage_events (
 );
 CREATE INDEX IF NOT EXISTS lead_stage_events_lead_idx ON lead_stage_events (lead_id, changed_at);
 
+-- Single-row settings for the pipeline chart's L5 (Subscribed) ramp-up target.
+CREATE TABLE IF NOT EXISTS pipeline_settings (
+    id          INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+    l5_target   INTEGER NOT NULL DEFAULT 50,
+    target_date DATE NOT NULL DEFAULT DATE '2026-07-31',
+    start_date  DATE,  -- null = ramp from the first day we have pipeline data
+    curve_shape TEXT NOT NULL DEFAULT 's' CHECK (curve_shape IN ('s', 'linear')),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+INSERT INTO pipeline_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
 -- ============================================================================
 -- Metrics + view-based billing
 -- ============================================================================

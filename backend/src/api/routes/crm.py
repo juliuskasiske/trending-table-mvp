@@ -145,3 +145,81 @@ def delete_lead(lead_id: int, _: None = Depends(deps.require_admin)) -> dict:
         cur.execute("DELETE FROM outreach_leads WHERE id = %s", (lead_id,))
         conn.commit()
     return {"ok": True}
+
+
+# --------------------------------------------------------------------------- #
+# Pipeline chart: daily count of ACTIVE leads per L-gate + the L5 target curve
+# --------------------------------------------------------------------------- #
+
+# For each day since the first stage event, each active lead's gate is the most
+# recent transition on or before that day; we count leads per gate per day.
+_PIPELINE_SERIES = """
+WITH active AS (SELECT id FROM outreach_leads WHERE status = 'active'),
+bounds AS (
+    SELECT min(e.changed_at)::date AS start_day
+    FROM lead_stage_events e JOIN active a ON a.id = e.lead_id
+),
+days AS (
+    SELECT generate_series(b.start_day, CURRENT_DATE, interval '1 day')::date AS d
+    FROM bounds b WHERE b.start_day IS NOT NULL
+),
+snap AS (
+    SELECT days.d,
+        (SELECT e.stage FROM lead_stage_events e
+          WHERE e.lead_id = a.id AND e.changed_at::date <= days.d
+          ORDER BY e.changed_at DESC LIMIT 1) AS stage
+    FROM days CROSS JOIN active a
+)
+SELECT d::text AS date,
+    count(*) FILTER (WHERE stage = 'l1') AS l1,
+    count(*) FILTER (WHERE stage = 'l2') AS l2,
+    count(*) FILTER (WHERE stage = 'l3') AS l3,
+    count(*) FILTER (WHERE stage = 'l4') AS l4,
+    count(*) FILTER (WHERE stage = 'l5') AS l5
+FROM snap GROUP BY d ORDER BY d
+"""
+
+
+@router.get("/pipeline")
+def pipeline(_: None = Depends(deps.require_admin)) -> dict:
+    with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(_PIPELINE_SERIES)
+        days = cur.fetchall()
+        cur.execute(
+            "SELECT l5_target, target_date::text, start_date::text, curve_shape"
+            " FROM pipeline_settings WHERE id = 1"
+        )
+        settings = cur.fetchone()
+    first_day = days[0]["date"] if days else None
+    return {"days": days, "settings": settings, "first_day": first_day}
+
+
+class PipelineSettingsIn(BaseModel):
+    l5_target: int | None = None
+    target_date: str | None = None
+    start_date: str | None = None  # "" clears → ramp from first data day
+    curve_shape: str | None = None
+
+
+@router.put("/pipeline/settings")
+def update_pipeline_settings(body: PipelineSettingsIn, _: None = Depends(deps.require_admin)) -> dict:
+    fields = body.model_dump(exclude_unset=True)
+    if "l5_target" in fields and (fields["l5_target"] is None or fields["l5_target"] < 0):
+        raise HTTPException(status_code=400, detail="Target must be 0 or more.")
+    if "curve_shape" in fields and fields["curve_shape"] not in ("s", "linear"):
+        raise HTTPException(status_code=400, detail="Invalid curve shape.")
+    if "target_date" in fields and not fields["target_date"]:
+        raise HTTPException(status_code=400, detail="Target date is required.")
+    if not fields:
+        raise HTTPException(status_code=400, detail="No fields to update.")
+    set_clause = ", ".join(f"{k} = %s" for k in fields)
+    values = [(None if v == "" else v) for v in fields.values()]
+    with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            f"UPDATE pipeline_settings SET {set_clause}, updated_at = NOW() WHERE id = 1"
+            " RETURNING l5_target, target_date::text, start_date::text, curve_shape",
+            values,
+        )
+        settings = cur.fetchone()
+        conn.commit()
+    return settings
