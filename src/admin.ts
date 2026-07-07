@@ -440,16 +440,13 @@ function renderLeads(leads: OutreachLead[]): void {
       }</select>
       <button type="button" class="crm-stage-btn" data-id="${l.id}">Update stage</button>
     </div>`;
-  const statusCell = (l: OutreachLead) => `<div class="crm-status-inner">
-      <select class="crm-status-sel" data-id="${l.id}">
-        <option value="active"${l.status === "active" ? " selected" : ""}>Active</option>
-        <option value="cancelled"${l.status === "cancelled" ? " selected" : ""}>Cancelled</option>
-      </select>
-      <select class="crm-reason-sel" data-id="${l.id}"${l.status === "cancelled" ? "" : " hidden"}>
-        <option value="">Reason…</option>
-        ${REASONS.map((r) => `<option value="${r.code}"${l.cancel_reason === r.code ? " selected" : ""}>${esc(r.label)}</option>`).join("")}
-      </select>
-    </div>`;
+  const statusCell = (l: OutreachLead) => {
+    const cancelled = l.status === "cancelled";
+    const options = [`<option value="active"${cancelled ? "" : " selected"}>Active</option>`]
+      .concat(REASONS.map((r) =>
+        `<option value="${r.code}"${cancelled && l.cancel_reason === r.code ? " selected" : ""}>Cancelled — ${esc(r.label)}</option>`));
+    return `<select class="crm-status-sel" data-id="${l.id}">${options.join("")}</select>`;
+  };
   const rows = leads.map((l) => `<tr class="${l.status === "cancelled" ? "crm-cancelled" : ""}">
       <td class="crm-name">${esc(l.name)}</td>
       <td class="crm-addr">${esc(l.address ?? "—")}</td>
@@ -494,24 +491,13 @@ function renderLeads(leads: OutreachLead[]): void {
   mount.querySelectorAll<HTMLSelectElement>(".crm-status-sel").forEach((sel) =>
     sel.addEventListener("change", async () => {
       const id = Number(sel.dataset.id);
-      const reason = sel.closest("td")?.querySelector<HTMLSelectElement>(".crm-reason-sel");
       const tr = sel.closest("tr");
+      const cancelled = sel.value !== "active"; // any reason code ⇒ cancelled
       try {
-        if (sel.value === "active") {
-          await updateLead(id, { status: "active", cancel_reason: "" });
-          if (reason) { reason.value = ""; reason.hidden = true; }
-          tr?.classList.remove("crm-cancelled");
-        } else {
-          await updateLead(id, { status: "cancelled", cancel_reason: reason?.value || "" });
-          if (reason) reason.hidden = false;
-          tr?.classList.add("crm-cancelled");
-        }
-      } catch { /* ignore */ }
-    }));
-  mount.querySelectorAll<HTMLSelectElement>(".crm-reason-sel").forEach((sel) =>
-    sel.addEventListener("change", async () => {
-      try {
-        await updateLead(Number(sel.dataset.id), { cancel_reason: sel.value });
+        await updateLead(id, cancelled
+          ? { status: "cancelled", cancel_reason: sel.value }
+          : { status: "active", cancel_reason: "" });
+        tr?.classList.toggle("crm-cancelled", cancelled);
       } catch { /* ignore */ }
     }));
   mount.querySelectorAll<HTMLElement>(".crm-del").forEach((b) =>
