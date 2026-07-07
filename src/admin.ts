@@ -484,6 +484,7 @@ function renderLeads(leads: OutreachLead[]): void {
       el.classList.remove("crm-saved", "crm-error");
       try {
         await updateLead(id, { [field]: el.value });
+        if (field === "outreach_date") { await refreshLeads(); return; } // L1 date follows outreach
         el.classList.add("crm-saved");
         window.setTimeout(() => el.classList.remove("crm-saved"), 800);
       } catch {

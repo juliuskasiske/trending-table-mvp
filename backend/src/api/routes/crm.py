@@ -108,6 +108,24 @@ def update_lead(lead_id: int, body: LeadPatch, _: None = Depends(deps.require_ad
         lead = cur.fetchone()
         if not lead:
             raise HTTPException(status_code=404, detail="Lead not found.")
+        # L1 = Outreach: keep its logged date in step with the outreach_date the
+        # team enters (falls back to creation time when the date is cleared), so
+        # progression + the pipeline chart date L1 from outreach, not creation.
+        if "outreach_date" in fields:
+            outreach = None if fields["outreach_date"] == "" else fields["outreach_date"]
+            if outreach:
+                cur.execute(
+                    "UPDATE lead_stage_events SET changed_at = (%s::date + TIME '12:00')"
+                    " WHERE lead_id = %s AND stage = 'l1'",
+                    (outreach, lead_id),
+                )
+            else:
+                cur.execute(
+                    "UPDATE lead_stage_events SET changed_at ="
+                    "   (SELECT created_at FROM outreach_leads WHERE id = %s)"
+                    " WHERE lead_id = %s AND stage = 'l1'",
+                    (lead_id, lead_id),
+                )
         conn.commit()
     return lead
 
