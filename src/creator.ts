@@ -545,14 +545,12 @@ export async function initCreator(): Promise<void> {
   igBanner = ig === "connected" ? "connected" : ig === "error" ? "error" : null;
 
   me = await getMe().catch(() => null);
-  if (me && me.role === "account") {
-    window.location.assign("/account"); // a restaurant landed here by mistake
-    return;
-  }
   if (me && me.role === "creator") {
     accounts = (await getCreatorHandles().catch(() => ({ accounts: [], instagramEnabled: false }))).accounts;
     step = igBanner ? "connect" : accounts.length ? "home" : "handles";
   } else {
+    // Logged out, or signed in as a locale account choosing "register as a
+    // creator" — show the creator signup. Signing up creates a creator account.
     step = "signup";
   }
   // Drop the ?ig= param so a refresh doesn't re-show the banner.
