@@ -61,7 +61,8 @@ let step: Step = "signup";
 let homeTab: HomeTab = "campaigns";
 let accounts: SocialAccount[] = [];
 let profile: CreatorProfile | null = null;
-let avatarData = ""; // profile picture as a data URL, staged before save
+let avatarData = "";      // staged profile picture (small JPEG data URL), "" = none
+let avatarDirty = false;  // did the user change the picture this session?
 let igEnabled = false;
 let igBanner: "connected" | "error" | null = null;
 let ciActive: number | null = null; // restaurant_id of open conversation
@@ -152,18 +153,45 @@ function renderSignup(card: HTMLElement): void {
 
 /* ---- step: profile (name / age / gender / followers / picture) ----------- */
 
+/** Downscale an image file to a small square-ish JPEG data URL so the saved
+ * payload stays tiny (a raw photo would be MBs and can fail the request). */
+function resizeImage(file: File, max = 512): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("read failed"));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("bad image"));
+      img.onload = () => {
+        const scale = Math.min(1, max / Math.max(img.width, img.height) || 1);
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { reject(new Error("no canvas")); return; }
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", 0.85));
+      };
+      img.src = String(reader.result || "");
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function renderProfile(card: HTMLElement): void {
   const pr = profile;
-  const av = avatarData || pr?.avatar_url || "";
+  const shown = avatarDirty ? avatarData : (pr?.avatar_url ?? "");
   const numStr = (v: number | null | undefined) => (v == null ? "" : String(v));
   card.innerHTML = `
     <p class="step-eyebrow">${esc(t("creator.eyebrow"))}</p>
     <h1 class="step-title">${esc(t("creator.profile.title"))}</h1>
     <p class="step-sub">${esc(t("creator.profile.sub"))}</p>
     <div class="cp-pic">
-      <div class="cp-avatar" id="cp-avatar"${av ? ` style="background-image:url('${esc(av)}')"` : ""}>${av ? "" : `<span>${esc(t("creator.profile.picHint"))}</span>`}</div>
+      <div class="cp-avatar" id="cp-avatar"${shown ? ` style="background-image:url('${esc(shown)}')"` : ""}>${shown ? "" : `<span>${esc(t("creator.profile.picHint"))}</span>`}</div>
       <div class="cp-pic-actions">
         <label class="btn btn-ghost cp-pic-btn">${esc(t("creator.profile.picCta"))}<input type="file" id="cp-file" accept="image/*" hidden /></label>
+        <button type="button" class="linklike cp-pic-remove" id="cp-remove"${shown ? "" : " hidden"}>${esc(t("creator.profile.picRemove"))}</button>
         <p class="cp-pic-note">${esc(t("creator.profile.picNote"))}</p>
       </div>
     </div>
@@ -182,46 +210,71 @@ function renderProfile(card: HTMLElement): void {
     </div>
     <p class="field-error" id="cp-err" hidden></p>
     <button type="button" class="btn btn-primary creator-cta" id="cp-save">${esc(t("creator.profile.cta"))}</button>`;
-  byId<HTMLInputElement>("cp-file")?.addEventListener("change", (e) => {
+
+  const errEl = byId("cp-err");
+  const paintAvatar = (data: string) => {
+    const av = byId("cp-avatar");
+    const rm = byId("cp-remove");
+    if (av) {
+      av.style.backgroundImage = data ? `url('${data}')` : "";
+      av.innerHTML = data ? "" : `<span>${esc(t("creator.profile.picHint"))}</span>`;
+    }
+    if (rm) rm.hidden = !data;
+  };
+  byId<HTMLInputElement>("cp-file")?.addEventListener("change", async (e) => {
     const file = (e.target as HTMLInputElement).files?.[0];
-    const errEl = byId("cp-err");
     if (!file) return;
-    if (file.size > 3 * 1024 * 1024) {
-      if (errEl) { errEl.hidden = false; errEl.textContent = t("creator.profile.picTooBig"); }
+    if (errEl) errEl.hidden = true;
+    try {
+      avatarData = await resizeImage(file, 512);
+      avatarDirty = true;
+      paintAvatar(avatarData);
+    } catch {
+      if (errEl) { errEl.hidden = false; errEl.textContent = t("creator.profile.picFail"); }
+    }
+  });
+  byId("cp-remove")?.addEventListener("click", () => {
+    avatarData = ""; avatarDirty = true; paintAvatar("");
+  });
+
+  // Clear a field's invalid highlight as soon as it's edited.
+  card.querySelectorAll<HTMLElement>(".input").forEach((el) => {
+    el.addEventListener(el.tagName === "SELECT" ? "change" : "input", () => el.classList.remove("invalid"));
+  });
+
+  byId("cp-save")?.addEventListener("click", async () => {
+    const val = (id: string) => byId<HTMLInputElement>(id)?.value.trim() ?? "";
+    const name = val("cp-name"), ageV = val("cp-age"), fV = val("cp-followers");
+    const gender = byId<HTMLSelectElement>("cp-gender")?.value ?? "";
+    const required = [
+      { id: "cp-name", ok: !!name },
+      { id: "cp-age", ok: ageV !== "" && Number(ageV) >= 13 },
+      { id: "cp-gender", ok: !!gender },
+      { id: "cp-followers", ok: fV !== "" && Number(fV) >= 0 },
+    ];
+    card.querySelectorAll<HTMLElement>(".input.invalid").forEach((el) => el.classList.remove("invalid"));
+    const missing = required.filter((r) => !r.ok);
+    if (missing.length) {
+      missing.forEach((mm) => byId(mm.id)?.classList.add("invalid"));
+      byId(missing[0].id)?.focus();
+      if (errEl) { errEl.hidden = false; errEl.textContent = t("creator.profile.needAll"); }
       return;
     }
     if (errEl) errEl.hidden = true;
-    const reader = new FileReader();
-    reader.onload = () => {
-      avatarData = String(reader.result || "");
-      const av2 = byId("cp-avatar");
-      if (av2) { av2.style.backgroundImage = `url('${avatarData}')`; av2.textContent = ""; }
-    };
-    reader.readAsDataURL(file);
-  });
-  byId("cp-save")?.addEventListener("click", async () => {
-    const name = byId<HTMLInputElement>("cp-name")?.value.trim() ?? "";
-    const err = byId("cp-err");
-    if (!name) { if (err) { err.hidden = false; err.textContent = t("creator.profile.needName"); } return; }
-    if (err) err.hidden = true;
-    const numOrNull = (id: string): number | null => {
-      const v = byId<HTMLInputElement>(id)?.value.trim();
-      const n = v ? Number(v) : NaN;
-      return Number.isFinite(n) && n >= 0 ? n : null;
-    };
     const btn = byId<HTMLButtonElement>("cp-save");
     if (btn) { btn.disabled = true; btn.textContent = t("creator.handles.working"); }
     try {
       await putCreatorProfile({
         name,
-        age: numOrNull("cp-age"),
-        gender: byId<HTMLSelectElement>("cp-gender")?.value || null,
-        follower_count: numOrNull("cp-followers"),
-        ...(avatarData ? { avatar_url: avatarData } : {}),
+        age: Number(ageV),
+        gender,
+        follower_count: Number(fV),
+        // Only touch the avatar if the user changed it this session.
+        ...(avatarDirty ? { avatar_url: avatarData || null } : {}),
       });
       go("handles");
     } catch (e) {
-      if (err) { err.hidden = false; err.textContent = localizeError((e as Error).message) || t("creator.error"); }
+      if (errEl) { errEl.hidden = false; errEl.textContent = localizeError((e as Error).message) || t("creator.error"); }
       if (btn) { btn.disabled = false; btn.textContent = t("creator.profile.cta"); }
     }
   });

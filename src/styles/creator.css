@@ -166,3 +166,9 @@
 
 .creator-actions { display: flex; gap: 12px; align-items: center; }
 .creator-actions .creator-cta { flex: 1; }
+
+.cp-pic-remove {
+  align-self: flex-start; background: none; border: 0; padding: 0; cursor: pointer;
+  font: 700 12.5px/1 var(--font); color: var(--accent); text-decoration: underline;
+}
+.cp-pic-remove[hidden] { display: none; }
