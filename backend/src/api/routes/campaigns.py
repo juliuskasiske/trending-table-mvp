@@ -9,6 +9,7 @@ costs €9.99 (real Stripe wired in a later phase; here it just activates).
 """
 from __future__ import annotations
 
+from datetime import timedelta
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -144,3 +145,59 @@ def launch_campaign(campaign_id: int, ctx: dict = Depends(restaurant_ctx)) -> di
         audit.record(conn, "campaign_launched", account_id=ctx["account_id"],
                      restaurant_id=rid, detail={"campaign_id": campaign_id})
     return campaign
+
+
+@router.get("/{restaurant_id}/campaigns/{campaign_id}/analytics")
+def campaign_analytics(campaign_id: int, ctx: dict = Depends(restaurant_ctx)) -> dict:
+    """Views-over-time series + engagement totals for a campaign's posts.
+
+    The series is a daily aggregate: for each day we carry forward each post's
+    last-known view count and sum across posts, so the line only ever grows as
+    posts are added and their views climb. Totals use each post's latest snapshot.
+    """
+    rid = ctx["restaurant_id"]
+    with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            "SELECT id FROM campaigns WHERE id = %s AND restaurant_id = %s",
+            (campaign_id, rid),
+        )
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Campaign not found.")
+
+        cur.execute(
+            "SELECT COALESCE(SUM(m.views), 0) AS views, COALESCE(SUM(m.likes), 0) AS likes,"
+            "   COALESCE(SUM(m.comments), 0) AS comments, COALESCE(SUM(m.shares), 0) AS shares,"
+            "   COALESCE(SUM(m.saves), 0) AS saves, count(p.id) AS post_count"
+            " FROM posts p"
+            "   LEFT JOIN LATERAL (SELECT views, likes, comments, shares, saves FROM post_metrics"
+            "       WHERE post_id = p.id ORDER BY captured_at DESC LIMIT 1) m ON true"
+            " WHERE p.campaign_id = %s",
+            (campaign_id,),
+        )
+        totals = cur.fetchone()
+
+        cur.execute(
+            "SELECT p.id AS post_id, pm.captured_at::date AS day, MAX(pm.views) AS views"
+            " FROM posts p JOIN post_metrics pm ON pm.post_id = p.id"
+            " WHERE p.campaign_id = %s"
+            " GROUP BY p.id, pm.captured_at::date"
+            " ORDER BY day",
+            (campaign_id,),
+        )
+        rows = cur.fetchall()
+
+    series: list[dict] = []
+    days = sorted({r["day"] for r in rows})
+    if days:
+        posts = sorted({r["post_id"] for r in rows})
+        by_day = {(r["post_id"], r["day"]): int(r["views"] or 0) for r in rows}
+        last = {pid: 0 for pid in posts}
+        day = days[0]
+        while day <= days[-1]:
+            for pid in posts:
+                if (pid, day) in by_day:
+                    last[pid] = by_day[(pid, day)]
+            series.append({"date": day.isoformat(), "views": sum(last.values())})
+            day += timedelta(days=1)
+
+    return {"totals": totals, "series": series}

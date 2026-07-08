@@ -18,6 +18,7 @@ import {
   deleteRestaurant,
   digitizeMenuUrl,
   getCampaign,
+  getCampaignAnalytics,
   getMe,
   getMenu,
   getRestaurant,
@@ -30,6 +31,7 @@ import {
   resendVerification,
   searchPlaces,
   type Campaign,
+  type CampaignAnalytics,
   type CampaignDetail,
   type CampaignPost,
   type Principal,
@@ -74,6 +76,9 @@ const ic = {
   wallet: svg('<path d="M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M16 12h.01M3 9h14"/>'),
   target: svg('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>'),
   calendar: svg('<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 9h18"/>'),
+  comment: svg('<path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z"/>'),
+  share: svg('<path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v14"/>'),
+  bookmark: svg('<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>'),
   star: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14l-5-4.87 6.91-1.01L12 2Z"/></svg>',
   starEmpty: svg('<path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14l-5-4.87 6.91-1.01L12 2Z"/>'),
 };
@@ -512,6 +517,75 @@ async function loadCampaignList(r: RestaurantSummary): Promise<void> {
     el.addEventListener("click", () => { campaignView = Number(el.dataset.cid); render(); }));
 }
 
+/** Round a value up to a "nice" axis maximum (1/2/5 × 10ⁿ). */
+function niceMax(v: number): number {
+  if (v <= 0) return 1;
+  const pow = Math.pow(10, Math.floor(Math.log10(v)));
+  const norm = v / pow;
+  const step = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 2.5 ? 2.5 : norm <= 5 ? 5 : 10;
+  return step * pow;
+}
+
+/** Views-over-time line chart (risograph SVG), scaling to the container width. */
+function buildViewsChart(series: Array<{ date: string; views: number }>): string {
+  const W = 720, H = 240, mL = 52, mR = 18, mT = 16, mB = 34;
+  const plotW = W - mL - mR, plotH = H - mT - mB;
+  const n = series.length;
+  const maxV = niceMax(Math.max(1, ...series.map((s) => s.views)));
+  const x = (i: number) => mL + (n <= 1 ? plotW / 2 : (i / (n - 1)) * plotW);
+  const y = (v: number) => mT + plotH - (v / maxV) * plotH;
+
+  // horizontal gridlines + y labels at 0 / ½ / max
+  const grid = [0, 0.5, 1].map((f) => {
+    const gy = (mT + plotH - f * plotH).toFixed(1);
+    return `<line x1="${mL}" y1="${gy}" x2="${mL + plotW}" y2="${gy}" stroke="rgba(23,23,23,0.12)" stroke-width="1"/>`
+      + `<text x="${mL - 8}" y="${(Number(gy) + 4).toFixed(1)}" text-anchor="end" class="cv-lbl">${esc(metricNum(Math.round(f * maxV)))}</text>`;
+  }).join("");
+
+  const pts = series.map((s, i) => `${x(i).toFixed(1)},${y(s.views).toFixed(1)}`);
+  const area = `<polygon points="${x(0).toFixed(1)},${(mT + plotH).toFixed(1)} ${pts.join(" ")} ${x(n - 1).toFixed(1)},${(mT + plotH).toFixed(1)}" fill="rgba(43,85,255,0.10)"/>`;
+  const line = `<polyline points="${pts.join(" ")}" fill="none" stroke="var(--accent-2)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
+  const dots = n <= 12
+    ? series.map((s, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(s.views).toFixed(1)}" r="3.5" fill="var(--accent-2)"/>`).join("")
+    : "";
+
+  // x labels: first + last date
+  const xlabel = (i: number, anchor: string) =>
+    `<text x="${x(i).toFixed(1)}" y="${H - 12}" text-anchor="${anchor}" class="cv-lbl">${esc(fmtISODate(series[i].date))}</text>`;
+  const xlabels = n >= 1
+    ? xlabel(0, "start") + (n > 1 ? xlabel(n - 1, "end") : "")
+    : "";
+
+  return `<svg viewBox="0 0 ${W} ${H}" class="cv-svg" role="img" aria-label="Views over time">
+    ${grid}
+    <line x1="${mL}" y1="${mT + plotH}" x2="${mL + plotW}" y2="${mT + plotH}" stroke="var(--ink)" stroke-width="1.5"/>
+    ${area}${line}${dots}${xlabels}
+  </svg>`;
+}
+
+function analyticsSection(a: CampaignAnalytics | null): string {
+  if (!a || !a.totals || a.totals.post_count < 1) return "";
+  const nnum = (v: number | string) => (typeof v === "string" ? parseFloat(v) : v) || 0;
+  const stat = (icon: string, val: string, lbl: string) => `
+    <div class="ct-stat"><span class="ct-stat-ic">${icon}</span><span class="ct-stat-txt">
+      <span class="ct-stat-val">${esc(val)}</span><span class="ct-stat-lbl">${esc(lbl)}</span>
+    </span></div>`;
+  const chart = a.series.length
+    ? buildViewsChart(a.series)
+    : `<p class="camp-nodata">${esc(t("campaigns.noData"))}</p>`;
+  return `
+    <div class="ct-panel camp-analytics">
+      <h3 class="camp-gl-title">${esc(t("campaigns.viewsOverTime"))}</h3>
+      ${chart}
+      <div class="ct-stats camp-engagement">
+        ${stat(ic.heart, metricNum(nnum(a.totals.likes)), t("content.likes"))}
+        ${stat(ic.comment, metricNum(nnum(a.totals.comments)), t("campaigns.comments"))}
+        ${stat(ic.share, metricNum(nnum(a.totals.shares)), t("campaigns.shares"))}
+        ${stat(ic.bookmark, metricNum(nnum(a.totals.saves)), t("campaigns.saves"))}
+      </div>
+    </div>`;
+}
+
 async function renderCampaignDetail(m: HTMLElement, rid: number, cid: number): Promise<void> {
   m.innerHTML = `
     <button type="button" class="ct-back" id="ct-back">← ${esc(t("campaigns.back"))}</button>
@@ -520,8 +594,12 @@ async function renderCampaignDetail(m: HTMLElement, rid: number, cid: number): P
   const body = byId("pl-body")!;
 
   let data: CampaignDetail;
+  let analytics: CampaignAnalytics | null;
   try {
-    data = await getCampaign(rid, cid);
+    [data, analytics] = await Promise.all([
+      getCampaign(rid, cid),
+      getCampaignAnalytics(rid, cid).catch(() => null),
+    ]);
   } catch {
     body.innerHTML = `<div class="pl-empty">${esc(t("account.error.load"))}</div>`;
     return;
@@ -596,7 +674,7 @@ async function renderCampaignDetail(m: HTMLElement, rid: number, cid: number): P
     ? `<h2 class="ct-section-title">${esc(t("content.published"))}</h2><div class="ct-grid">${data.posts.map(postCard).join("")}</div>`
     : `<div class="pl-empty">${esc(t("campaigns.noPosts"))}</div>`;
 
-  body.innerHTML = header + grid;
+  body.innerHTML = header + analyticsSection(analytics) + grid;
   byId("camp-launch")?.addEventListener("click", async () => {
     const btn = byId<HTMLButtonElement>("camp-launch")!;
     btn.disabled = true;

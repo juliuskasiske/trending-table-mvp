@@ -315,6 +315,19 @@ body.no-scroll { overflow: hidden; }
 .camp-detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
 .camp-detail-head .ct-name { margin-bottom: 8px; }
 .camp-detail-stats { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
+
+/* ---- campaign analytics (views chart + engagement) ----------------------- */
+.camp-analytics .camp-gl-title { margin-bottom: 14px; }
+.cv-svg { display: block; width: 100%; height: auto; }
+.cv-lbl { font: 700 11px/1 var(--font); fill: var(--muted); }
+.camp-nodata {
+  border: 2px dashed var(--ink); background: var(--bg);
+  padding: 28px 20px; text-align: center; color: var(--muted); font-weight: 600; margin: 0;
+}
+.camp-engagement {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  border-top: 2px solid rgba(23, 23, 23, 0.1); margin-top: 18px; padding-top: 18px;
+}
 .camp-guidelines { margin: 16px 0 0; font-size: 14px; line-height: 1.5; color: var(--ink); }
 .ct-post-creator { padding: 10px 16px 0; font-weight: 800; font-size: 13px; }
 @media (max-width: 720px) { .camp-detail-stats { grid-template-columns: repeat(2, 1fr); } }

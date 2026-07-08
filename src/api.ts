@@ -299,6 +299,22 @@ export function getCampaign(restaurantId: number, campaignId: number): Promise<C
   return api(`/api/restaurants/${restaurantId}/campaigns/${campaignId}`);
 }
 
+export interface CampaignAnalytics {
+  totals: {
+    views: number | string;
+    likes: number | string;
+    comments: number | string;
+    shares: number | string;
+    saves: number | string;
+    post_count: number;
+  };
+  series: Array<{ date: string; views: number }>;
+}
+
+export function getCampaignAnalytics(restaurantId: number, campaignId: number): Promise<CampaignAnalytics> {
+  return api(`/api/restaurants/${restaurantId}/campaigns/${campaignId}/analytics`);
+}
+
 export function launchCampaign(restaurantId: number, campaignId: number): Promise<Campaign> {
   return api(`/api/restaurants/${restaurantId}/campaigns/${campaignId}/launch`, { method: "POST" });
 }
