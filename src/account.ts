@@ -21,6 +21,7 @@ import {
   getCampaignAnalytics,
   getMe,
   getMenu,
+  getPlaceDetails,
   getRestaurant,
   launchCampaign,
   listCampaigns,
@@ -35,9 +36,10 @@ import {
   type CampaignDetail,
   type CampaignPost,
   type Principal,
+  type RestaurantProfileInput,
   type RestaurantSummary,
 } from "./api.ts";
-import { MenuItem, GUIDELINE_PRESETS, defaultGuidelines, type PlaceSuggestion } from "./types.ts";
+import { MenuItem, GUIDELINE_PRESETS, defaultGuidelines, type PlaceDetails, type PlaceSuggestion } from "./types.ts";
 import { getLang, initI18n, onLangChange, setLang, t, tChip } from "./i18n.ts";
 import { fmtEur } from "./format.ts";
 
@@ -137,15 +139,12 @@ type Tab = "profile" | "menu";
 
 let me: Principal | null = null;
 let restaurants: RestaurantSummary[] = [];
-let activeRestaurantId: number | null = null; // which restaurant Campaigns act on
 let mainView: MainView = "restaurants";
 let detail: { id: number; tab: Tab } | null = null; // open restaurant (manage) within the Restaurants view
-let campaignView: number | null = null; // open campaign id (detail view)
+let campaignView: { rid: number; cid: number } | null = null; // open campaign (detail view)
 
 const main = () => byId("acct-main")!;
-const activeRestaurant = (): RestaurantSummary | null =>
-  restaurants.find((r) => r.id === activeRestaurantId) ?? restaurants[0] ?? null;
-const restName = () => activeRestaurant()?.name || "Restaurant";
+const acctName = () => me?.display_name || me?.email || "Account";
 const avatarStyle = (url: string | null | undefined) =>
   url ? ` style="background-image:url('${esc(url)}')"` : "";
 
@@ -174,8 +173,8 @@ function shell(): string {
         <button type="button" class="rest-menu-item" id="menu-logout">${ic.logout}<span>${esc(t("account.signout"))}</span></button>
       </div>
       <button type="button" class="rest-selector" id="rest-selector">
-        <span class="rest-food">${ic.food}</span>
-        <span class="rest-name">${esc(restName())}</span>
+        <span class="rest-food">${ic.settings}</span>
+        <span class="rest-name">${esc(acctName())}</span>
         <span class="rest-chevron">${ic.chevron}</span>
       </button>
     </div>
@@ -190,8 +189,6 @@ function setNavActive(): void {
   );
   const sel = byId("rest-selector");
   if (sel) sel.classList.toggle("on", mainView === "settings");
-  const rn = document.querySelector(".rest-name"); // keep the switcher label current
-  if (rn) rn.textContent = restName();
 }
 
 /* ---- render -------------------------------------------------------------- */
@@ -267,8 +264,8 @@ function renderRestaurantCards(): void {
   if (!grid) return;
   grid.innerHTML = restaurants.length
     ? restaurants.map((r) => `
-      <div class="dash-card${r.id === activeRestaurantId ? " on" : ""}">
-        <button type="button" class="dash-card-open" data-open="${r.id}">
+      <div class="dash-card">
+        <button type="button" class="dash-card-open" data-manage="${r.id}">
           <span class="dash-card-food">${ic.food}</span>
           <span class="dash-card-body">
             <span class="dash-card-name">${esc(r.name || "—")}</span>
@@ -278,16 +275,13 @@ function renderRestaurantCards(): void {
         <button type="button" class="dash-card-manage" data-manage="${r.id}">${esc(t("restaurants.manage"))}</button>
       </div>`).join("")
     : `<div class="pl-empty">${esc(t("restaurants.empty"))}</div>`;
-  grid.querySelectorAll<HTMLElement>("[data-open]").forEach((b) =>
-    b.addEventListener("click", () => { activeRestaurantId = Number(b.dataset.open); navTo("campaigns"); }));
   grid.querySelectorAll<HTMLElement>("[data-manage]").forEach((b) =>
-    b.addEventListener("click", (e) => { e.stopPropagation(); openRestaurant(Number(b.dataset.manage)); }));
+    b.addEventListener("click", () => openRestaurant(Number(b.dataset.manage))));
 }
 
-async function createAndRefresh(profile: { name: string; place_id?: string; address?: string }): Promise<void> {
-  const created = await createRestaurant(profile);
+async function createAndRefresh(profile: RestaurantProfileInput & { name: string }): Promise<void> {
+  await createRestaurant(profile);
   restaurants = (await listRestaurants().catch(() => ({ restaurants }))).restaurants;
-  activeRestaurantId = created.id;
   const box = byId("dash-create");
   if (box) { box.hidden = true; box.innerHTML = ""; }
   renderRestaurantCards();
@@ -298,6 +292,11 @@ function toggleRestaurantForm(): void {
   if (!box) return;
   if (!box.hidden) { box.hidden = true; box.innerHTML = ""; return; }
   box.hidden = false;
+  renderRestaurantSearch(box);
+}
+
+/** Step 1: search Google, or jump to the manual review form. */
+function renderRestaurantSearch(box: HTMLElement): void {
   box.innerHTML = `
     <div class="camp-create">
       <div class="camp-field"><label>${esc(t("restaurants.search"))}</label>
@@ -309,8 +308,7 @@ function toggleRestaurantForm(): void {
       </div>
       <div class="dash-manual">
         <span class="dash-or">${esc(t("restaurants.or"))}</span>
-        <input class="input" id="dash-manual" type="text" placeholder="${esc(t("restaurants.manualPh"))}" />
-        <button type="button" class="btn-invite" id="dash-manual-add">${esc(t("restaurants.add"))}</button>
+        <button type="button" class="linklike" id="dash-manual-toggle">${esc(t("restaurants.manualToggle"))}</button>
       </div>
       <p class="field-error" id="dash-err" hidden></p>
     </div>`;
@@ -340,21 +338,72 @@ function toggleRestaurantForm(): void {
       el.addEventListener("click", async () => {
         const p = places.find((x) => x.placeId === el.dataset.pid);
         if (!p) return;
-        try { await createAndRefresh({ name: p.name, place_id: p.placeId, address: p.address }); }
-        catch (e) { showDashErr((e as Error).message); }
+        results.innerHTML = `<div class="dash-result-empty">${esc(t("restaurants.loadingDetails"))}</div>`;
+        // Prefill the review form from Google, exactly like onboarding does.
+        const details = await getPlaceDetails(p.placeId).catch(() => null);
+        renderRestaurantReview(box, details ?? { placeId: p.placeId, name: p.name, address: p.address } as Partial<PlaceDetails>);
       }));
   };
   byId("dash-search-btn")?.addEventListener("click", () => void runSearch());
   byId<HTMLInputElement>("dash-q")?.addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); void runSearch(); }
   });
-  byId("dash-manual-add")?.addEventListener("click", async () => {
-    const name = byId<HTMLInputElement>("dash-manual")!.value.trim();
-    if (!name) return;
-    try { await createAndRefresh({ name }); }
-    catch (e) { showDashErr((e as Error).message); }
-  });
+  byId("dash-manual-toggle")?.addEventListener("click", () => renderRestaurantReview(box, {}));
   byId<HTMLInputElement>("dash-q")?.focus();
+}
+
+/** Step 2: review / edit the details (same fields onboarding collected) and create. */
+function renderRestaurantReview(box: HTMLElement, p: Partial<PlaceDetails> & { city?: string }): void {
+  const field = (id: string, label: string, value: string, area = false) => {
+    const control = area
+      ? `<textarea class="input" id="${id}" rows="2">${esc(value)}</textarea>`
+      : `<input class="input" id="${id}" value="${esc(value)}" autocomplete="off" />`;
+    return `<div class="camp-field"><label for="${id}">${esc(label)}</label>${control}</div>`;
+  };
+  box.innerHTML = `
+    <div class="camp-create">
+      <button type="button" class="linklike rest-back" id="rest-back">${esc(t("restaurants.backToSearch"))}</button>
+      ${field("rf-name", t("account.profile.name"), p.name ?? "")}
+      ${field("rf-category", t("account.profile.category"), p.category ?? "")}
+      <div class="camp-row">
+        ${field("rf-address", t("account.profile.address"), p.address ?? "")}
+        ${field("rf-city", t("account.profile.city"), p.city ?? "")}
+      </div>
+      ${field("rf-website", t("account.profile.website"), p.website ?? "")}
+      ${field("rf-description", t("account.profile.description"), p.description ?? "", true)}
+      <p class="field-error" id="dash-err" hidden></p>
+      <div class="camp-actions">
+        <button type="button" class="btn-review" id="rf-create">${esc(t("restaurants.new"))}</button>
+      </div>
+    </div>`;
+  byId("rest-back")?.addEventListener("click", () => renderRestaurantSearch(box));
+  byId("rf-create")?.addEventListener("click", async () => {
+    const val = (id: string) => byId<HTMLInputElement>(id)?.value.trim() ?? "";
+    const name = val("rf-name");
+    if (!name) { showDashErr(t("restaurants.err.name")); return; }
+    const btn = byId<HTMLButtonElement>("rf-create")!;
+    btn.disabled = true;
+    try {
+      await createAndRefresh({
+        name,
+        place_id: p.placeId,
+        category: val("rf-category") || undefined,
+        address: val("rf-address") || undefined,
+        city: val("rf-city") || undefined,
+        website: val("rf-website") || undefined,
+        description: val("rf-description") || undefined,
+        photo_ref: p.photoName,
+        tags: p.tags,
+        google_rating: p.rating,
+        google_reviews: p.reviews,
+        price_level: p.priceLevel,
+      });
+    } catch (e) {
+      btn.disabled = false;
+      showDashErr((e as Error).message);
+    }
+  });
+  byId<HTMLInputElement>("rf-name")?.focus();
 }
 
 function showDashErr(msg: string): void {
@@ -370,14 +419,12 @@ const VIEW_ESTIMATE_RATE = 0.015;
 const estimateViews = (budget: number) => (budget > 0 ? Math.floor(budget / VIEW_ESTIMATE_RATE) : 0);
 
 async function renderCampaigns(m: HTMLElement): Promise<void> {
-  const r = activeRestaurant();
-  if (!r) {
+  if (campaignView !== null) return renderCampaignDetail(m, campaignView.rid, campaignView.cid);
+  if (!restaurants.length) {
     m.innerHTML = `<h1 class="admin-title">${esc(t("account.nav.campaigns"))}</h1>
       <div class="pl-empty">${esc(t("campaigns.noRestaurant"))}</div>`;
     return;
   }
-  if (campaignView !== null) return renderCampaignDetail(m, r.id, campaignView);
-
   m.innerHTML = `
     <div class="pl-toolbar">
       <h1 class="admin-title">${esc(t("account.nav.campaigns"))}</h1>
@@ -386,17 +433,20 @@ async function renderCampaigns(m: HTMLElement): Promise<void> {
     <p class="pl-sub">${esc(t("campaigns.sub"))}</p>
     <div id="camp-form" hidden></div>
     <div id="pl-body"><p class="acct-loading">…</p></div>`;
-  byId("camp-new")?.addEventListener("click", () => toggleCampaignForm(r));
-  await loadCampaignList(r);
+  byId("camp-new")?.addEventListener("click", toggleCampaignForm);
+  await loadCampaignList();
 }
 
-function toggleCampaignForm(r: RestaurantSummary): void {
+function toggleCampaignForm(): void {
   const box = byId("camp-form");
   if (!box) return;
   if (!box.hidden) { box.hidden = true; box.innerHTML = ""; return; }
   box.hidden = false;
+  const restOptions = restaurants.map((r) => `<option value="${r.id}">${esc(r.name || "—")}</option>`).join("");
   box.innerHTML = `
     <div class="camp-create">
+      <div class="camp-field"><label>${esc(t("campaigns.f.restaurant"))}</label>
+        <select class="input" id="cf-restaurant">${restOptions}</select></div>
       <div class="camp-field"><label>${esc(t("campaigns.f.title"))}</label>
         <input class="input" id="cf-title" type="text" maxlength="120" /></div>
       <div class="camp-row">
@@ -425,14 +475,49 @@ function toggleCampaignForm(r: RestaurantSummary): void {
       ? t("campaigns.estimate", { n: new Intl.NumberFormat(locale()).format(estimateViews(v)) })
       : t("campaigns.estimateHint");
   });
-  box.querySelectorAll<HTMLElement>(".cf-chip").forEach((c) =>
-    c.addEventListener("click", () => c.classList.toggle("on")));
+  // Preset chips toggle on click; the + button lets the user add their own.
+  const toggleChip = (c: HTMLElement) => c.addEventListener("click", () => c.classList.toggle("on"));
+  box.querySelectorAll<HTMLElement>(".cf-chip").forEach(toggleChip);
+  box.querySelectorAll<HTMLElement>(".cf-add").forEach((addBtn) => {
+    addBtn.addEventListener("click", () => {
+      const chips = addBtn.parentElement!;
+      const input = document.createElement("input");
+      input.className = "input cf-chip-input";
+      input.placeholder = t("campaigns.g.addPh");
+      chips.insertBefore(input, addBtn);
+      addBtn.hidden = true;
+      input.focus();
+      let done = false;
+      const commit = () => {
+        if (done) return;
+        done = true;
+        const v = input.value.trim();
+        if (v) {
+          const chip = document.createElement("button");
+          chip.type = "button";
+          chip.className = "cf-chip on";
+          chip.dataset.val = v;
+          chip.textContent = v;
+          toggleChip(chip);
+          chips.insertBefore(chip, addBtn);
+        }
+        input.remove();
+        addBtn.hidden = false;
+      };
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); commit(); }
+        else if (e.key === "Escape") { done = true; input.remove(); addBtn.hidden = false; }
+      });
+      input.addEventListener("blur", commit);
+    });
+  });
   byId("cf-create")?.addEventListener("click", async () => {
+    const rid = Number(byId<HTMLSelectElement>("cf-restaurant")!.value);
     const title = byId<HTMLInputElement>("cf-title")!.value.trim();
     const budgetV = Number(budget.value);
     const err = byId("cf-err")!;
     err.hidden = true;
-    if (!title || !(budgetV > 0)) {
+    if (!rid || !title || !(budgetV > 0)) {
       err.hidden = false; err.textContent = t("campaigns.err.required"); return;
     }
     const pick = (group: string) => Array.from(
@@ -447,25 +532,25 @@ function toggleCampaignForm(r: RestaurantSummary): void {
     const btn = byId<HTMLButtonElement>("cf-create")!;
     btn.disabled = true;
     try {
-      await createCampaign(r.id, {
+      await createCampaign(rid, {
         title,
         budget_eur: budgetV,
         content_deadline: byId<HTMLInputElement>("cf-deadline")!.value || null,
         guidelines,
       });
       box.hidden = true; box.innerHTML = "";
-      await loadCampaignList(r);
+      await loadCampaignList();
     } catch (e) {
       btn.disabled = false;
       err.hidden = false; err.textContent = (e as Error).message || t("account.error.save");
     }
   });
-  byId<HTMLInputElement>("cf-title")?.focus();
+  byId<HTMLSelectElement>("cf-restaurant")?.focus();
 }
 
 // Structured content guidelines — the same shape used across the app
 // (show / must-include / avoid + notes), with the shared presets pre-checked
-// from defaultGuidelines() so a campaign needs near-zero input.
+// from defaultGuidelines(). Each group ends with a + to add a custom value.
 const GUIDELINE_GROUPS: Array<{ group: "show" | "mustInclude" | "avoid"; labelKey: string; presets: readonly string[] }> = [
   { group: "show", labelKey: "account.g.show", presets: GUIDELINE_PRESETS.show },
   { group: "mustInclude", labelKey: "account.g.must", presets: GUIDELINE_PRESETS.mustInclude },
@@ -478,31 +563,37 @@ function guidelineGroupHtml(g: { group: "show" | "mustInclude" | "avoid"; labelK
     <label>${esc(t(g.labelKey))}</label>
     <div class="cf-chips" data-group="${g.group}">
       ${g.presets.map((p) => `<button type="button" class="cf-chip${preselected.has(p) ? " on" : ""}" data-val="${esc(p)}">${esc(tChip(p))}</button>`).join("")}
+      <button type="button" class="cf-add" aria-label="${esc(t("campaigns.g.add"))}" title="${esc(t("campaigns.g.add"))}">+</button>
     </div>
   </div>`;
 }
 
-async function loadCampaignList(r: RestaurantSummary): Promise<void> {
+type CampaignWithRest = Campaign & { _rname: string };
+
+async function loadCampaignList(): Promise<void> {
   const body = byId("pl-body");
   if (!body) return;
-  let campaigns: Campaign[];
+  let all: CampaignWithRest[];
   try {
-    campaigns = (await listCampaigns(r.id)).campaigns;
+    const lists = await Promise.all(restaurants.map((r) =>
+      listCampaigns(r.id).then((res) => res.campaigns.map((c) => ({ ...c, _rname: r.name || "—" })))));
+    all = lists.flat().sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
   } catch {
     body.innerHTML = `<div class="pl-empty">${esc(t("account.error.load"))}</div>`;
     return;
   }
   if (mainView !== "campaigns" || campaignView !== null) return;
-  if (!campaigns.length) {
+  if (!all.length) {
     body.innerHTML = `<div class="pl-empty">${esc(t("campaigns.empty"))}</div>`;
     return;
   }
-  const card = (c: Campaign): string => {
-    return `<button type="button" class="camp-card" data-cid="${c.id}">
+  const card = (c: CampaignWithRest): string => {
+    return `<button type="button" class="camp-card" data-cid="${c.id}" data-rid="${c.restaurant_id}">
       <div class="camp-card-head">
         <span class="camp-card-title">${esc(c.title || t("campaigns.untitled"))}</span>
         <span class="${campaignPill(c.status)}">${esc(t(`campaigns.status.${c.status}`))}</span>
       </div>
+      <div class="camp-card-rest">${ic.food}<span>${esc(c._rname)}</span></div>
       <div class="camp-card-stats">
         <span><b>${esc(fmtEur(c.budget_eur))}</b> ${esc(t("campaigns.budget"))}</span>
         <span><b>${esc(metricNum(c.estimated_views))}</b> ${esc(t("campaigns.estViews"))}</span>
@@ -512,9 +603,12 @@ async function loadCampaignList(r: RestaurantSummary): Promise<void> {
       ${c.content_deadline ? `<div class="camp-card-deadline">${ic.calendar}${esc(t("campaigns.by", { date: fmtISODate(c.content_deadline) }))}</div>` : ""}
     </button>`;
   };
-  body.innerHTML = `<div class="camp-grid">${campaigns.map(card).join("")}</div>`;
+  body.innerHTML = `<div class="camp-grid">${all.map(card).join("")}</div>`;
   body.querySelectorAll<HTMLElement>(".camp-card").forEach((el) =>
-    el.addEventListener("click", () => { campaignView = Number(el.dataset.cid); render(); }));
+    el.addEventListener("click", () => {
+      campaignView = { rid: Number(el.dataset.rid), cid: Number(el.dataset.cid) };
+      render();
+    }));
 }
 
 /** Round a value up to a "nice" axis maximum (1/2/5 × 10ⁿ). */
@@ -604,7 +698,7 @@ async function renderCampaignDetail(m: HTMLElement, rid: number, cid: number): P
     body.innerHTML = `<div class="pl-empty">${esc(t("account.error.load"))}</div>`;
     return;
   }
-  if (campaignView !== cid || mainView !== "campaigns") return;
+  if (campaignView?.cid !== cid || mainView !== "campaigns") return;
   const c = data.campaign;
   const g = (c.guidelines || {}) as { show?: string[]; must_include?: string[]; avoid?: string[]; notes?: string };
   const glGroup = (labelKey: string, vals?: string[]) =>
@@ -724,7 +818,6 @@ function renderRestaurantDetail(id: number, tab: Tab, m: HTMLElement): void {
       async () => {
         await deleteRestaurant(id);
         restaurants = (await listRestaurants().catch(() => ({ restaurants }))).restaurants;
-        if (activeRestaurantId === id) activeRestaurantId = restaurants[0]?.id ?? null;
         backToList();
       },
     );

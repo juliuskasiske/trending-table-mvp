@@ -297,6 +297,7 @@ body.no-scroll { overflow: hidden; }
 .camp-row .camp-field { flex: 1 1 160px; }
 .camp-estimate { margin: 0; font: 800 14px/1.2 var(--font-display); color: var(--accent-2); }
 .camp-actions { display: flex; justify-content: flex-end; }
+.rest-back { align-self: flex-start; font-weight: 800; }
 
 .camp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 18px; }
 .camp-card {
@@ -306,6 +307,8 @@ body.no-scroll { overflow: hidden; }
 .camp-card:hover { transform: translate(-2px, -2px); box-shadow: 7px 7px 0 var(--accent); }
 .camp-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .camp-card-title { font: 800 17px/1.15 var(--font-display); letter-spacing: -0.01em; }
+.camp-card-rest { display: flex; align-items: center; gap: 6px; color: var(--muted); font-weight: 700; font-size: 12.5px; margin-top: -4px; }
+.camp-card-rest svg { width: 14px; height: 14px; flex-shrink: 0; }
 .camp-card-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
 .camp-card-stats span { font-size: 12.5px; color: var(--muted); }
 .camp-card-stats b { display: block; font: 800 16px/1.1 var(--font-display); color: var(--ink); }
@@ -342,6 +345,18 @@ body.no-scroll { overflow: hidden; }
 }
 .cf-chip:hover { background: var(--bg); }
 .cf-chip.on { background: var(--accent); color: var(--on-accent); }
+/* + button to add a custom guideline, and its inline input */
+.cf-add {
+  display: inline-grid; place-items: center;
+  width: 30px; height: 30px; line-height: 1;
+  font: 700 18px/1 var(--font); color: var(--ink);
+  background: var(--panel); border: 2px dashed var(--ink); cursor: pointer;
+}
+.cf-add:hover { background: var(--bg); border-style: solid; }
+.cf-chip-input {
+  width: auto; min-width: 160px; height: 30px; padding: 4px 10px;
+  font: 700 12.5px/1 var(--font);
+}
 /* read-only guidelines on the campaign detail */
 .camp-gl-view { margin-top: 18px; border-top: 2px solid rgba(23,23,23,0.1); padding-top: 16px; }
 .camp-gl-title { font: 700 15px/1 var(--font-display); margin: 0 0 12px; }
@@ -352,7 +367,7 @@ body.no-scroll { overflow: hidden; }
 .camp-gl-notes { margin: 10px 0 0; font-size: 14px; line-height: 1.5; }
 
 /* ---- dashboard (restaurants) --------------------------------------------- */
-.dash-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px; }
+.dash-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px; align-items: start; }
 .dash-card {
   border: 2px solid var(--ink); background: var(--panel); box-shadow: 5px 5px 0 var(--ink);
   display: flex; flex-direction: column; overflow: hidden;

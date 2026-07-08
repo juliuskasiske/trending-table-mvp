@@ -469,6 +469,13 @@ body {
   padding: 13px 14px;
   outline: none;
 }
+/* Single-line controls share one height so number/date/text/select inputs
+ * never render at different heights side by side. Textareas keep growing. */
+input.input,
+select.input,
+select.select {
+  height: 52px;
+}
 
 .textarea {
   resize: vertical;
