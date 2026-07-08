@@ -561,7 +561,7 @@ const de: Dict = {
   "account.sub":
     "Spar dir das Werbebudget. Buche lokale Creator und füll deine Tische. Das ist das Einzige, was du selbst eintippst — den Rest holen wir für dich.",
   "account.email.label": "Geschäftliche E-Mail",
-  "account.email.ph": "inhaber@deinLokal.de",
+  "account.email.ph": "inhaber@deinlokal.de",
   "account.email.err": "Bitte gib eine gültige E-Mail-Adresse ein.",
   "account.password.label": 'Passwort <span class="hint">(mind. 8 Zeichen)</span>',
   "account.password.err": "Verwende mindestens 8 Zeichen.",
@@ -620,7 +620,7 @@ const de: Dict = {
   "guidelines.sub":
     "Sag Creatorn, wie gute Inhalte aussehen. Wir haben sinnvolle Voreinstellungen gewählt — passe sie an und ergänze unten alles Spezifische.",
   "guidelines.handle.label": 'Handle zum Markieren <span class="hint">(optional)</span>',
-  "guidelines.handle.ph": "@deinLokal",
+  "guidelines.handle.ph": "@deinlokal",
   "guidelines.group.show": "Posts sollten zeigen",
   "guidelines.group.must": "Jeder Post muss",
   "guidelines.group.avoid": "Bitte vermeiden",
