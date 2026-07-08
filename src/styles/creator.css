@@ -166,8 +166,10 @@
 .cf-chip:hover { background: var(--bg); }
 .cf-chip.on { background: var(--accent); color: var(--on-accent); }
 
-.creator-actions { display: flex; gap: 12px; align-items: center; }
-.creator-actions .creator-cta { flex: 1; }
+.creator-actions { display: flex; gap: 12px; align-items: stretch; }
+/* flex:1 so it fills the row; margin-top:0 cancels the standalone-CTA spacing
+ * that would otherwise push this button 6px below the Back button. */
+.creator-actions .creator-cta { flex: 1; margin-top: 0; }
 
 .cp-pic-remove {
   align-self: flex-start; background: none; border: 0; padding: 0; cursor: pointer;

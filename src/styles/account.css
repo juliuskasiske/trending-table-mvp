@@ -133,13 +133,18 @@
 .platform-main {
   background: var(--bg);
   padding: 40px clamp(24px, 4vw, 56px) 72px;
+  /* min-width:0 lets this grid item shrink below its content's intrinsic width;
+   * otherwise wide content (e.g. the coming-soon faux grid) forces the single
+   * mobile column — and with it the whole nav — wider than the viewport. */
+  min-width: 0;
+  overflow-x: hidden;
 }
 .platform-main .admin-title { max-width: 780px; }
 #settings-body { max-width: 780px; }
 
 /* Coming-soon: a blurred faux screen with an overlay */
-.coming-wrap { position: relative; min-height: 72vh; }
-.coming-blur { filter: blur(6px); opacity: 0.6; pointer-events: none; user-select: none; max-width: 940px; }
+.coming-wrap { position: relative; min-height: 72vh; overflow: hidden; }
+.coming-blur { filter: blur(6px); opacity: 0.6; pointer-events: none; user-select: none; max-width: min(940px, 100%); }
 .coming-overlay {
   position: absolute;
   inset: 0;
@@ -323,6 +328,9 @@
   .platform-app { grid-template-columns: 1fr; }
   .pnav { height: auto; position: static; }
   .pnav-list { flex-direction: row; flex-wrap: wrap; }
+  /* In the horizontal mobile nav the active item's drop shadow would sit it
+   * 4px lower than its flat siblings — the accent fill already marks it. */
+  .pnav-item.on { box-shadow: none; }
   .platform-main { padding: 24px 18px 48px; }
   .coming-grid { grid-template-columns: 1fr 1fr; }
   .menu-row { grid-template-columns: 1fr 1fr; }

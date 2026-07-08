@@ -812,6 +812,19 @@ select.select {
   box-shadow: 4px 4px 0 var(--ink);
 }
 
+/* Action rows (Back + Continue, Zurück + Weiter) put a ghost button next to a
+ * raised primary. A ghost has no resting shadow, so it would sit 4px higher
+ * than the shadowed primary and the row looks misaligned. Give every button in
+ * an action row the same resting shadow so the blocks align exactly. */
+.actions .btn,
+.creator-actions .btn { box-shadow: 4px 4px 0 var(--ink); }
+.actions .btn:hover,
+.creator-actions .btn:hover { transform: translate(-2px, -2px); box-shadow: 6px 6px 0 var(--ink); }
+.actions .btn:active,
+.creator-actions .btn:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(--ink); }
+.actions .btn[disabled],
+.creator-actions .btn[disabled] { box-shadow: none; transform: none; }
+
 .btn[disabled] {
   opacity: 0.4;
   cursor: not-allowed;

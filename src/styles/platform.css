@@ -399,7 +399,9 @@ body.no-scroll { overflow: hidden; }
 }
 .dash-card-manage:hover { background: var(--accent-2); color: #fff; }
 
-.dash-search-row, .dash-manual { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.dash-manual { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+/* stretch so the Search button matches the input height exactly (no 12px gap) */
+.dash-search-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: stretch; }
 .dash-search-row .input { flex: 1 1 220px; }
 .dash-manual { margin-top: 14px; }
 .dash-manual .input { flex: 1 1 200px; }
