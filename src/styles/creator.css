@@ -136,3 +136,33 @@
 .ch-stats label { font-size: 11.5px; }
 .ch-hint { color: var(--muted); font-size: 12.5px; font-weight: 600; margin: 0 0 4px; }
 @media (max-width: 520px) { .ch-stats { grid-template-columns: 1fr; } }
+
+/* ---- onboarding: profile step + channels audience ------------------------ */
+.cp-pic { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
+.cp-avatar {
+  width: 88px; height: 88px; flex-shrink: 0;
+  border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--ink);
+  background: var(--bg); background-size: cover; background-position: center;
+  display: grid; place-items: center; text-align: center;
+}
+.cp-avatar span { font: 700 11px/1.2 var(--font); color: var(--muted); padding: 8px; }
+.cp-pic-actions { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.cp-pic-btn { cursor: pointer; }
+.cp-pic-note { margin: 0; font-size: 12px; color: var(--muted); font-weight: 600; }
+
+.ch-cities { display: flex; flex-direction: column; gap: 8px; }
+.ch-city-row { display: flex; align-items: center; gap: 10px; }
+.ch-rank { font: 800 13px/1 var(--font-display); color: var(--muted); width: 18px; flex-shrink: 0; }
+.ch-city { flex: 1; }
+
+/* multiselect chips (creator app doesn't load platform.css) */
+.cf-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.cf-chip {
+  font: 700 12.5px/1 var(--font); color: var(--ink); background: var(--panel);
+  border: 2px solid var(--ink); padding: 8px 13px; cursor: pointer;
+}
+.cf-chip:hover { background: var(--bg); }
+.cf-chip.on { background: var(--accent); color: var(--on-accent); }
+
+.creator-actions { display: flex; gap: 12px; align-items: center; }
+.creator-actions .creator-cta { flex: 1; }

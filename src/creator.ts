@@ -10,18 +10,22 @@ import "./styles/creator.css";
 import "./styles/messages.css";
 import {
   getCreatorHandles,
+  getCreatorProfile,
   getCreatorThread,
   getMe,
   instagramConnectUrl,
   listCreatorCampaigns,
   listCreatorThreads,
   logout,
+  putCreatorProfile,
   sendCreatorMessage,
   setCreatorHandles,
   signup,
   submitCreatorPost,
   type CreatorAssignment,
+  type CreatorProfile,
   type Message,
+  type PlatformStats,
   type Principal,
   type SocialAccount,
 } from "./api.ts";
@@ -49,18 +53,38 @@ const msgTime = (iso: string | null | undefined): string => {
 const sendIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>';
 const backIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>';
 
-type Step = "signup" | "handles" | "connect" | "done" | "home";
+type Step = "signup" | "profile" | "handles" | "connect" | "done" | "home";
 type HomeTab = "campaigns" | "messages";
 
 let me: Principal | null = null;
 let step: Step = "signup";
 let homeTab: HomeTab = "campaigns";
 let accounts: SocialAccount[] = [];
+let profile: CreatorProfile | null = null;
+let avatarData = ""; // profile picture as a data URL, staged before save
 let igEnabled = false;
 let igBanner: "connected" | "error" | null = null;
 let ciActive: number | null = null; // restaurant_id of open conversation
 let ciPollTimer: number | undefined;
 let ciLastId = 0;
+
+// Audience/demographic option sets (values are stable codes; labels come from i18n).
+const AGE_RANGES = ["18-24", "25-34", "35-44", "45-54", "55+"] as const;
+const AUD_GENDERS = ["men", "women"] as const;
+const PROFILE_GENDERS = ["female", "male", "diverse", "prefer_not"] as const;
+// Largest German cities for the ranked top-5 audience selects.
+const GERMAN_CITIES = [
+  "Berlin", "Hamburg", "München", "Köln", "Frankfurt am Main", "Stuttgart",
+  "Düsseldorf", "Leipzig", "Dortmund", "Essen", "Bremen", "Dresden", "Hannover",
+  "Nürnberg", "Duisburg", "Bochum", "Wuppertal", "Bielefeld", "Bonn", "Münster",
+  "Mannheim", "Karlsruhe", "Augsburg", "Wiesbaden",
+] as const;
+// Per-platform terminology for the three reach metrics (matches each app's own labels).
+const PLATFORM_METRICS: Record<string, { views: string; reached: string; clicks: string }> = {
+  instagram: { views: "cr.m.ig.views", reached: "cr.m.ig.reached", clicks: "cr.m.ig.clicks" },
+  tiktok: { views: "cr.m.tt.views", reached: "cr.m.tt.reached", clicks: "cr.m.tt.clicks" },
+  youtube: { views: "cr.m.yt.views", reached: "cr.m.yt.reached", clicks: "cr.m.yt.clicks" },
+};
 
 /** ISO "YYYY-MM-DD" → localized long date. */
 const fmtISODate = (iso: string | null | undefined): string => {
@@ -118,7 +142,7 @@ function renderSignup(card: HTMLElement): void {
     if (btn) { btn.disabled = true; btn.textContent = t("creator.signup.working"); }
     try {
       me = await signup(email, password, "creator");
-      go("handles");
+      go("profile");
     } catch (e) {
       showErr(localizeError((e as Error).message) || t("creator.error"));
       if (btn) { btn.disabled = false; btn.textContent = t("creator.signup.cta"); }
@@ -126,49 +150,172 @@ function renderSignup(card: HTMLElement): void {
   });
 }
 
-function statVal(platform: string, field: "handle" | "follower_count" | "avg_monthly_views" | "avg_views_per_post"): string {
-  const a = accounts.find((x) => x.platform === platform);
-  const v = a ? a[field] : null;
-  return v == null ? "" : String(v);
+/* ---- step: profile (name / age / gender / followers / picture) ----------- */
+
+function renderProfile(card: HTMLElement): void {
+  const pr = profile;
+  const av = avatarData || pr?.avatar_url || "";
+  const numStr = (v: number | null | undefined) => (v == null ? "" : String(v));
+  card.innerHTML = `
+    <p class="step-eyebrow">${esc(t("creator.eyebrow"))}</p>
+    <h1 class="step-title">${esc(t("creator.profile.title"))}</h1>
+    <p class="step-sub">${esc(t("creator.profile.sub"))}</p>
+    <div class="cp-pic">
+      <div class="cp-avatar" id="cp-avatar"${av ? ` style="background-image:url('${esc(av)}')"` : ""}>${av ? "" : `<span>${esc(t("creator.profile.picHint"))}</span>`}</div>
+      <div class="cp-pic-actions">
+        <label class="btn btn-ghost cp-pic-btn">${esc(t("creator.profile.picCta"))}<input type="file" id="cp-file" accept="image/*" hidden /></label>
+        <p class="cp-pic-note">${esc(t("creator.profile.picNote"))}</p>
+      </div>
+    </div>
+    <div class="field"><label for="cp-name">${esc(t("creator.profile.name"))}</label>
+      <input class="input" id="cp-name" autocomplete="name" value="${esc(pr?.name ?? "")}" /></div>
+    <div class="ch-stats">
+      <div class="field"><label for="cp-age">${esc(t("creator.profile.age"))}</label>
+        <input class="input" id="cp-age" type="number" min="13" max="120" inputmode="numeric" value="${esc(numStr(pr?.age))}" /></div>
+      <div class="field"><label for="cp-gender">${esc(t("creator.profile.gender"))}</label>
+        <select class="input" id="cp-gender">
+          <option value="">${esc(t("creator.city.pick"))}</option>
+          ${PROFILE_GENDERS.map((g) => `<option value="${g}"${pr?.gender === g ? " selected" : ""}>${esc(t(`creator.pgender.${g}`))}</option>`).join("")}
+        </select></div>
+      <div class="field"><label for="cp-followers">${esc(t("creator.profile.followers"))}</label>
+        <input class="input" id="cp-followers" type="number" min="0" inputmode="numeric" value="${esc(numStr(pr?.follower_count))}" /></div>
+    </div>
+    <p class="field-error" id="cp-err" hidden></p>
+    <button type="button" class="btn btn-primary creator-cta" id="cp-save">${esc(t("creator.profile.cta"))}</button>`;
+  byId<HTMLInputElement>("cp-file")?.addEventListener("change", (e) => {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    const errEl = byId("cp-err");
+    if (!file) return;
+    if (file.size > 3 * 1024 * 1024) {
+      if (errEl) { errEl.hidden = false; errEl.textContent = t("creator.profile.picTooBig"); }
+      return;
+    }
+    if (errEl) errEl.hidden = true;
+    const reader = new FileReader();
+    reader.onload = () => {
+      avatarData = String(reader.result || "");
+      const av2 = byId("cp-avatar");
+      if (av2) { av2.style.backgroundImage = `url('${avatarData}')`; av2.textContent = ""; }
+    };
+    reader.readAsDataURL(file);
+  });
+  byId("cp-save")?.addEventListener("click", async () => {
+    const name = byId<HTMLInputElement>("cp-name")?.value.trim() ?? "";
+    const err = byId("cp-err");
+    if (!name) { if (err) { err.hidden = false; err.textContent = t("creator.profile.needName"); } return; }
+    if (err) err.hidden = true;
+    const numOrNull = (id: string): number | null => {
+      const v = byId<HTMLInputElement>(id)?.value.trim();
+      const n = v ? Number(v) : NaN;
+      return Number.isFinite(n) && n >= 0 ? n : null;
+    };
+    const btn = byId<HTMLButtonElement>("cp-save");
+    if (btn) { btn.disabled = true; btn.textContent = t("creator.handles.working"); }
+    try {
+      await putCreatorProfile({
+        name,
+        age: numOrNull("cp-age"),
+        gender: byId<HTMLSelectElement>("cp-gender")?.value || null,
+        follower_count: numOrNull("cp-followers"),
+        ...(avatarData ? { avatar_url: avatarData } : {}),
+      });
+      go("handles");
+    } catch (e) {
+      if (err) { err.hidden = false; err.textContent = localizeError((e as Error).message) || t("creator.error"); }
+      if (btn) { btn.disabled = false; btn.textContent = t("creator.profile.cta"); }
+    }
+  });
+}
+
+/* ---- step: channels (per-platform handle + audience + reach) ------------- */
+
+const acctFor = (platform: string): SocialAccount | undefined => accounts.find((x) => x.platform === platform);
+
+function citySelect(platform: string, rank: number, selected: string): string {
+  const opt = (val: string, label: string) => `<option value="${esc(val)}"${val === selected ? " selected" : ""}>${esc(label)}</option>`;
+  return `<select class="input ch-city" data-p="${platform}" data-rank="${rank}">
+      <option value=""${selected === "" ? " selected" : ""}>${esc(t("creator.city.pick"))}</option>
+      ${GERMAN_CITIES.map((c) => opt(c, c)).join("")}
+      ${opt("__other_de", t("creator.city.otherDe"))}
+      ${opt("__other_intl", t("creator.city.otherIntl"))}
+    </select>`;
+}
+
+function chipRow(kind: "age" | "gender", platform: string, options: readonly string[], selected: string[], labelFn: (v: string) => string): string {
+  return `<div class="ch-chips cf-chips" data-p="${platform}" data-kind="${kind}">
+      ${options.map((o) => `<button type="button" class="cf-chip${selected.includes(o) ? " on" : ""}" data-val="${esc(o)}">${esc(labelFn(o))}</button>`).join("")}
+    </div>`;
 }
 
 function renderHandles(card: HTMLElement): void {
+  const ageLabel = (v: string) => v;
+  const genLabel = (v: string) => t(`creator.aud.${v}`);
+  const numStr = (v: number | null | undefined) => (v == null ? "" : String(v));
   card.innerHTML = `
     <p class="step-eyebrow">${esc(t("creator.eyebrow"))}</p>
     <h1 class="step-title">${esc(t("creator.handles.title"))}</h1>
     <p class="step-sub">${esc(t("creator.handles.sub"))}</p>
     ${PLATFORMS.map((p) => {
-      const h = statVal(p.key, "handle");
+      const a = acctFor(p.key);
+      const cities = a?.top_cities ?? [];
+      const m = PLATFORM_METRICS[p.key];
       return `
       <div class="ch-platform">
         <div class="ch-plat-head">${esc(p.label)}</div>
         <div class="field"><label for="h-${p.key}">${esc(t("creator.handles.handle"))}</label>
-          <input class="input" id="h-${p.key}" placeholder="${esc(t("creator.handles.handlePh"))}" autocomplete="off" value="${esc(h ? "@" + h : "")}" /></div>
+          <input class="input" id="h-${p.key}" placeholder="${esc(t("creator.handles.handlePh"))}" autocomplete="off" value="${esc(a?.handle ? "@" + a.handle : "")}" /></div>
+
+        <div class="field"><label>${esc(t("creator.channels.topCities"))}</label>
+          <div class="ch-cities">
+            ${[0, 1, 2, 3, 4].map((i) => `<div class="ch-city-row"><span class="ch-rank">${i + 1}.</span>${citySelect(p.key, i, cities[i] ?? "")}</div>`).join("")}
+          </div>
+        </div>
+
+        <div class="field"><label>${esc(t("creator.channels.ageRange"))}</label>
+          ${chipRow("age", p.key, AGE_RANGES, a?.top_age_ranges ?? [], ageLabel)}</div>
+        <div class="field"><label>${esc(t("creator.channels.gender"))}</label>
+          ${chipRow("gender", p.key, AUD_GENDERS, a?.top_genders ?? [], genLabel)}</div>
+
         <div class="ch-stats">
-          <div class="field"><label for="f-${p.key}">${esc(t("creator.handles.followers"))}</label>
-            <input class="input" id="f-${p.key}" type="number" min="0" inputmode="numeric" placeholder="0" value="${esc(statVal(p.key, "follower_count"))}" /></div>
-          <div class="field"><label for="m-${p.key}">${esc(t("creator.handles.monthlyViews"))}</label>
-            <input class="input" id="m-${p.key}" type="number" min="0" inputmode="numeric" placeholder="0" value="${esc(statVal(p.key, "avg_monthly_views"))}" /></div>
-          <div class="field"><label for="v-${p.key}">${esc(t("creator.handles.perPost"))}</label>
-            <input class="input" id="v-${p.key}" type="number" min="0" inputmode="numeric" placeholder="0" value="${esc(statVal(p.key, "avg_views_per_post"))}" /></div>
+          <div class="field"><label for="v-${p.key}">${esc(t(m.views))}</label>
+            <input class="input" id="v-${p.key}" type="number" min="0" inputmode="numeric" placeholder="0" value="${esc(numStr(a?.views_30d))}" /></div>
+          <div class="field"><label for="r-${p.key}">${esc(t(m.reached))}</label>
+            <input class="input" id="r-${p.key}" type="number" min="0" inputmode="numeric" placeholder="0" value="${esc(numStr(a?.reached_30d))}" /></div>
+          <div class="field"><label for="l-${p.key}">${esc(t(m.clicks))}</label>
+            <input class="input" id="l-${p.key}" type="number" min="0" inputmode="numeric" placeholder="0" value="${esc(numStr(a?.link_clicks_30d))}" /></div>
         </div>
       </div>`;
     }).join("")}
     <p class="ch-hint">${esc(t("creator.handles.statsHint"))}</p>
     <p class="field-error" id="h-err" hidden></p>
-    <button type="button" class="btn btn-primary creator-cta" id="h-save">${esc(t("creator.handles.cta"))}</button>`;
+    <div class="creator-actions">
+      <button type="button" class="btn btn-ghost" id="h-back">${esc(t("btn.back"))}</button>
+      <button type="button" class="btn btn-primary creator-cta" id="h-save">${esc(t("creator.handles.cta"))}</button>
+    </div>`;
+  card.querySelectorAll<HTMLElement>(".ch-chips .cf-chip").forEach((c) =>
+    c.addEventListener("click", () => c.classList.toggle("on")));
+  byId("h-back")?.addEventListener("click", () => go("profile"));
   byId("h-save")?.addEventListener("click", async () => {
     const num = (id: string): number | null => {
       const v = byId<HTMLInputElement>(id)?.value.trim();
       const n = v ? Number(v) : NaN;
       return Number.isFinite(n) && n >= 0 ? n : null;
     };
-    const payload = PLATFORMS.map((p) => ({
+    const pickChips = (platform: string, kind: string) =>
+      Array.from(card.querySelectorAll<HTMLElement>(`.ch-chips[data-p="${platform}"][data-kind="${kind}"] .cf-chip.on`)).map((c) => c.dataset.val || "");
+    const pickCities = (platform: string) =>
+      Array.from(card.querySelectorAll<HTMLSelectElement>(`.ch-city[data-p="${platform}"]`))
+        .sort((a, b) => Number(a.dataset.rank) - Number(b.dataset.rank))
+        .map((s) => s.value).filter(Boolean);
+    const payload: PlatformStats[] = PLATFORMS.map((p) => ({
       platform: p.key,
       handle: (byId<HTMLInputElement>(`h-${p.key}`)?.value.trim() ?? "").replace(/^@+/, ""),
-      follower_count: num(`f-${p.key}`),
-      avg_monthly_views: num(`m-${p.key}`),
-      avg_views_per_post: num(`v-${p.key}`),
+      top_cities: pickCities(p.key),
+      top_age_ranges: pickChips(p.key, "age"),
+      top_genders: pickChips(p.key, "gender"),
+      views_30d: num(`v-${p.key}`),
+      reached_30d: num(`r-${p.key}`),
+      link_clicks_30d: num(`l-${p.key}`),
     })).filter((a) => a.handle);
     const err = byId("h-err");
     if (!payload.length) {
@@ -182,7 +329,7 @@ function renderHandles(card: HTMLElement): void {
       await setCreatorHandles(payload);
       go("connect");
     } catch (e) {
-      if (err) { err.hidden = false; err.textContent = (e as Error).message || t("creator.error"); }
+      if (err) { err.hidden = false; err.textContent = localizeError((e as Error).message) || t("creator.error"); }
       if (btn) { btn.disabled = false; btn.textContent = t("creator.handles.cta"); }
     }
   });
@@ -517,6 +664,7 @@ function render(): void {
   const card = byId("creator-card");
   if (!card) return;
   if (step === "signup") renderSignup(card);
+  else if (step === "profile") renderProfile(card);
   else if (step === "handles") renderHandles(card);
   else if (step === "connect") void renderConnect(card);
   else renderDone(card);
@@ -548,8 +696,15 @@ export async function initCreator(): Promise<void> {
 
   me = await getMe().catch(() => null);
   if (me && me.role === "creator") {
-    accounts = (await getCreatorHandles().catch(() => ({ accounts: [], instagramEnabled: false }))).accounts;
-    step = igBanner ? "connect" : accounts.length ? "home" : "handles";
+    const [handles, prof] = await Promise.all([
+      getCreatorHandles().catch(() => ({ accounts: [], instagramEnabled: false })),
+      getCreatorProfile().catch(() => ({ profile: null })),
+    ]);
+    accounts = handles.accounts;
+    igEnabled = handles.instagramEnabled;
+    profile = prof.profile;
+    // No channels yet → run onboarding from the profile step; otherwise home.
+    step = igBanner ? "connect" : accounts.length ? "home" : "profile";
   } else {
     // Logged out, or signed in as a locale account choosing "register as a
     // creator" — show the creator signup. Signing up creates a creator account.

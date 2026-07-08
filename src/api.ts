@@ -516,22 +516,48 @@ export interface SocialAccount {
   platform: "instagram" | "tiktok" | "youtube" | string;
   handle: string | null;
   follower_count: number | null;
-  avg_monthly_views: number | null;
-  avg_views_per_post: number | null;
+  top_cities: string[];
+  top_age_ranges: string[];
+  top_genders: string[];
+  views_30d: number | null;
+  reached_30d: number | null;
+  link_clicks_30d: number | null;
   status: string; // pending | connected | expired | revoked
 }
 
 export interface PlatformStats {
   platform: "instagram" | "tiktok" | "youtube";
   handle: string;
-  follower_count?: number | null;
-  avg_monthly_views?: number | null;
-  avg_views_per_post?: number | null;
+  top_cities?: string[];
+  top_age_ranges?: string[];
+  top_genders?: string[];
+  views_30d?: number | null;
+  reached_30d?: number | null;
+  link_clicks_30d?: number | null;
 }
 
 export function setCreatorHandles(accounts: PlatformStats[]):
   Promise<{ ok: boolean; count: number }> {
   return api("/api/creator/handles", { method: "POST", json: { accounts } });
+}
+
+export interface CreatorProfile {
+  name: string | null;
+  age: number | null;
+  gender: string | null;
+  follower_count: number | null;
+  avatar_url: string | null;
+}
+
+export function getCreatorProfile(): Promise<{ profile: CreatorProfile | null }> {
+  return api("/api/creator/profile");
+}
+
+export function putCreatorProfile(profile: {
+  name?: string; age?: number | null; gender?: string | null;
+  follower_count?: number | null; avatar_url?: string | null;
+}): Promise<{ ok: boolean }> {
+  return api("/api/creator/profile", { method: "PUT", json: profile });
 }
 
 export function getCreatorHandles(): Promise<{ accounts: SocialAccount[]; instagramEnabled: boolean }> {

@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse
 from psycopg.rows import dict_row
+from psycopg.types.json import Json
 from pydantic import BaseModel
 
 from .. import deps
@@ -23,11 +24,15 @@ router = APIRouter(prefix="/api/creator", tags=["creator"])
 
 
 class ProfileIn(BaseModel):
+    name: str | None = None          # -> creators.display_name
+    age: int | None = None
+    gender: str | None = None        # male | female | other | prefer_not
+    follower_count: int | None = None
+    avatar_url: str | None = None    # profile picture (data URL for now)
     bio: str | None = None
     city: str | None = None
     categories: list[str] = []
     languages: list[str] = []
-    avatar_url: str | None = None
     base_rate_eur: float | None = None
 
 
@@ -40,9 +45,12 @@ class ConnectIn(BaseModel):
 class PlatformStatsIn(BaseModel):
     platform: str  # instagram | tiktok | youtube
     handle: str | None = None
-    follower_count: int | None = None
-    avg_monthly_views: int | None = None
-    avg_views_per_post: int | None = None
+    top_cities: list[str] = []        # ranked top-5 audience cities (city name or __other_de/__other_intl)
+    top_age_ranges: list[str] = []    # 18-24 / 25-34 / 35-44 / 45-54 / 55+
+    top_genders: list[str] = []       # men / women
+    views_30d: int | None = None
+    reached_30d: int | None = None
+    link_clicks_30d: int | None = None
 
 
 class HandlesIn(BaseModel):
@@ -89,14 +97,20 @@ def _parse_post_url(url: str) -> tuple[str, str]:
 @router.put("/profile")
 def put_profile(body: ProfileIn, principal: dict = Depends(deps.require_creator)) -> dict:
     with get_control_connection() as conn, conn.cursor() as cur:
+        if body.name is not None:
+            cur.execute("UPDATE creators SET display_name = %s WHERE id = %s",
+                        (body.name.strip() or None, principal["id"]))
         cur.execute(
-            "INSERT INTO creator_profiles (creator_id, bio, city, categories, languages, avatar_url, base_rate_eur)"
-            " VALUES (%s, %s, %s, %s, %s, %s, %s)"
+            "INSERT INTO creator_profiles (creator_id, bio, city, categories, languages,"
+            "   avatar_url, base_rate_eur, age, gender, follower_count)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
             " ON CONFLICT (creator_id) DO UPDATE SET bio = EXCLUDED.bio, city = EXCLUDED.city,"
             "   categories = EXCLUDED.categories, languages = EXCLUDED.languages,"
-            "   avatar_url = EXCLUDED.avatar_url, base_rate_eur = EXCLUDED.base_rate_eur, updated_at = NOW()",
+            "   avatar_url = EXCLUDED.avatar_url, base_rate_eur = EXCLUDED.base_rate_eur,"
+            "   age = EXCLUDED.age, gender = EXCLUDED.gender,"
+            "   follower_count = EXCLUDED.follower_count, updated_at = NOW()",
             (principal["id"], body.bio, body.city, body.categories, body.languages,
-             body.avatar_url, body.base_rate_eur),
+             body.avatar_url, body.base_rate_eur, body.age, body.gender, body.follower_count),
         )
         conn.commit()
     return {"ok": True}
@@ -105,7 +119,12 @@ def put_profile(body: ProfileIn, principal: dict = Depends(deps.require_creator)
 @router.get("/profile")
 def get_profile(principal: dict = Depends(deps.require_creator)) -> dict:
     with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
-        cur.execute("SELECT * FROM creator_profiles WHERE creator_id = %s", (principal["id"],))
+        cur.execute(
+            "SELECT cp.*, c.display_name AS name FROM creators c"
+            "   LEFT JOIN creator_profiles cp ON cp.creator_id = c.id"
+            " WHERE c.id = %s",
+            (principal["id"],),
+        )
         return {"profile": cur.fetchone()}
 
 
@@ -170,22 +189,25 @@ def set_handles(body: HandlesIn, principal: dict = Depends(deps.require_creator)
         handle = _clean_handle(a.handle)
         if not handle:
             continue
-        rows.append((a.platform, handle, a.follower_count, a.avg_monthly_views, a.avg_views_per_post))
+        cities = [c for c in a.top_cities if c][:5]
+        rows.append((a.platform, handle, Json(cities), a.top_age_ranges, a.top_genders,
+                     a.views_30d, a.reached_30d, a.link_clicks_30d))
     if not rows:
         raise HTTPException(status_code=400, detail="Enter at least one handle (Instagram, TikTok, or YouTube).")
     with get_control_connection() as conn, conn.cursor() as cur:
-        for platform, handle, followers, monthly, per_post in rows:
+        for platform, handle, cities, ages, genders, views, reached, clicks in rows:
             # New rows start 'pending'; existing rows keep their status (a
             # connected account stays connected, we just refresh handle + stats).
             cur.execute(
                 "INSERT INTO social_accounts (creator_id, platform, handle,"
-                "   follower_count, avg_monthly_views, avg_views_per_post, status)"
-                " VALUES (%s, %s, %s, %s, %s, %s, 'pending')"
+                "   top_cities, top_age_ranges, top_genders, views_30d, reached_30d,"
+                "   link_clicks_30d, status)"
+                " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending')"
                 " ON CONFLICT (creator_id, platform) DO UPDATE SET handle = EXCLUDED.handle,"
-                "   follower_count = EXCLUDED.follower_count,"
-                "   avg_monthly_views = EXCLUDED.avg_monthly_views,"
-                "   avg_views_per_post = EXCLUDED.avg_views_per_post",
-                (principal["id"], platform, handle, followers, monthly, per_post),
+                "   top_cities = EXCLUDED.top_cities, top_age_ranges = EXCLUDED.top_age_ranges,"
+                "   top_genders = EXCLUDED.top_genders, views_30d = EXCLUDED.views_30d,"
+                "   reached_30d = EXCLUDED.reached_30d, link_clicks_30d = EXCLUDED.link_clicks_30d",
+                (principal["id"], platform, handle, cities, ages, genders, views, reached, clicks),
             )
         conn.commit()
     return {"ok": True, "count": len(rows)}
@@ -195,9 +217,9 @@ def set_handles(body: HandlesIn, principal: dict = Depends(deps.require_creator)
 def get_handles(principal: dict = Depends(deps.require_creator)) -> dict:
     with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
-            "SELECT platform, handle, follower_count, avg_monthly_views,"
-            "   avg_views_per_post, status FROM social_accounts"
-            " WHERE creator_id = %s ORDER BY platform",
+            "SELECT platform, handle, follower_count, top_cities, top_age_ranges,"
+            "   top_genders, views_30d, reached_30d, link_clicks_30d, status"
+            " FROM social_accounts WHERE creator_id = %s ORDER BY platform",
             (principal["id"],),
         )
         return {"accounts": cur.fetchall(), "instagramEnabled": instagram.enabled()}

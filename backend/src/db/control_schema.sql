@@ -127,7 +127,10 @@ CREATE TABLE IF NOT EXISTS creator_profiles (
     city          TEXT,
     categories    TEXT[] NOT NULL DEFAULT '{}',
     languages     TEXT[] NOT NULL DEFAULT '{}',
-    avatar_url    TEXT,
+    avatar_url    TEXT,          -- profile picture (data URL for now)
+    age           INTEGER,       -- self-reported during onboarding
+    gender        TEXT,          -- self-reported (male | female | other | ...)
+    follower_count BIGINT,       -- headline follower count across channels
     base_rate_eur NUMERIC(12, 2),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -141,8 +144,13 @@ CREATE TABLE IF NOT EXISTS social_accounts (
     handle            TEXT,
     platform_user_id  TEXT,
     follower_count    INTEGER,
-    avg_monthly_views  BIGINT,   -- self-reported during onboarding
-    avg_views_per_post BIGINT,   -- self-reported during onboarding
+    -- Self-reported audience + reach, captured during onboarding:
+    top_cities        JSONB NOT NULL DEFAULT '[]'::jsonb,  -- ranked top-5 audience cities
+    top_age_ranges    TEXT[] NOT NULL DEFAULT '{}',        -- e.g. {18-24,25-34}
+    top_genders       TEXT[] NOT NULL DEFAULT '{}',        -- {men,women}
+    views_30d         BIGINT,                              -- views in the last 30 days
+    reached_30d       BIGINT,                              -- accounts reached / unique viewers
+    link_clicks_30d   BIGINT,                              -- external / bio / end-screen clicks
     access_token_enc  TEXT,
     refresh_token_enc TEXT,
     token_expires_at  TIMESTAMPTZ,
