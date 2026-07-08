@@ -130,6 +130,13 @@ export function initOnboarding(): void {
   /* ---- Navigation ------------------------------------------------------ */
 
   function show(next: number): void {
+    // The "You're in / add another locale" success interstitial is gone for
+    // good — finishing (or any stray attempt to reach it) always lands in the
+    // account app, never on that screen.
+    if (steps[next]?.dataset.step === "done") {
+      window.location.assign("/account");
+      return;
+    }
     index = next;
     steps.forEach((s, i) => s.classList.toggle("active", i === index));
     const onFlow = index < flowCount;
@@ -1349,6 +1356,10 @@ export function initOnboarding(): void {
 
   form.addEventListener("submit", (e) => {
     e.preventDefault();
+    // The flow is just the account step now: submitting it (e.g. pressing Enter)
+    // must run the normal Continue path — sign up → verify → account app — and
+    // never fall through to the legacy "done" success screen below.
+    if (steps[index]?.dataset.step === "account") { void handleNext(); return; }
     // Re-validate the whole flow (skip the account step for an already-signed-in
     // user). Never reach "You're in." without the required fields.
     for (let i = authed ? 1 : 0; i < flowCount; i++) {
