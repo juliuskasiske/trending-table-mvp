@@ -180,16 +180,19 @@
 .creator-card--lg { max-width: 1180px; }
 /* On a wide desktop the three channels sit side by side; they drop to 2 then 1
  * column as the screen narrows. */
-.ch-platforms { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; align-items: start; }
+.ch-platforms { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; align-items: stretch; }
 @media (max-width: 760px) { .ch-platforms { grid-template-columns: 1fr; } }
 
 .ch-hint-inline { font-weight: 600; font-size: 11.5px; color: var(--muted); }
 
-/* ranked chip: numbered badge appears once selected */
-.rank-chip { display: inline-flex; align-items: center; gap: 7px; }
+/* ranked chip: the numbered badge is an ABSOLUTE corner overlay, so it never
+ * changes the chip's box — a ranked chip is pixel-identical to an unranked one,
+ * so rows wrap the same in every column and stay aligned. */
+.rank-chip { position: relative; }
 .rank-chip .chip-rank:empty { display: none; }
 .rank-chip .chip-rank {
+  position: absolute; top: -8px; left: -8px;
   display: inline-grid; place-items: center; min-width: 18px; height: 18px;
-  border-radius: 999px; background: var(--panel); color: var(--ink);
-  font: 800 11px/1 var(--font); padding: 0 4px;
+  border-radius: 999px; background: var(--ink); color: #fff; border: 2px solid var(--panel);
+  font: 800 10.5px/1 var(--font); padding: 0 3px;
 }
