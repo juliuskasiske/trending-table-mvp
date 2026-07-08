@@ -171,6 +171,18 @@ ALTER TABLE social_accounts DROP CONSTRAINT IF EXISTS social_accounts_status_che
 ALTER TABLE social_accounts ADD CONSTRAINT social_accounts_status_check
     CHECK (status IN ('connected', 'expired', 'revoked', 'pending'));
 
+-- Creator onboarding: profile details + self-reported audience/reach per channel
+-- (idempotent — CREATE TABLE above is a no-op on DBs that predate these columns).
+ALTER TABLE creator_profiles ADD COLUMN IF NOT EXISTS age INTEGER;
+ALTER TABLE creator_profiles ADD COLUMN IF NOT EXISTS gender TEXT;
+ALTER TABLE creator_profiles ADD COLUMN IF NOT EXISTS follower_count BIGINT;
+ALTER TABLE social_accounts ADD COLUMN IF NOT EXISTS top_cities JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE social_accounts ADD COLUMN IF NOT EXISTS top_age_ranges TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE social_accounts ADD COLUMN IF NOT EXISTS top_genders TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE social_accounts ADD COLUMN IF NOT EXISTS views_30d BIGINT;
+ALTER TABLE social_accounts ADD COLUMN IF NOT EXISTS reached_30d BIGINT;
+ALTER TABLE social_accounts ADD COLUMN IF NOT EXISTS link_clicks_30d BIGINT;
+
 -- ============================================================================
 -- Marketplace graph (creator ↔ restaurant)
 -- ============================================================================
