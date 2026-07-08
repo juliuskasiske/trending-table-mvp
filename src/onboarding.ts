@@ -1577,13 +1577,15 @@ export function initOnboarding(): void {
       window.history.replaceState(null, "", window.location.pathname);
     }
 
-    // Routing: /register always shows the signup flow (even with a session, so
-    // it can be reached directly). Otherwise a signed-in account/creator goes to
-    // its app, and everyone else sees the /login gate.
+    // Routing: /register and /login always show their screens, even with an
+    // active session, so they can be reached directly. Only the root path sends
+    // a signed-in account/creator into its app; a logged-out root shows the gate.
     const me = await getMe();
     const path = window.location.pathname.replace(/\/+$/, "");
     if (path === "/register") {
       startFlow(0);
+    } else if (path === "/login") {
+      showGate();
     } else if (me && me.role === "account") {
       window.location.assign("/account");
     } else if (me && me.role === "creator") {
