@@ -382,7 +382,9 @@ function renderHandles(card: HTMLElement): void {
       <button type="button" class="btn btn-primary creator-cta" id="h-save">${esc(t("creator.handles.cta"))}</button>
     </div>`;
   card.querySelectorAll<HTMLElement>(".ch-chips").forEach((g) => wireRankChips(g));
-  byId("h-back")?.addEventListener("click", () => go("profile"));
+  // First-time onboarding steps back to the profile; a returning creator who
+  // opened this via "manage accounts" steps back to their home inbox.
+  byId("h-back")?.addEventListener("click", () => go(accounts.length ? "home" : "profile"));
   byId("h-save")?.addEventListener("click", async () => {
     const num = (id: string): number | null => {
       const v = byId<HTMLInputElement>(id)?.value.trim();
@@ -527,7 +529,7 @@ function renderHome(): void {
       <div class="cc-tabs">${tab("campaigns", t("creator.tab.campaigns"))}${tab("messages", t("creator.tab.messages"))}</div>
       <div id="ci-body"></div>
     </div>`;
-  byId("ci-accounts")?.addEventListener("click", () => go("connect"));
+  byId("ci-accounts")?.addEventListener("click", () => go("handles"));
   byId("ci-logout")?.addEventListener("click", async () => {
     await logout();
     window.location.assign("/login");
@@ -751,7 +753,17 @@ function ciBubble(mm: Message): string {
 function render(): void {
   if (step !== "home") stopCiPoll();
   if (step === "home") { renderHome(); return; }
-  const card = byId("creator-card");
+  const stage = document.querySelector<HTMLElement>(".creator-stage");
+  if (!stage) return;
+  // Returning from the home inbox, which replaced the stage's card with the
+  // wide inbox layout: drop that class and rebuild the card so card-based
+  // steps can render again (otherwise byId("creator-card") is null → no-op).
+  stage.classList.remove("creator-stage-wide");
+  let card = byId("creator-card");
+  if (!card) {
+    stage.innerHTML = `<section class="card creator-card" id="creator-card"></section>`;
+    card = byId("creator-card");
+  }
   if (!card) return;
   // Wider card for the content-heavy steps; simple steps stay narrow.
   card.className = "card creator-card"
