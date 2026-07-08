@@ -278,16 +278,24 @@ export function initOnboarding(): void {
 
     if (kind === "account") {
       const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val("email"));
-      const pwOk = (form!.elements.namedItem("password") as HTMLInputElement).value.length >= 8;
+      const pw = (form!.elements.namedItem("password") as HTMLInputElement).value;
+      const pw2 = (form!.elements.namedItem("password2") as HTMLInputElement).value;
+      const pwOk = pw.length >= 8;
+      const matchOk = pw2.length > 0 && pw2 === pw;
+      // Reset the email error to the static rule — a prior "already registered"
+      // message may have overwritten it.
+      const emEl = form!.querySelector<HTMLElement>('[data-error-for="email"]');
+      if (emEl) emEl.textContent = t("account.email.err");
       setError("email", !emailOk);
       setError("password", !pwOk);
+      setError("password2", pwOk && !matchOk);
       // Reset the password error text to the static rule — a prior backend error
       // (e.g. "can't be your email") may have overwritten it.
       if (!pwOk) {
         const el = form!.querySelector<HTMLElement>('[data-error-for="password"]');
         if (el) el.textContent = t("pw.password_too_short");
       }
-      ok = emailOk && pwOk;
+      ok = emailOk && pwOk && matchOk;
     } else if (kind === "restaurant") {
       const profileShown = !byId("profile-block")?.hidden;
       if (!profileShown) {
@@ -1205,21 +1213,15 @@ export function initOnboarding(): void {
   async function persistAccount(): Promise<{ email: string; email_verified: boolean }> {
     const email = val("email");
     const password = (form!.elements.namedItem("password") as HTMLInputElement).value;
-    try {
-      const p = await signup(email, password, "account");
-      authed = true;
-      principalEmail = p.email;
-      showBanner(t("verify.sent", { email: p.email }), "ok");
-      return { email: p.email, email_verified: p.email_verified };
-    } catch (err) {
-      if ((err as { status?: number }).status === 409) {
-        const p = await login(email, password, "account"); // email exists → log in
-        authed = true;
-        principalEmail = p.email;
-        return { email: p.email, email_verified: p.email_verified };
-      }
-      throw err;
-    }
+    // Registration only creates NEW accounts. If the email already exists we
+    // surface a clear "log in instead" error (see stepError) rather than
+    // silently logging into that existing account — which used to drop the user
+    // onto someone else's dashboard.
+    const p = await signup(email, password, "account");
+    authed = true;
+    principalEmail = p.email;
+    showBanner(t("verify.sent", { email: p.email }), "ok");
+    return { email: p.email, email_verified: p.email_verified };
   }
 
   async function persistRestaurant(): Promise<void> {
@@ -1252,6 +1254,16 @@ export function initOnboarding(): void {
   function stepError(kind: string | undefined, err: unknown): void {
     const msg = localizeError((err as Error)?.message || "") || t("error.generic");
     if (kind === "account") {
+      // Email already registered → point the user at login instead of failing
+      // on the password field.
+      if ((err as { status?: number }).status === 409) {
+        const el = form!.querySelector<HTMLElement>('[data-error-for="email"]');
+        if (el) {
+          el.innerHTML = `${escapeHtml(t("account.email.taken"))} <a href="/login" class="linklike">${escapeHtml(t("account.email.takenCta"))}</a>`;
+        }
+        setError("email", true);
+        return;
+      }
       const el = form!.querySelector<HTMLElement>('[data-error-for="password"]');
       if (el) el.textContent = msg;
       setError("password", true);

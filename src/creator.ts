@@ -114,15 +114,19 @@ function renderSignup(card: HTMLElement): void {
       <input class="input" id="c-email" type="email" autocomplete="email" /></div>
     <div class="field"><label for="c-password">${esc(t("gate.password"))}</label>
       <input class="input" id="c-password" type="password" autocomplete="new-password" /></div>
+    <div class="field"><label for="c-password2">${esc(t("account.password2.label"))}</label>
+      <input class="input" id="c-password2" type="password" autocomplete="new-password" /></div>
     <p class="field-error" id="c-err" hidden></p>
     <button type="button" class="btn btn-primary creator-cta" id="c-signup">${esc(t("creator.signup.cta"))}</button>`;
   byId("c-signup")?.addEventListener("click", async () => {
     const email = byId<HTMLInputElement>("c-email")?.value.trim() ?? "";
     const password = byId<HTMLInputElement>("c-password")?.value ?? "";
+    const password2 = byId<HTMLInputElement>("c-password2")?.value ?? "";
     const err = byId("c-err");
     const showErr = (m: string) => { if (err) { err.hidden = false; err.textContent = m; } };
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showErr(t("account.email.err")); return; }
     if (password.length < 8) { showErr(t("pw.password_too_short")); return; }
+    if (password2 !== password) { showErr(t("account.password2.err")); return; }
     if (err) err.hidden = true;
     const btn = byId<HTMLButtonElement>("c-signup");
     if (btn) { btn.disabled = true; btn.textContent = t("creator.signup.working"); }
@@ -131,7 +135,13 @@ function renderSignup(card: HTMLElement): void {
       // Hard barrier: verify the email before building the profile/channels.
       go(me.email_verified ? "profile" : "verify");
     } catch (e) {
-      showErr(localizeError((e as Error).message) || t("creator.error"));
+      // Email already registered → point them at login, don't silently proceed.
+      if ((e as { status?: number }).status === 409 && err) {
+        err.hidden = false;
+        err.innerHTML = `${esc(t("account.email.taken"))} <a href="/login" class="linklike">${esc(t("account.email.takenCta"))}</a>`;
+      } else {
+        showErr(localizeError((e as Error).message) || t("creator.error"));
+      }
       if (btn) { btn.disabled = false; btn.textContent = t("creator.signup.cta"); }
     }
   });

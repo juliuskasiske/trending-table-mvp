@@ -101,6 +101,13 @@
               <p class="field-error" data-error-for="password" data-i18n="account.password.err">Use at least 8 characters.</p>
             </div>
 
+            <div class="field">
+              <label for="password2" data-i18n="account.password2.label">Confirm password</label>
+              <input class="input" type="password" id="password2" name="password2"
+                autocomplete="new-password" minlength="8" required />
+              <p class="field-error" data-error-for="password2" data-i18n="account.password2.err">Passwords don't match.</p>
+            </div>
+
             <div class="actions">
               <button type="button" class="btn btn-ghost hidden" data-back data-i18n="btn.back">Back</button>
               <button type="button" class="btn btn-primary" data-next data-i18n="btn.continue">Continue</button>
