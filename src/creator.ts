@@ -386,7 +386,7 @@ async function loadCiThreads(): Promise<void> {
   if (step !== "home") return;
   list.innerHTML = threads.length
     ? threads.map((th) => {
-        const name = th.restaurant_name || "Restaurant";
+        const name = th.restaurant_name || t("creator.venueFallback");
         const preview = (th.last_sender === "creator" ? t("messages.youPrefix") + " " : "") + (th.last_body || "");
         const unread = th.unread > 0 ? `<span class="msg-unread">${th.unread}</span>` : "";
         return `<button type="button" class="msg-thread ${ciActive === th.restaurant_id ? "on" : ""}" data-rid="${th.restaurant_id}">
@@ -455,7 +455,7 @@ async function paintCiBubbles(rid: number, pollMode: boolean): Promise<void> {
   if (pollMode && latest === ciLastId) return;
   ciLastId = latest;
 
-  const name = th.peer.name || "Restaurant";
+  const name = th.peer.name || t("creator.venueFallback");
   const head = byId("cmsg-head");
   if (head) {
     head.innerHTML = `<button type="button" class="msg-convo-back" id="cmsg-back" aria-label="${esc(t("messages.back"))}">${backIcon}</button><span class="msg-convo-av">${esc(initial(name))}</span><span class="msg-convo-name">${esc(name)}</span>`;

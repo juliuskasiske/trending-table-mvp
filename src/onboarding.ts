@@ -1198,7 +1198,7 @@ export function initOnboarding(): void {
   async function persistRestaurant(): Promise<void> {
     const profile = profileInput();
     if (restaurantId == null) {
-      const r = await createRestaurant({ ...profile, name: profile.name || "My restaurant" });
+      const r = await createRestaurant({ ...profile, name: profile.name || "My locale" });
       restaurantId = r.id;
     } else {
       await putProfile(restaurantId, profile);
