@@ -45,6 +45,7 @@ import {
 } from "./types.ts";
 import { loadStripe, type Stripe, type StripeElements } from "@stripe/stripe-js";
 import { getLang, localizeError, onLangChange, t, tChip } from "./i18n.ts";
+import { renderVerifyFullpage } from "./verify-screen.ts";
 
 const STORAGE_KEY = "tt-onboarding";
 
@@ -198,6 +199,25 @@ export function initOnboarding(): void {
     if (gateRole === "restaurant") startFlow(0); // → /register
     else window.location.assign("/creator"); // creator registration flow
   });
+
+  // Show/hide the login password with the eye toggle in the field.
+  (() => {
+    const input = byId<HTMLInputElement>("gate-password");
+    const btn = byId<HTMLButtonElement>("gate-pw-toggle");
+    if (!input || !btn) return;
+    const eye = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
+    const eyeOff = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10.7 5.1A9.7 9.7 0 0 1 12 5c6.5 0 10 7 10 7a13.2 13.2 0 0 1-2.2 2.9M6.5 6.5A13.3 13.3 0 0 0 2 12s3.5 7 10 7a9.6 9.6 0 0 0 3.9-.8"/><path d="m3 3 18 18"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
+    const sync = () => {
+      const shown = input.type === "text";
+      btn.innerHTML = shown ? eyeOff : eye;
+      btn.setAttribute("aria-label", t(shown ? "gate.pwHide" : "gate.pwShow"));
+    };
+    btn.addEventListener("click", () => {
+      input.type = input.type === "password" ? "text" : "password";
+      sync();
+    });
+    sync();
+  })();
 
   byId("gate-form")?.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -1182,7 +1202,7 @@ export function initOnboarding(): void {
     };
   }
 
-  async function persistAccount(): Promise<void> {
+  async function persistAccount(): Promise<{ email: string; email_verified: boolean }> {
     const email = val("email");
     const password = (form!.elements.namedItem("password") as HTMLInputElement).value;
     try {
@@ -1190,14 +1210,15 @@ export function initOnboarding(): void {
       authed = true;
       principalEmail = p.email;
       showBanner(t("verify.sent", { email: p.email }), "ok");
+      return { email: p.email, email_verified: p.email_verified };
     } catch (err) {
       if ((err as { status?: number }).status === 409) {
         const p = await login(email, password, "account"); // email exists → log in
         authed = true;
         principalEmail = p.email;
-      } else {
-        throw err;
+        return { email: p.email, email_verified: p.email_verified };
       }
+      throw err;
     }
   }
 
@@ -1254,7 +1275,13 @@ export function initOnboarding(): void {
     if (nextBtn) nextBtn.disabled = true;
     try {
       if (kind === "account") {
-        await persistAccount();
+        const p = await persistAccount();
+        // Hard barrier: an unverified account cannot enter the app. Show the
+        // confirm-your-email gate until they verify (it polls + auto-advances).
+        if (!p.email_verified) {
+          renderVerifyFullpage({ email: p.email, onVerified: () => window.location.assign("/account") });
+          return;
+        }
         // Account is the only onboarding step now — go straight into the app,
         // where the dashboard is used to create restaurants.
         if (index + 1 >= flowCount) { window.location.assign("/account"); return; }

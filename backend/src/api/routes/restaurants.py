@@ -98,7 +98,7 @@ def list_restaurants(principal: dict = Depends(deps.require_account)) -> dict:
 
 
 @router.post("")
-def create_restaurant(body: ProvisionIn, principal: dict = Depends(deps.require_account)) -> dict:
+def create_restaurant(body: ProvisionIn, principal: dict = Depends(deps.require_verified_account)) -> dict:
     profile = body.model_dump(exclude_none=True)
     profile.pop("name", None)
     restaurant_id = provision.create_restaurant(principal["id"], body.name, profile)

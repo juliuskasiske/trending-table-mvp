@@ -60,8 +60,13 @@
           <form class="gate-login" id="gate-form" novalidate>
             <input class="input" id="gate-email" type="email" placeholder="Email" autocomplete="email"
               data-i18n-ph="gate.email" />
-            <input class="input" id="gate-password" type="password" placeholder="Password" autocomplete="current-password"
-              data-i18n-ph="gate.password" />
+            <div class="pw-field">
+              <input class="input" id="gate-password" type="password" placeholder="Password" autocomplete="current-password"
+                data-i18n-ph="gate.password" />
+              <button type="button" class="pw-toggle" id="gate-pw-toggle" aria-label="Show password">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
             <button type="submit" class="btn btn-ink" id="gate-login" data-i18n="gate.login">Log in</button>
             <p class="gate-hint" data-i18n="gate.noAccount">No account yet? Register below:</p>
             <button type="button" class="btn btn-primary" id="gate-signup" data-i18n="gate.signup">Sign up</button>

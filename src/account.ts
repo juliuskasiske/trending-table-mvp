@@ -42,6 +42,7 @@ import {
 } from "./api.ts";
 import { MenuItem, GUIDELINE_PRESETS, defaultGuidelines, type PlaceDetails, type PlaceSuggestion } from "./types.ts";
 import { getLang, initI18n, localizeError, onLangChange, setLang, t, tChip } from "./i18n.ts";
+import { renderVerifyFullpage } from "./verify-screen.ts";
 import { fmtEur } from "./format.ts";
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string) =>
@@ -1180,6 +1181,11 @@ export async function initAccount(): Promise<void> {
   me = await getMe().catch(() => null);
   if (!me || me.role !== "account") {
     window.location.assign("/login");
+    return;
+  }
+  if (!me.email_verified) {
+    // Hard barrier: no access to the app until the email is confirmed.
+    renderVerifyFullpage({ email: me.email, onVerified: () => window.location.reload() });
     return;
   }
   restaurants = (await listRestaurants().catch(() => ({ restaurants: [] }))).restaurants;

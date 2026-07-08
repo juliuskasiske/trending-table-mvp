@@ -30,6 +30,7 @@ import {
   type SocialAccount,
 } from "./api.ts";
 import { getLang, initI18n, localizeError, onLangChange, setLang, t, tChip } from "./i18n.ts";
+import { renderVerifyInto, stopVerifyPoll } from "./verify-screen.ts";
 import { fmtEur } from "./format.ts";
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string) =>
@@ -53,7 +54,7 @@ const msgTime = (iso: string | null | undefined): string => {
 const sendIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>';
 const backIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>';
 
-type Step = "signup" | "profile" | "handles" | "connect" | "done" | "home";
+type Step = "signup" | "verify" | "profile" | "handles" | "connect" | "done" | "home";
 type HomeTab = "campaigns" | "messages";
 
 let me: Principal | null = null;
@@ -143,7 +144,8 @@ function renderSignup(card: HTMLElement): void {
     if (btn) { btn.disabled = true; btn.textContent = t("creator.signup.working"); }
     try {
       me = await signup(email, password, "creator");
-      go("profile");
+      // Hard barrier: verify the email before building the profile/channels.
+      go(me.email_verified ? "profile" : "verify");
     } catch (e) {
       showErr(localizeError((e as Error).message) || t("creator.error"));
       if (btn) { btn.disabled = false; btn.textContent = t("creator.signup.cta"); }
@@ -752,6 +754,7 @@ function ciBubble(mm: Message): string {
 
 function render(): void {
   if (step !== "home") stopCiPoll();
+  if (step !== "verify") stopVerifyPoll();
   if (step === "home") { renderHome(); return; }
   const stage = document.querySelector<HTMLElement>(".creator-stage");
   if (!stage) return;
@@ -768,7 +771,8 @@ function render(): void {
   // Wider card for the content-heavy steps; simple steps stay narrow.
   card.className = "card creator-card"
     + (step === "profile" ? " creator-card--md" : step === "handles" ? " creator-card--lg" : "");
-  if (step === "signup") renderSignup(card);
+  if (step === "verify") renderVerifyInto(card, { email: me?.email ?? "", onVerified: () => go("profile") });
+  else if (step === "signup") renderSignup(card);
   else if (step === "profile") renderProfile(card);
   else if (step === "handles") renderHandles(card);
   else if (step === "connect") void renderConnect(card);
@@ -808,8 +812,10 @@ export async function initCreator(): Promise<void> {
     accounts = handles.accounts;
     igEnabled = handles.instagramEnabled;
     profile = prof.profile;
-    // No channels yet → run onboarding from the profile step; otherwise home.
-    step = igBanner ? "connect" : accounts.length ? "home" : "profile";
+    // Hard barrier: an unverified creator can't proceed past the verify gate.
+    // Otherwise: no channels yet → onboarding from profile; else home.
+    step = !me.email_verified ? "verify"
+      : igBanner ? "connect" : accounts.length ? "home" : "profile";
   } else {
     // Logged out, or signed in as a locale account choosing "register as a
     // creator" — show the creator signup. Signing up creates a creator account.

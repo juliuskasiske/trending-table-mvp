@@ -25,6 +25,8 @@ const en: Dict = {
   "gate.login": "Log in",
   "gate.email": "Email",
   "gate.password": "Password",
+  "gate.pwShow": "Show password",
+  "gate.pwHide": "Hide password",
   "gate.loginFailed": "Invalid email or password.",
   "gate.loggingIn": "Logging in…",
   "gate.registered": "Account created — log in to continue.",
@@ -253,6 +255,15 @@ const en: Dict = {
   "verify.ok": "Email confirmed — you're all set.",
   "verify.fail": "That verification link is invalid or has expired.",
   "verify.sent": "We sent a confirmation link to {email}. Check your inbox to verify your account.",
+  "verify.gate.eyebrow": "One last step",
+  "verify.gate.title": "Confirm your email",
+  "verify.gate.sub": "We sent a confirmation link to {email}. Open it to activate your account — then come back here to continue.",
+  "verify.gate.continue": "I've confirmed — continue",
+  "verify.gate.resend": "Resend link",
+  "verify.gate.resent": "Link resent — check your inbox.",
+  "verify.gate.resendFail": "Couldn't resend right now. Try again in a moment.",
+  "verify.gate.notyet": "Not confirmed yet. Open the link in your email, then continue.",
+  "verify.gate.hint": "Can't find it? Check your spam folder.",
 
   // Guideline chip labels (also used as stable stored values)
   "chip.Signature dishes": "Signature dishes",
@@ -586,6 +597,8 @@ const de: Dict = {
   "gate.login": "Anmelden",
   "gate.email": "E-Mail",
   "gate.password": "Passwort",
+  "gate.pwShow": "Passwort anzeigen",
+  "gate.pwHide": "Passwort verbergen",
   "gate.loginFailed": "Ungültige E-Mail oder Passwort.",
   "gate.loggingIn": "Anmeldung läuft…",
   "gate.registered": "Konto erstellt — melde dich an, um fortzufahren.",
@@ -802,6 +815,15 @@ const de: Dict = {
   "verify.ok": "E-Mail bestätigt — alles erledigt.",
   "verify.fail": "Dieser Bestätigungslink ist ungültig oder abgelaufen.",
   "verify.sent": "Wir haben einen Bestätigungslink an {email} gesendet. Prüf dein Postfach, um dein Konto zu bestätigen.",
+  "verify.gate.eyebrow": "Ein letzter Schritt",
+  "verify.gate.title": "Bestätige deine E-Mail",
+  "verify.gate.sub": "Wir haben einen Bestätigungslink an {email} gesendet. Öffne ihn, um dein Konto zu aktivieren — komm dann hierher zurück, um fortzufahren.",
+  "verify.gate.continue": "Ich hab bestätigt — weiter",
+  "verify.gate.resend": "Link erneut senden",
+  "verify.gate.resent": "Link erneut gesendet — prüf dein Postfach.",
+  "verify.gate.resendFail": "Erneutes Senden gerade nicht möglich. Versuch es gleich noch mal.",
+  "verify.gate.notyet": "Noch nicht bestätigt. Öffne den Link in deiner E-Mail und fahr dann fort.",
+  "verify.gate.hint": "Nicht zu finden? Schau in deinem Spam-Ordner nach.",
 
   "chip.Signature dishes": "Signature-Gerichte",
   "chip.Interior & atmosphere": "Interieur & Atmosphäre",
@@ -1159,6 +1181,7 @@ const ERROR_CODES = new Set(["password_too_short", "password_too_long", "passwor
 /** Localize a backend error detail if it's a known code; otherwise return it
  * unchanged (it's already a human sentence). */
 export function localizeError(detail: string): string {
+  if (detail === "Please verify your email first.") return t("verify.gate.notyet");
   return ERROR_CODES.has(detail) ? t(`pw.${detail}`) : detail;
 }
 

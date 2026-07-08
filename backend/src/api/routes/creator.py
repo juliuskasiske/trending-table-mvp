@@ -95,7 +95,7 @@ def _parse_post_url(url: str) -> tuple[str, str]:
 
 
 @router.put("/profile")
-def put_profile(body: ProfileIn, principal: dict = Depends(deps.require_creator)) -> dict:
+def put_profile(body: ProfileIn, principal: dict = Depends(deps.require_verified_creator)) -> dict:
     with get_control_connection() as conn, conn.cursor() as cur:
         if body.name is not None:
             cur.execute("UPDATE creators SET display_name = %s WHERE id = %s",
@@ -177,7 +177,7 @@ _PLATFORMS = ("instagram", "tiktok", "youtube")
 
 
 @router.post("/handles")
-def set_handles(body: HandlesIn, principal: dict = Depends(deps.require_creator)) -> dict:
+def set_handles(body: HandlesIn, principal: dict = Depends(deps.require_verified_creator)) -> dict:
     """Capture the creator's social handles + self-reported reach stats during
     onboarding (follower count, average monthly views, average views per post).
     At least one platform with a handle is required. Handles start 'pending'

@@ -79,6 +79,24 @@ def require_creator(request: Request) -> dict:
     return principal
 
 
+def require_verified_account(request: Request) -> dict:
+    """Restaurant account whose email is verified — the hard barrier for
+    finishing account setup (e.g. creating a locale)."""
+    principal = require_account(request)
+    if not principal["email_verified"]:
+        raise HTTPException(status_code=403, detail="Please verify your email first.")
+    return principal
+
+
+def require_verified_creator(request: Request) -> dict:
+    """Creator whose email is verified — the hard barrier for saving a profile
+    or channels."""
+    principal = require_creator(request)
+    if not principal["email_verified"]:
+        raise HTTPException(status_code=403, detail="Please verify your email first.")
+    return principal
+
+
 def assert_membership(account_id: int, restaurant_id: int) -> str:
     """Return the account's role on the restaurant, or 404 if not a member
     (or the restaurant has been soft-deleted)."""
