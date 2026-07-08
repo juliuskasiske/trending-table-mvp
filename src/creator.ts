@@ -272,11 +272,12 @@ function renderProfile(card: HTMLElement): void {
         // Only touch the avatar if the user changed it this session.
         ...(avatarDirty ? { avatar_url: avatarData || null } : {}),
       });
-      go("handles");
     } catch (e) {
       if (errEl) { errEl.hidden = false; errEl.textContent = localizeError((e as Error).message) || t("creator.error"); }
       if (btn) { btn.disabled = false; btn.textContent = t("creator.profile.cta"); }
+      return;
     }
+    go("handles"); // outside the try so a downstream render error surfaces, not swallowed
   });
 }
 
