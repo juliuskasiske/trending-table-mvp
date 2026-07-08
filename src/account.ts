@@ -546,6 +546,8 @@ async function renderCampaignDetail(m: HTMLElement, rid: number, cid: number): P
     </span></div>`;
 
   const totalViews = data.posts.reduce((s, p) => s + (p.latest_views || 0), 0);
+  const contacted = data.assignments.length;
+  const posted = data.assignments.filter((a) => ["posted", "approved", "paid"].includes(a.status)).length;
   const launchBtn = c.status === "draft"
     ? `<button type="button" class="btn-review" id="camp-launch">${esc(t("campaigns.launch", { fee: "€9,99" }))}</button>`
     : "";
@@ -563,6 +565,7 @@ async function renderCampaignDetail(m: HTMLElement, rid: number, cid: number): P
         ${stat(ic.wallet, fmtEur(c.budget_eur), t("campaigns.budget"))}
         ${stat(ic.target, metricNum(c.estimated_views), t("campaigns.estViews"))}
         ${stat(ic.eye, metricNum(totalViews), t("campaigns.views"))}
+        ${stat(ic.people, `${posted}/${contacted}`, t("campaigns.creators"))}
         ${stat(ic.calendar, c.content_deadline ? fmtISODate(c.content_deadline) : "—", t("campaigns.deadline"))}
       </div>
       ${(glHtml || g.notes) ? `<div class="camp-gl-view"><h3 class="camp-gl-title">${esc(t("campaigns.guidelines"))}</h3>${glHtml}${g.notes ? `<p class="camp-gl-notes">${esc(g.notes)}</p>` : ""}</div>` : ""}

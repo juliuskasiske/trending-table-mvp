@@ -13,16 +13,20 @@ import {
   getCreatorThread,
   getMe,
   instagramConnectUrl,
+  listCreatorCampaigns,
   listCreatorThreads,
   logout,
   sendCreatorMessage,
   setCreatorHandles,
   signup,
+  submitCreatorPost,
+  type CreatorAssignment,
   type Message,
   type Principal,
   type SocialAccount,
 } from "./api.ts";
-import { getLang, initI18n, onLangChange, setLang, t } from "./i18n.ts";
+import { getLang, initI18n, onLangChange, setLang, t, tChip } from "./i18n.ts";
+import { fmtEur } from "./format.ts";
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string) =>
   document.getElementById(id) as T | null;
@@ -46,15 +50,26 @@ const sendIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" str
 const backIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>';
 
 type Step = "signup" | "handles" | "connect" | "done" | "home";
+type HomeTab = "campaigns" | "messages";
 
 let me: Principal | null = null;
 let step: Step = "signup";
+let homeTab: HomeTab = "campaigns";
 let accounts: SocialAccount[] = [];
 let igEnabled = false;
 let igBanner: "connected" | "error" | null = null;
 let ciActive: number | null = null; // restaurant_id of open conversation
 let ciPollTimer: number | undefined;
 let ciLastId = 0;
+
+/** ISO "YYYY-MM-DD" → localized long date. */
+const fmtISODate = (iso: string | null | undefined): string => {
+  if (!iso) return "—";
+  const [y, m, d] = iso.split("-").map(Number);
+  if (!y || !m || !d) return "—";
+  return new Intl.DateTimeFormat(locale(), { day: "numeric", month: "long", year: "numeric" })
+    .format(new Date(y, m - 1, d));
+};
 
 const PLATFORMS: Array<{ key: "instagram" | "tiktok" | "youtube"; label: string }> = [
   { key: "instagram", label: "Instagram" },
@@ -232,31 +247,122 @@ function renderHome(): void {
   const stage = document.querySelector<HTMLElement>(".creator-stage");
   if (!stage) return;
   stage.classList.add("creator-stage-wide");
+  const tab = (id: HomeTab, label: string) =>
+    `<button type="button" class="cc-tab ${homeTab === id ? "on" : ""}" data-tab="${id}">${esc(label)}</button>`;
   stage.innerHTML = `
     <div class="creator-inbox">
       <div class="ci-head">
-        <h1 class="ci-title">${esc(t("messages.title"))}</h1>
+        <h1 class="ci-title">${esc(t("creator.home.title"))}</h1>
         <div class="ci-actions">
           <button type="button" class="ci-link" id="ci-accounts">${esc(t("creator.home.accounts"))}</button>
           <button type="button" class="ci-link" id="ci-logout">${esc(t("account.signout"))}</button>
         </div>
       </div>
-      <div class="msg-app${ciActive != null ? " thread-open" : ""}" id="cmsg-app">
-        <div class="msg-list" id="cmsg-list"><p class="ci-loading">…</p></div>
-        <div class="msg-convo" id="cmsg-convo"></div>
-      </div>
+      <div class="cc-tabs">${tab("campaigns", t("creator.tab.campaigns"))}${tab("messages", t("creator.tab.messages"))}</div>
+      <div id="ci-body"></div>
     </div>`;
   byId("ci-accounts")?.addEventListener("click", () => go("connect"));
   byId("ci-logout")?.addEventListener("click", async () => {
     await logout();
     window.location.assign("/login");
   });
+  stage.querySelectorAll<HTMLElement>(".cc-tab").forEach((b) =>
+    b.addEventListener("click", () => { homeTab = b.dataset.tab as HomeTab; renderHome(); }));
+  if (homeTab === "campaigns") void renderCampaignsTab();
+  else renderMessagesTab();
+}
+
+/* ---- home › campaigns (assignments) -------------------------------------- */
+
+const assignmentPill = (s: string): string => `cc-status cc-status--${s}`;
+
+function assignmentCard(a: CreatorAssignment): string {
+  const g = (a.guidelines || {}) as { show?: string[]; must_include?: string[]; avoid?: string[]; notes?: string };
+  const chips = (vals?: string[]) => (vals || []).map((v) => `<span class="cc-chip">${esc(tChip(v))}</span>`).join("");
+  const glRow = (label: string, vals?: string[]) =>
+    vals && vals.length
+      ? `<div class="cc-gl"><span class="cc-gl-k">${esc(label)}</span><span class="cc-gl-v">${chips(vals)}</span></div>`
+      : "";
+  const canSubmit = a.status === "contacted" || a.status === "posted";
+  const submit = canSubmit
+    ? `<div class="cc-submit">
+        <input class="input cc-url" type="url" placeholder="${esc(t("creator.campaigns.linkPh"))}" />
+        <button type="button" class="btn btn-primary cc-submit-btn">${esc(t(a.post_count > 0 ? "creator.campaigns.update" : "creator.campaigns.submit"))}</button>
+      </div>
+      <p class="cc-err field-error" hidden></p>`
+    : "";
+  return `<div class="cc-card" data-cid="${a.campaign_id}">
+    <div class="cc-head">
+      <div class="cc-headinfo">
+        <div class="cc-rest">${esc(a.restaurant_name)}</div>
+        <div class="cc-title">${esc(a.title || t("creator.campaigns.untitled"))}</div>
+      </div>
+      <span class="${assignmentPill(a.status)}">${esc(t(`assignment.status.${a.status}`))}</span>
+    </div>
+    <div class="cc-meta">
+      <span><b>${esc(fmtEur(a.creator_payout_eur))}</b> ${esc(t("creator.campaigns.payout"))}</span>
+      ${a.content_deadline ? `<span><b>${esc(fmtISODate(a.content_deadline))}</b> ${esc(t("creator.campaigns.by"))}</span>` : ""}
+    </div>
+    ${glRow(t("account.g.show"), g.show)}${glRow(t("account.g.must"), g.must_include)}${glRow(t("account.g.avoid"), g.avoid)}
+    ${g.notes ? `<p class="cc-notes">${esc(g.notes)}</p>` : ""}
+    ${submit}
+  </div>`;
+}
+
+async function renderCampaignsTab(): Promise<void> {
+  const body = byId("ci-body");
+  if (!body) return;
+  body.innerHTML = `<p class="ci-loading" style="padding:20px">…</p>`;
+  let assignments: CreatorAssignment[];
+  try {
+    assignments = (await listCreatorCampaigns()).assignments;
+  } catch {
+    body.innerHTML = `<div class="msg-list-empty">${esc(t("creator.error"))}</div>`;
+    return;
+  }
+  if (step !== "home" || homeTab !== "campaigns") return;
+  if (!assignments.length) {
+    body.innerHTML = `<div class="cc-empty">${esc(t("creator.campaigns.empty"))}</div>`;
+    return;
+  }
+  body.innerHTML = `<div class="cc-grid">${assignments.map(assignmentCard).join("")}</div>`;
+  body.querySelectorAll<HTMLElement>(".cc-card").forEach((card) => {
+    const cid = Number(card.dataset.cid);
+    const btn = card.querySelector<HTMLButtonElement>(".cc-submit-btn");
+    const url = card.querySelector<HTMLInputElement>(".cc-url");
+    const err = card.querySelector<HTMLElement>(".cc-err");
+    btn?.addEventListener("click", async () => {
+      const v = url?.value.trim() || "";
+      if (err) err.hidden = true;
+      if (!v) return;
+      btn.disabled = true;
+      try {
+        await submitCreatorPost(cid, v);
+        await renderCampaignsTab();
+      } catch (e) {
+        btn.disabled = false;
+        if (err) { err.hidden = false; err.textContent = (e as Error).message || t("creator.error"); }
+      }
+    });
+  });
+}
+
+/* ---- home › messages ----------------------------------------------------- */
+
+function renderMessagesTab(): void {
+  const body = byId("ci-body");
+  if (!body) return;
+  body.innerHTML = `
+    <div class="msg-app${ciActive != null ? " thread-open" : ""}" id="cmsg-app">
+      <div class="msg-list" id="cmsg-list"><p class="ci-loading">…</p></div>
+      <div class="msg-convo" id="cmsg-convo"></div>
+    </div>`;
   void loadCiThreads().then(() => {
     if (ciActive != null) void openCiConversation(ciActive);
     else renderCiEmpty();
   });
   ciPollTimer = window.setInterval(() => {
-    if (step !== "home") return;
+    if (step !== "home" || homeTab !== "messages") return;
     void loadCiThreads();
     if (ciActive != null) void paintCiBubbles(ciActive, true);
   }, 5000);

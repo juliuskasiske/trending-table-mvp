@@ -512,6 +512,31 @@ export function instagramConnectUrl(): Promise<{ url: string }> {
   return api("/api/creator/instagram/connect");
 }
 
+/* ---- creator campaigns (assignments) ------------------------------------- */
+
+export interface CreatorAssignment {
+  assignment_id: number;
+  status: string; // contacted | posted | approved | paid | declined
+  creator_payout_eur: string | null;
+  contacted_at: string;
+  posted_at: string | null;
+  approved_at: string | null;
+  campaign_id: number;
+  title: string | null;
+  guidelines: Record<string, unknown>;
+  content_deadline: string | null;
+  restaurant_name: string;
+  post_count: number;
+}
+
+export const listCreatorCampaigns = () =>
+  api<{ assignments: CreatorAssignment[] }>("/api/creator/campaigns");
+
+export const submitCreatorPost = (campaign_id: number, url: string) =>
+  api<{ id: number; permalink: string | null; status: string }>("/api/creator/posts", {
+    method: "POST", json: { campaign_id, url },
+  });
+
 /* ---- admin (control tower) ----------------------------------------------- */
 
 export interface FunnelStage {
@@ -607,6 +632,80 @@ export const getAdminAccounts = () =>
   api<{ accounts: AdminAccount[] }>("/api/admin/accounts", { headers: adminHeaders() });
 export const getAdminCreators = () =>
   api<{ creators: AdminCreator[] }>("/api/admin/creators", { headers: adminHeaders() });
+
+/* ---- admin: campaign creator assignment ---------------------------------- */
+
+export interface AdminCampaign {
+  id: number;
+  title: string | null;
+  status: string;
+  budget_eur: string;
+  estimated_views: number;
+  content_deadline: string | null;
+  created_at: string;
+  restaurant_id: number;
+  restaurant_name: string;
+  creators_count: number;
+  posted_count: number;
+  committed_payout: string;
+  committed_charge: string;
+}
+
+export interface AdminAssignment {
+  id: number;
+  creator_id: number;
+  status: string;
+  restaurant_charge_eur: string | null;
+  creator_payout_eur: string | null;
+  contacted_at: string;
+  posted_at: string | null;
+  approved_at: string | null;
+  creator_name: string | null;
+  creator_email: string;
+  creator_avatar: string | null;
+  post_count: number;
+}
+
+export interface AdminAvailableCreator {
+  id: number;
+  display_name: string | null;
+  email: string;
+  avatar_url: string | null;
+  city: string | null;
+  base_rate_eur: string | null;
+  categories: string[];
+}
+
+export interface AdminCampaignDetail {
+  campaign: AdminCampaign & { guidelines: Record<string, unknown> };
+  assignments: AdminAssignment[];
+  available_creators: AdminAvailableCreator[];
+}
+
+export const getAdminCampaigns = () =>
+  api<{ campaigns: AdminCampaign[] }>("/api/admin/campaigns", { headers: adminHeaders() });
+export const getAdminCampaign = (id: number) =>
+  api<AdminCampaignDetail>(`/api/admin/campaigns/${id}`, { headers: adminHeaders() });
+export const assignCreator = (
+  campaignId: number,
+  body: { creator_id: number; restaurant_charge_eur?: number | null; creator_payout_eur?: number | null },
+) =>
+  api<{ id: number; status: string }>(`/api/admin/campaigns/${campaignId}/creators`, {
+    method: "POST", json: body, headers: adminHeaders(),
+  });
+export const updateAssignment = (
+  campaignId: number,
+  ccId: number,
+  body: { restaurant_charge_eur?: number; creator_payout_eur?: number; status?: string },
+) =>
+  api<{ id: number; status: string; restaurant_charge_eur: string | null; creator_payout_eur: string | null }>(
+    `/api/admin/campaigns/${campaignId}/creators/${ccId}`, {
+      method: "PATCH", json: body, headers: adminHeaders(),
+    });
+export const removeAssignment = (campaignId: number, ccId: number) =>
+  api<{ ok: boolean }>(`/api/admin/campaigns/${campaignId}/creators/${ccId}`, {
+    method: "DELETE", headers: adminHeaders(),
+  });
 
 /* ---- pipeline chart ------------------------------------------------------ */
 

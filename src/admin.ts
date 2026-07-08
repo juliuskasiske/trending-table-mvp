@@ -9,10 +9,13 @@ import "./styles/onboarding.css"; // shared shell/topbar/card/input/button style
 import "./styles/admin.css";
 import { INTRO, SCHEMA_DOC, type Col, type Group, type Table } from "./schema-doc.ts";
 import {
+  assignCreator,
   createLead,
   crmSearchPlaces,
   deleteLead,
   getAdminAccounts,
+  getAdminCampaign,
+  getAdminCampaigns,
   getAdminCreators,
   getAdminKey,
   getAdminOverview,
@@ -20,10 +23,14 @@ import {
   getPipeline,
   listLeads,
   putPipelineSettings,
+  removeAssignment,
   setAdminKey,
   setLeadStage,
+  updateAssignment,
   updateLead,
   type AdminAccount,
+  type AdminCampaign,
+  type AdminCampaignDetail,
   type AdminCreator,
   type AdminOverview,
   type AdminRestaurant,
@@ -35,7 +42,8 @@ import {
 import type { PlaceSuggestion } from "./types.ts";
 import { fmtEur as fmtEurShared } from "./format.ts";
 
-type View = "overview" | "pipeline" | "restaurants" | "creators" | "outreach" | "schema";
+type View = "overview" | "pipeline" | "restaurants" | "creators" | "campaigns" | "outreach" | "schema";
+const VIEWS: View[] = ["overview", "pipeline", "restaurants", "creators", "campaigns", "outreach", "schema"];
 
 // Stage gates — the single place to rename them.
 const STAGES: Array<{ code: string; short: string; full: string }> = [
@@ -84,6 +92,7 @@ const MARKUP = `
       <button type="button" class="nav-item" data-view="pipeline">Pipeline</button>
       <button type="button" class="nav-item" data-view="restaurants">Restaurants</button>
       <button type="button" class="nav-item" data-view="creators">Creators</button>
+      <button type="button" class="nav-item" data-view="campaigns">Campaigns</button>
       <button type="button" class="nav-item" data-view="outreach">Outreach</button>
       <button type="button" class="nav-item" data-view="schema">Data model</button>
     </nav>
@@ -132,6 +141,10 @@ const MARKUP = `
     <section class="admin-view" id="view-creators" hidden>
       <h1 class="admin-title">Creators <span class="count" id="crea-count"></span></h1>
       <div class="table-wrap" id="crea-table"></div>
+    </section>
+
+    <section class="admin-view" id="view-campaigns" hidden>
+      <div id="camp-body"></div>
     </section>
 
     <section class="admin-view" id="view-outreach" hidden>
@@ -315,6 +328,145 @@ function renderCreators(cs: AdminCreator[]): void {
       boolPill(x.email_verified), esc(fmtDate(x.created_at)),
     ]),
   );
+}
+
+/* ---- campaigns: internal creator assignment ------------------------------ */
+
+let campaignView: number | null = null;
+const num = (n: number) => n.toLocaleString("en-US");
+
+async function loadCampaigns(): Promise<void> {
+  const body = byId("camp-body");
+  if (!body) return;
+  if (campaignView != null) { await renderAdminCampaignDetail(campaignView); return; }
+  body.innerHTML = `<h1 class="admin-title">Campaigns <span class="count" id="camp-count"></span></h1>
+    <div class="table-wrap" id="camp-table"></div>`;
+  let campaigns: AdminCampaign[];
+  try {
+    campaigns = (await getAdminCampaigns()).campaigns;
+  } catch {
+    body.innerHTML = `<p class="muted" style="padding:14px">Couldn't load campaigns.</p>`;
+    return;
+  }
+  const cnt = byId("camp-count");
+  if (cnt) cnt.textContent = `· ${campaigns.length}`;
+  renderTable(
+    byId("camp-table"),
+    ["Campaign", "Restaurant", "Status", "Budget", "Est. views", "Posted / Creators", "Charge", "Payout", "Deadline"],
+    campaigns.map((c) => [
+      `<button type="button" class="linklike" data-open="${c.id}">${esc(c.title || "Untitled")}</button>`,
+      esc(c.restaurant_name),
+      statusPill(c.status),
+      fmtEur(c.budget_eur),
+      esc(num(c.estimated_views)),
+      `${c.posted_count} / ${c.creators_count}`,
+      fmtEur(c.committed_charge),
+      fmtEur(c.committed_payout),
+      c.content_deadline ? esc(c.content_deadline) : "—",
+    ]),
+  );
+  byId("camp-table")?.querySelectorAll<HTMLElement>("[data-open]").forEach((b) =>
+    b.addEventListener("click", () => { campaignView = Number(b.dataset.open); void loadCampaigns(); }));
+}
+
+async function renderAdminCampaignDetail(cid: number): Promise<void> {
+  const body = byId("camp-body");
+  if (!body) return;
+  body.innerHTML = `<p class="muted" style="padding:14px">Loading…</p>`;
+  let data: AdminCampaignDetail;
+  try {
+    data = await getAdminCampaign(cid);
+  } catch {
+    body.innerHTML = `<p class="muted" style="padding:14px">Couldn't load campaign.</p>`;
+    return;
+  }
+  if (campaignView !== cid) return;
+  const c = data.campaign;
+  const g = (c.guidelines || {}) as { show?: string[]; must_include?: string[]; avoid?: string[]; notes?: string };
+  const glLine = (label: string, vals?: string[]) =>
+    vals && vals.length ? `<div class="camp-gl-line"><b>${esc(label)}:</b> ${esc(vals.join(", "))}</div>` : "";
+
+  const assignRows = data.assignments.map((a) => `
+    <tr data-cc="${a.id}">
+      <td>${esc(a.creator_name || a.creator_email)}</td>
+      <td>${statusPill(a.status)}</td>
+      <td><input class="input camp-in" type="number" min="0" step="0.01" data-f="charge" value="${a.restaurant_charge_eur ?? ""}" /></td>
+      <td><input class="input camp-in" type="number" min="0" step="0.01" data-f="payout" value="${a.creator_payout_eur ?? ""}" /></td>
+      <td>${a.post_count}</td>
+      <td class="camp-rowact">
+        <button type="button" class="btn btn-ghost camp-save">Save</button>
+        <button type="button" class="linklike danger camp-remove">Remove</button>
+      </td>
+    </tr>`).join("");
+  const assignTable = data.assignments.length
+    ? `<div class="table-wrap"><table class="admin"><thead><tr>
+        <th>Creator</th><th>Status</th><th>Charge €</th><th>Payout €</th><th>Posts</th><th></th>
+      </tr></thead><tbody>${assignRows}</tbody></table></div>`
+    : `<p class="muted" style="padding:8px 0">No creators assigned yet.</p>`;
+
+  const options = data.available_creators.map((cr) =>
+    `<option value="${cr.id}">${esc(cr.display_name || cr.email)}${cr.city ? " · " + esc(cr.city) : ""}${cr.base_rate_eur ? " · base " + fmtEur(cr.base_rate_eur) : ""}</option>`).join("");
+  const assignForm = data.available_creators.length
+    ? `<div class="camp-assign">
+        <select class="input" id="camp-creator">${options}</select>
+        <input class="input" id="camp-charge" type="number" min="0" step="0.01" placeholder="Charge €" />
+        <input class="input" id="camp-payout" type="number" min="0" step="0.01" placeholder="Payout €" />
+        <button type="button" class="btn btn-primary" id="camp-assign">Assign creator</button>
+      </div>
+      <p class="admin-error" id="camp-assign-err" hidden></p>`
+    : `<p class="muted">Every active creator is already assigned.</p>`;
+
+  body.innerHTML = `
+    <button type="button" class="linklike" id="camp-back">← Campaigns</button>
+    <h1 class="admin-title" style="margin-top:8px">${esc(c.title || "Untitled")}</h1>
+    <p class="step-sub">${esc(c.restaurant_name)} · ${statusPill(c.status)} · budget ${fmtEur(c.budget_eur)} · est. ${num(c.estimated_views)} views${c.content_deadline ? " · post by " + esc(c.content_deadline) : ""}</p>
+    ${(g.show?.length || g.must_include?.length || g.avoid?.length || g.notes)
+      ? `<div class="panel camp-guidelines-box"><h2>Guidelines</h2>
+          ${glLine("Show", g.show)}${glLine("Must include", g.must_include)}${glLine("Avoid", g.avoid)}
+          ${g.notes ? `<div class="camp-gl-line"><b>Notes:</b> ${esc(g.notes)}</div>` : ""}</div>`
+      : ""}
+    <h2 class="section-head">Assigned creators</h2>
+    ${assignTable}
+    <h2 class="section-head">Assign a creator</h2>
+    ${assignForm}`;
+
+  byId("camp-back")?.addEventListener("click", () => { campaignView = null; void loadCampaigns(); });
+
+  body.querySelectorAll<HTMLTableRowElement>("tr[data-cc]").forEach((tr) => {
+    const ccId = Number(tr.dataset.cc);
+    tr.querySelector(".camp-save")?.addEventListener("click", async () => {
+      const val = (f: string) => (tr.querySelector<HTMLInputElement>(`[data-f="${f}"]`)?.value || "").trim();
+      const patch: { restaurant_charge_eur?: number; creator_payout_eur?: number } = {};
+      if (val("charge") !== "") patch.restaurant_charge_eur = Number(val("charge"));
+      if (val("payout") !== "") patch.creator_payout_eur = Number(val("payout"));
+      try { await updateAssignment(cid, ccId, patch); await renderAdminCampaignDetail(cid); }
+      catch (e) { alert((e as Error).message); }
+    });
+    tr.querySelector(".camp-remove")?.addEventListener("click", async () => {
+      if (!confirm("Remove this assignment?")) return;
+      try { await removeAssignment(cid, ccId); await renderAdminCampaignDetail(cid); }
+      catch (e) { alert((e as Error).message); }
+    });
+  });
+
+  byId("camp-assign")?.addEventListener("click", async () => {
+    const creatorId = Number(byId<HTMLSelectElement>("camp-creator")?.value);
+    const charge = byId<HTMLInputElement>("camp-charge")?.value.trim() || "";
+    const payout = byId<HTMLInputElement>("camp-payout")?.value.trim() || "";
+    const err = byId("camp-assign-err");
+    if (err) err.hidden = true;
+    if (!creatorId) return;
+    try {
+      await assignCreator(cid, {
+        creator_id: creatorId,
+        restaurant_charge_eur: charge === "" ? null : Number(charge),
+        creator_payout_eur: payout === "" ? null : Number(payout),
+      });
+      await renderAdminCampaignDetail(cid);
+    } catch (e) {
+      if (err) { err.hidden = false; err.textContent = (e as Error).message; }
+    }
+  });
 }
 
 const KEY_LABEL: Record<string, string> = { pk: "primary key", fk: "link", uk: "unique" };
@@ -735,13 +887,14 @@ function buildPipelineSVG(days: PipelineDay[], s: PipelineSettings, firstDay: st
 }
 
 function setView(view: View): void {
-  (["overview", "pipeline", "restaurants", "creators", "outreach", "schema"] as View[]).forEach((v) => {
+  VIEWS.forEach((v) => {
     const sec = byId(`view-${v}`);
     if (sec) sec.hidden = v !== view;
   });
   document.querySelectorAll<HTMLElement>(".nav-item").forEach((b) => {
     b.classList.toggle("on", b.dataset.view === view);
   });
+  if (view === "campaigns") void loadCampaigns();
   if (window.location.hash !== `#${view}`) {
     window.history.replaceState(null, "", `#${view}`);
   }
@@ -761,7 +914,7 @@ async function loadDashboard(): Promise<void> {
   byId("admin-login")!.hidden = true;
   byId("admin-app")!.hidden = false;
   const hash = window.location.hash.replace("#", "") as View;
-  setView(["overview", "pipeline", "restaurants", "creators", "outreach", "schema"].includes(hash) ? hash : "overview");
+  setView(VIEWS.includes(hash) ? hash : "overview");
 }
 
 function showLogin(message?: string): void {

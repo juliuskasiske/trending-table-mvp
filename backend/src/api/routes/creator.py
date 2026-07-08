@@ -232,15 +232,22 @@ def instagram_callback(code: str | None = None, state: str | None = None,
 
 @router.get("/campaigns")
 def my_campaigns(principal: dict = Depends(deps.require_creator)) -> dict:
+    """Campaign assignments for this creator: brief, deadline, payout, status."""
     with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
-            "SELECT c.id, c.restaurant_id, r.name AS restaurant_name, c.status,"
-            "   c.agreed_rate_eur, c.created_at"
-            " FROM campaigns c JOIN restaurants r ON r.id = c.restaurant_id"
-            " WHERE c.creator_id = %s ORDER BY c.created_at DESC",
+            "SELECT cc.id AS assignment_id, cc.status, cc.creator_payout_eur,"
+            "   cc.contacted_at, cc.posted_at, cc.approved_at,"
+            "   c.id AS campaign_id, c.title, c.guidelines, c.content_deadline,"
+            "   r.name AS restaurant_name,"
+            "   (SELECT count(*) FROM posts p WHERE p.campaign_creator_id = cc.id) AS post_count"
+            " FROM campaign_creators cc"
+            "   JOIN campaigns c ON c.id = cc.campaign_id"
+            "   JOIN restaurants r ON r.id = c.restaurant_id"
+            " WHERE cc.creator_id = %s AND cc.status <> 'cancelled'"
+            " ORDER BY cc.contacted_at DESC",
             (principal["id"],),
         )
-        return {"campaigns": cur.fetchall()}
+        return {"assignments": cur.fetchall()}
 
 
 def _parse_ig_ts(s: str | None) -> datetime | None:
@@ -289,12 +296,15 @@ def submit_post(body: PostIn, principal: dict = Depends(deps.require_creator)) -
     with get_control_connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
-                "SELECT id, restaurant_id FROM campaigns WHERE id = %s AND creator_id = %s",
+                "SELECT cc.id AS cc_id, c.restaurant_id"
+                " FROM campaign_creators cc JOIN campaigns c ON c.id = cc.campaign_id"
+                " WHERE cc.campaign_id = %s AND cc.creator_id = %s"
+                "   AND cc.status NOT IN ('declined', 'cancelled')",
                 (body.campaign_id, principal["id"]),
             )
-            campaign = cur.fetchone()
-            if not campaign:
-                raise HTTPException(status_code=404, detail="Campaign not found.")
+            assignment = cur.fetchone()
+            if not assignment:
+                raise HTTPException(status_code=404, detail="You are not assigned to this campaign.")
 
             media = _resolve_ig_media(conn, principal["id"], body.url) if platform == "instagram" else None
             # Prefer the real API media id + fetched fields when we have them.
@@ -303,16 +313,18 @@ def submit_post(body: PostIn, principal: dict = Depends(deps.require_creator)) -
             posted_at = _parse_ig_ts((media or {}).get("timestamp"))
 
             cur.execute(
-                "INSERT INTO posts (campaign_id, restaurant_id, creator_id, platform,"
+                "INSERT INTO posts (campaign_id, campaign_creator_id, restaurant_id, creator_id, platform,"
                 "   platform_post_id, permalink, caption, thumbnail_url, media_type,"
                 "   media_product_type, status, posted_at)"
-                " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'live', COALESCE(%s, NOW()))"
+                " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'live', COALESCE(%s, NOW()))"
                 " ON CONFLICT (platform, platform_post_id) DO UPDATE SET permalink = EXCLUDED.permalink,"
                 "   caption = EXCLUDED.caption, thumbnail_url = EXCLUDED.thumbnail_url,"
-                "   media_type = EXCLUDED.media_type, media_product_type = EXCLUDED.media_product_type"
-                " RETURNING id, platform, platform_post_id, permalink, thumbnail_url, media_type, status, billed_views",
-                (body.campaign_id, campaign["restaurant_id"], principal["id"], platform, pid, body.url,
-                 caption, (media or {}).get("thumbnail_url") or (media or {}).get("media_url"),
+                "   media_type = EXCLUDED.media_type, media_product_type = EXCLUDED.media_product_type,"
+                "   campaign_creator_id = EXCLUDED.campaign_creator_id"
+                " RETURNING id, platform, platform_post_id, permalink, thumbnail_url, media_type, status",
+                (body.campaign_id, assignment["cc_id"], assignment["restaurant_id"], principal["id"],
+                 platform, pid, body.url, caption,
+                 (media or {}).get("thumbnail_url") or (media or {}).get("media_url"),
                  (media or {}).get("media_type"), (media or {}).get("media_product_type"), posted_at),
             )
             post = cur.fetchone()
@@ -322,8 +334,12 @@ def submit_post(body: PostIn, principal: dict = Depends(deps.require_creator)) -
                     " VALUES (%s, %s, %s, %s)",
                     (post["id"], media.get("_views"), media.get("like_count"), media.get("comments_count")),
                 )
-            cur.execute("UPDATE campaigns SET status = 'live' WHERE id = %s AND status IN ('proposed','accepted')",
-                        (body.campaign_id,))
+            # First submission moves the assignment from contacted -> posted.
+            cur.execute(
+                "UPDATE campaign_creators SET status = 'posted', posted_at = COALESCE(posted_at, NOW())"
+                " WHERE id = %s AND status = 'contacted'",
+                (assignment["cc_id"],),
+            )
         conn.commit()
     return post
 

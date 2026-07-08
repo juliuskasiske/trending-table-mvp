@@ -390,3 +390,18 @@ select.crm-stage { min-width: 92px; cursor: pointer; }
 .pl-total { fill: var(--ink); font: 700 11px var(--font); }
 .pl-legend { fill: var(--ink); font: 600 12px var(--font); }
 .pl-target-lbl { fill: #d81b60; font: 700 11px var(--font); }
+
+/* ---- campaigns (internal assignment) ------------------------------------- */
+.camp-guidelines-box { margin: 8px 0 4px; }
+.camp-gl-line { font-size: 13.5px; line-height: 1.6; }
+.camp-gl-line b { font-weight: 800; }
+.camp-in { width: 92px; padding: 6px 8px; }
+.camp-rowact { display: flex; gap: 10px; align-items: center; white-space: nowrap; }
+.camp-assign {
+  display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+  border: 2px solid var(--line); background: var(--panel); padding: 14px; box-shadow: 4px 4px 0 var(--line);
+}
+.camp-assign .input { flex: 0 1 auto; }
+.camp-assign #camp-creator { flex: 1 1 240px; min-width: 200px; }
+.camp-assign #camp-charge, .camp-assign #camp-payout { width: 120px; }
+.linklike.danger { color: var(--accent); }

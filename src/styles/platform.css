@@ -314,7 +314,7 @@ body.no-scroll { overflow: hidden; }
 
 .camp-detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
 .camp-detail-head .ct-name { margin-bottom: 8px; }
-.camp-detail-stats { grid-template-columns: repeat(4, 1fr); }
+.camp-detail-stats { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
 .camp-guidelines { margin: 16px 0 0; font-size: 14px; line-height: 1.5; color: var(--ink); }
 .ct-post-creator { padding: 10px 16px 0; font-weight: 800; font-size: 13px; }
 @media (max-width: 720px) { .camp-detail-stats { grid-template-columns: repeat(2, 1fr); } }

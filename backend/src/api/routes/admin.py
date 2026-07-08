@@ -8,14 +8,22 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from psycopg import errors as pg_errors
 from psycopg.rows import dict_row
+from pydantic import BaseModel
 
 from .. import deps
+from ... import audit
 from ...billing import stripe_client
 from ...db.connection import get_control_connection
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+# Assignment statuses the control tower may set by hand. Approval/payment
+# (approved, paid, payment_action) are driven by the restaurant + Stripe, not
+# set manually here.
+_ADMIN_ASSIGN_STATUSES = {"contacted", "posted", "declined", "cancelled"}
 
 # €/month platform fee, baked into each restaurant's monthly spending limit.
 # Sourced from the real Stripe monthly price; €50 fallback if Stripe is off.
@@ -196,3 +204,171 @@ def creators(_: None = Depends(deps.require_admin)) -> dict:
             """
         )
         return {"creators": cur.fetchall()}
+
+
+# --- campaigns: internal creator assignment (control tower) ----------------
+# Matching is internal for now: the control tower assigns creators to a
+# restaurant's campaign and sets what the restaurant is charged + what the
+# creator is paid per approved post. No money moves here (that is the Stripe
+# phase) — this just records the assignment so the creator sees the brief.
+
+
+class AssignIn(BaseModel):
+    creator_id: int
+    restaurant_charge_eur: float | None = None
+    creator_payout_eur: float | None = None
+
+
+class AssignPatch(BaseModel):
+    restaurant_charge_eur: float | None = None
+    creator_payout_eur: float | None = None
+    status: str | None = None
+
+
+@router.get("/campaigns")
+def admin_campaigns(_: None = Depends(deps.require_admin)) -> dict:
+    """Every campaign across all restaurants, with assignment + payout rollups."""
+    with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT c.id, c.title, c.status, c.budget_eur, c.estimated_views,
+                   c.content_deadline, c.created_at,
+                   r.id AS restaurant_id, r.name AS restaurant_name,
+                   (SELECT count(*) FROM campaign_creators cc
+                        WHERE cc.campaign_id = c.id)                       AS creators_count,
+                   (SELECT count(*) FROM campaign_creators cc
+                        WHERE cc.campaign_id = c.id
+                          AND cc.status IN ('posted','approved','paid'))   AS posted_count,
+                   COALESCE((SELECT sum(cc.creator_payout_eur) FROM campaign_creators cc
+                        WHERE cc.campaign_id = c.id), 0)                    AS committed_payout,
+                   COALESCE((SELECT sum(cc.restaurant_charge_eur) FROM campaign_creators cc
+                        WHERE cc.campaign_id = c.id), 0)                    AS committed_charge
+            FROM campaigns c JOIN restaurants r ON r.id = c.restaurant_id
+            ORDER BY c.created_at DESC
+            LIMIT 1000
+            """
+        )
+        return {"campaigns": cur.fetchall()}
+
+
+@router.get("/campaigns/{campaign_id}")
+def admin_campaign_detail(campaign_id: int, _: None = Depends(deps.require_admin)) -> dict:
+    """One campaign + its assignments + the creators still available to assign."""
+    with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            "SELECT c.id, c.title, c.status, c.budget_eur, c.estimated_views,"
+            "   c.content_deadline, c.guidelines, c.created_at,"
+            "   r.id AS restaurant_id, r.name AS restaurant_name"
+            " FROM campaigns c JOIN restaurants r ON r.id = c.restaurant_id"
+            " WHERE c.id = %s",
+            (campaign_id,),
+        )
+        campaign = cur.fetchone()
+        if not campaign:
+            raise HTTPException(status_code=404, detail="Campaign not found.")
+        cur.execute(
+            "SELECT cc.id, cc.creator_id, cc.status, cc.restaurant_charge_eur,"
+            "   cc.creator_payout_eur, cc.contacted_at, cc.posted_at, cc.approved_at,"
+            "   cr.display_name AS creator_name, cr.email AS creator_email,"
+            "   cp.avatar_url AS creator_avatar,"
+            "   (SELECT count(*) FROM posts p WHERE p.campaign_creator_id = cc.id) AS post_count"
+            " FROM campaign_creators cc JOIN creators cr ON cr.id = cc.creator_id"
+            "   LEFT JOIN creator_profiles cp ON cp.creator_id = cc.creator_id"
+            " WHERE cc.campaign_id = %s ORDER BY cc.contacted_at",
+            (campaign_id,),
+        )
+        assignments = cur.fetchall()
+        cur.execute(
+            "SELECT cr.id, cr.display_name, cr.email, cp.avatar_url, cp.city,"
+            "   cp.base_rate_eur, COALESCE(cp.categories, '{}') AS categories"
+            " FROM creators cr LEFT JOIN creator_profiles cp ON cp.creator_id = cr.id"
+            " WHERE cr.status = 'active'"
+            "   AND cr.id NOT IN (SELECT creator_id FROM campaign_creators WHERE campaign_id = %s)"
+            " ORDER BY cr.display_name NULLS LAST, cr.id"
+            " LIMIT 200",
+            (campaign_id,),
+        )
+        available = cur.fetchall()
+    return {"campaign": campaign, "assignments": assignments, "available_creators": available}
+
+
+@router.post("/campaigns/{campaign_id}/creators")
+def admin_assign_creator(campaign_id: int, body: AssignIn,
+                         _: None = Depends(deps.require_admin)) -> dict:
+    """Assign a creator to a campaign with a charge + payout (status 'contacted')."""
+    with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        cur.execute("SELECT id FROM campaigns WHERE id = %s", (campaign_id,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Campaign not found.")
+        cur.execute("SELECT id FROM creators WHERE id = %s AND status = 'active'", (body.creator_id,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Creator not found or inactive.")
+        try:
+            cur.execute(
+                "INSERT INTO campaign_creators (campaign_id, creator_id,"
+                "   restaurant_charge_eur, creator_payout_eur, status)"
+                " VALUES (%s, %s, %s, %s, 'contacted') RETURNING id, status",
+                (campaign_id, body.creator_id, body.restaurant_charge_eur, body.creator_payout_eur),
+            )
+        except pg_errors.UniqueViolation:
+            conn.rollback()
+            raise HTTPException(status_code=409, detail="Creator already assigned to this campaign.")
+        row = cur.fetchone()
+        audit.record(conn, "campaign_creator_assigned", restaurant_id=None,
+                     detail={"campaign_id": campaign_id, "creator_id": body.creator_id})
+        conn.commit()
+    return row
+
+
+@router.patch("/campaigns/{campaign_id}/creators/{cc_id}")
+def admin_update_assignment(campaign_id: int, cc_id: int, body: AssignPatch,
+                            _: None = Depends(deps.require_admin)) -> dict:
+    """Adjust an assignment's charge/payout, or hand-set a safe status."""
+    sets: list[str] = []
+    params: list = []
+    if body.restaurant_charge_eur is not None:
+        sets.append("restaurant_charge_eur = %s")
+        params.append(body.restaurant_charge_eur)
+    if body.creator_payout_eur is not None:
+        sets.append("creator_payout_eur = %s")
+        params.append(body.creator_payout_eur)
+    if body.status is not None:
+        if body.status not in _ADMIN_ASSIGN_STATUSES:
+            raise HTTPException(status_code=400,
+                                detail="Approval and payment statuses are set by the payment flow, not here.")
+        sets.append("status = %s")
+        params.append(body.status)
+    if not sets:
+        raise HTTPException(status_code=400, detail="Nothing to update.")
+    params.extend([cc_id, campaign_id])
+    with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            f"UPDATE campaign_creators SET {', '.join(sets)}"
+            " WHERE id = %s AND campaign_id = %s RETURNING id, status,"
+            "   restaurant_charge_eur, creator_payout_eur",
+            params,
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Assignment not found.")
+        conn.commit()
+    return row
+
+
+@router.delete("/campaigns/{campaign_id}/creators/{cc_id}")
+def admin_remove_assignment(campaign_id: int, cc_id: int,
+                            _: None = Depends(deps.require_admin)) -> dict:
+    """Remove an assignment (only before any money has moved)."""
+    with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            "DELETE FROM campaign_creators WHERE id = %s AND campaign_id = %s"
+            "   AND status IN ('contacted', 'posted', 'declined', 'cancelled')"
+            " RETURNING id",
+            (cc_id, campaign_id),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404,
+                                detail="Assignment not found, or it has already been paid.")
+        conn.commit()
+    return {"ok": True}
