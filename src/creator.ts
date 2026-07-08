@@ -6,32 +6,25 @@
  */
 import "./styles/theme.css";
 import "./styles/onboarding.css";
+import "./styles/admin.css";   // shared .admin-title
+import "./styles/account.css"; // dark platform nav + coming-soon shell
 import "./styles/creator.css";
-import "./styles/messages.css";
 import {
   getCreatorHandles,
   getCreatorProfile,
-  getCreatorThread,
   getMe,
   instagramConnectUrl,
-  listCreatorCampaigns,
-  listCreatorThreads,
   logout,
   putCreatorProfile,
-  sendCreatorMessage,
   setCreatorHandles,
   signup,
-  submitCreatorPost,
-  type CreatorAssignment,
   type CreatorProfile,
-  type Message,
   type PlatformStats,
   type Principal,
   type SocialAccount,
 } from "./api.ts";
-import { getLang, initI18n, localizeError, onLangChange, setLang, t, tChip } from "./i18n.ts";
+import { getLang, initI18n, localizeError, onLangChange, setLang, t } from "./i18n.ts";
 import { renderVerifyInto, stopVerifyPoll } from "./verify-screen.ts";
-import { fmtEur } from "./format.ts";
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string) =>
   document.getElementById(id) as T | null;
@@ -40,35 +33,35 @@ const esc = (s: unknown): string =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string,
   );
 const nf = () => new Intl.NumberFormat(getLang() === "de" ? "de-DE" : "en-US");
-const locale = () => (getLang() === "de" ? "de-DE" : "en-US");
-const initial = (s: string | null | undefined) => (s || "?").trim().charAt(0).toUpperCase();
-const msgTime = (iso: string | null | undefined): string => {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return "";
-  const sameDay = d.toDateString() === new Date().toDateString();
-  return sameDay
-    ? new Intl.DateTimeFormat(locale(), { hour: "2-digit", minute: "2-digit" }).format(d)
-    : new Intl.DateTimeFormat(locale(), { day: "numeric", month: "short" }).format(d);
+
+// Small line-icon set for the dark platform nav (mirrors the locale app).
+const svg = (p: string) =>
+  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+const dic = {
+  account: svg('<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/>'),
+  campaigns: svg('<path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>'),
+  messages: svg('<path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z"/>'),
+  logout: svg('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/>'),
+  chevron: svg('<path d="m6 9 6 6 6-6"/>'),
+  at: svg('<circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/>'),
 };
-const sendIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>';
-const backIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>';
 
 type Step = "signup" | "verify" | "profile" | "handles" | "connect" | "done" | "home";
-type HomeTab = "campaigns" | "messages";
+type DashView = "account" | "campaigns" | "messages";
+type AcctTab = "profile" | "channels";
+type EditorMode = "onboard" | "account";
 
 let me: Principal | null = null;
 let step: Step = "signup";
-let homeTab: HomeTab = "campaigns";
+let dashView: DashView = "account";
+let acctTab: AcctTab = "profile";
+let dashDocWired = false;
 let accounts: SocialAccount[] = [];
 let profile: CreatorProfile | null = null;
 let avatarData = "";      // staged profile picture (small JPEG data URL), "" = none
 let avatarDirty = false;  // did the user change the picture this session?
 let igEnabled = false;
 let igBanner: "connected" | "error" | null = null;
-let ciActive: number | null = null; // restaurant_id of open conversation
-let ciPollTimer: number | undefined;
-let ciLastId = 0;
 
 // Audience/demographic option sets (values are stable codes; labels come from i18n).
 const AGE_RANGES = ["18-24", "25-34", "35-44", "45-54", "55+"] as const;
@@ -86,15 +79,6 @@ const PLATFORM_METRICS: Record<string, { views: string; reached: string; clicks:
   instagram: { views: "cr.m.ig.views", reached: "cr.m.ig.reached", clicks: "cr.m.ig.clicks" },
   tiktok: { views: "cr.m.tt.views", reached: "cr.m.tt.reached", clicks: "cr.m.tt.clicks" },
   youtube: { views: "cr.m.yt.views", reached: "cr.m.yt.reached", clicks: "cr.m.yt.clicks" },
-};
-
-/** ISO "YYYY-MM-DD" → localized long date. */
-const fmtISODate = (iso: string | null | undefined): string => {
-  if (!iso) return "—";
-  const [y, m, d] = iso.split("-").map(Number);
-  if (!y || !m || !d) return "—";
-  return new Intl.DateTimeFormat(locale(), { day: "numeric", month: "long", year: "numeric" })
-    .format(new Date(y, m - 1, d));
 };
 
 const PLATFORMS: Array<{ key: "instagram" | "tiktok" | "youtube"; label: string }> = [
@@ -181,14 +165,17 @@ function resizeImage(file: File, max = 512): Promise<string> {
   });
 }
 
-function renderProfile(card: HTMLElement): void {
+function renderProfile(card: HTMLElement, mode: EditorMode = "onboard"): void {
   const pr = profile;
   const shown = avatarDirty ? avatarData : (pr?.avatar_url ?? "");
   const numStr = (v: number | null | undefined) => (v == null ? "" : String(v));
+  const head = mode === "account"
+    ? `<p class="step-sub">${esc(t("creator.profile.sub"))}</p>`
+    : `<p class="step-eyebrow">${esc(t("creator.eyebrow"))}</p>
+       <h1 class="step-title">${esc(t("creator.profile.title"))}</h1>
+       <p class="step-sub">${esc(t("creator.profile.sub"))}</p>`;
   card.innerHTML = `
-    <p class="step-eyebrow">${esc(t("creator.eyebrow"))}</p>
-    <h1 class="step-title">${esc(t("creator.profile.title"))}</h1>
-    <p class="step-sub">${esc(t("creator.profile.sub"))}</p>
+    ${head}
     <div class="cp-pic">
       <div class="cp-avatar" id="cp-avatar"${shown ? ` style="background-image:url('${esc(shown)}')"` : ""}>${shown ? "" : `<span>${esc(t("creator.profile.picHint"))}</span>`}</div>
       <div class="cp-pic-actions">
@@ -211,7 +198,9 @@ function renderProfile(card: HTMLElement): void {
         <input class="input" id="cp-followers" type="number" min="0" inputmode="numeric" value="${esc(numStr(pr?.follower_count))}" /></div>
     </div>
     <p class="field-error" id="cp-err" hidden></p>
-    <button type="button" class="btn btn-primary creator-cta" id="cp-save">${esc(t("creator.profile.cta"))}</button>`;
+    ${mode === "account"
+      ? `<div class="acct-save-row"><button type="button" class="btn btn-ink" id="cp-save">${esc(t("account.save"))}</button><span class="acct-saved" id="cp-ok" hidden>${esc(t("account.saved"))}</span></div>`
+      : `<button type="button" class="btn btn-primary creator-cta" id="cp-save">${esc(t("creator.profile.cta"))}</button>`}`;
 
   const errEl = byId("cp-err");
   const paintAvatar = (data: string) => {
@@ -276,11 +265,27 @@ function renderProfile(card: HTMLElement): void {
       });
     } catch (e) {
       if (errEl) { errEl.hidden = false; errEl.textContent = localizeError((e as Error).message) || t("creator.error"); }
-      if (btn) { btn.disabled = false; btn.textContent = t("creator.profile.cta"); }
+      if (btn) { btn.disabled = false; btn.textContent = mode === "account" ? t("account.save") : t("creator.profile.cta"); }
+      return;
+    }
+    if (mode === "account") {
+      // Saved in place: refresh state, flash "saved", stay on the tab.
+      profile = (await getCreatorProfile().catch(() => ({ profile }))).profile;
+      avatarDirty = false;
+      if (btn) { btn.disabled = false; btn.textContent = t("account.save"); }
+      flashSaved("cp-ok");
       return;
     }
     go("handles"); // outside the try so a downstream render error surfaces, not swallowed
   });
+}
+
+/** Briefly reveal a "saved" indicator next to a save button. */
+function flashSaved(id: string): void {
+  const ok = byId(id);
+  if (!ok) return;
+  ok.hidden = false;
+  window.setTimeout(() => { if (byId(id)) ok.hidden = true; }, 2000);
 }
 
 /* ---- step: channels (per-platform handle + audience + reach) ------------- */
@@ -336,14 +341,17 @@ function wireRankChips(group: HTMLElement): void {
   }));
 }
 
-function renderHandles(card: HTMLElement): void {
+function renderHandles(card: HTMLElement, mode: EditorMode = "onboard"): void {
   const ageLabel = (v: string) => v;
   const genLabel = (v: string) => t(`creator.aud.${v}`);
   const numStr = (v: number | null | undefined) => (v == null ? "" : String(v));
+  const head = mode === "account"
+    ? `<p class="step-sub">${esc(t("creator.handles.sub"))}</p>`
+    : `<p class="step-eyebrow">${esc(t("creator.eyebrow"))}</p>
+       <h1 class="step-title">${esc(t("creator.handles.title"))}</h1>
+       <p class="step-sub">${esc(t("creator.handles.sub"))}</p>`;
   card.innerHTML = `
-    <p class="step-eyebrow">${esc(t("creator.eyebrow"))}</p>
-    <h1 class="step-title">${esc(t("creator.handles.title"))}</h1>
-    <p class="step-sub">${esc(t("creator.handles.sub"))}</p>
+    ${head}
     <div class="ch-platforms">
     ${PLATFORMS.map((p) => {
       const a = acctFor(p.key);
@@ -379,14 +387,15 @@ function renderHandles(card: HTMLElement): void {
     </div>
     <p class="ch-hint">${esc(t("creator.handles.statsHint"))}</p>
     <p class="field-error" id="h-err" hidden></p>
-    <div class="creator-actions">
-      <button type="button" class="btn btn-ghost" id="h-back">${esc(t("btn.back"))}</button>
-      <button type="button" class="btn btn-primary creator-cta" id="h-save">${esc(t("creator.handles.cta"))}</button>
-    </div>`;
+    ${mode === "account"
+      ? `<div class="acct-save-row"><button type="button" class="btn btn-ink" id="h-save">${esc(t("account.save"))}</button><span class="acct-saved" id="h-ok" hidden>${esc(t("account.saved"))}</span></div>`
+      : `<div class="creator-actions">
+          <button type="button" class="btn btn-ghost" id="h-back">${esc(t("btn.back"))}</button>
+          <button type="button" class="btn btn-primary creator-cta" id="h-save">${esc(t("creator.handles.cta"))}</button>
+        </div>`}`;
   card.querySelectorAll<HTMLElement>(".ch-chips").forEach((g) => wireRankChips(g));
-  // First-time onboarding steps back to the profile; a returning creator who
-  // opened this via "manage accounts" steps back to their home inbox.
-  byId("h-back")?.addEventListener("click", () => go(accounts.length ? "home" : "profile"));
+  // First-time onboarding steps back to the profile step.
+  byId("h-back")?.addEventListener("click", () => go("profile"));
   byId("h-save")?.addEventListener("click", async () => {
     const num = (id: string): number | null => {
       const v = byId<HTMLInputElement>(id)?.value.trim();
@@ -418,14 +427,23 @@ function renderHandles(card: HTMLElement): void {
     }
     if (err) err.hidden = true;
     const btn = byId<HTMLButtonElement>("h-save");
+    const restore = mode === "account" ? t("account.save") : t("creator.handles.cta");
     if (btn) { btn.disabled = true; btn.textContent = t("creator.handles.working"); }
     try {
       await setCreatorHandles(payload);
-      go("connect");
     } catch (e) {
       if (err) { err.hidden = false; err.textContent = localizeError((e as Error).message) || t("creator.error"); }
-      if (btn) { btn.disabled = false; btn.textContent = t("creator.handles.cta"); }
+      if (btn) { btn.disabled = false; btn.textContent = restore; }
+      return;
     }
+    if (mode === "account") {
+      // Saved in place: refresh state, flash "saved", stay on the tab.
+      accounts = (await getCreatorHandles().catch(() => ({ accounts, instagramEnabled: igEnabled }))).accounts;
+      if (btn) { btn.disabled = false; btn.textContent = restore; }
+      flashSaved("h-ok");
+      return;
+    }
+    go("connect");
   });
 }
 
@@ -505,262 +523,132 @@ function renderDone(card: HTMLElement): void {
   byId("c-inbox")?.addEventListener("click", () => go("home"));
 }
 
-/* ---- home: the creator's inbox ------------------------------------------- */
 
-function stopCiPoll(): void {
-  window.clearInterval(ciPollTimer);
-  ciPollTimer = undefined;
-}
+/* ---- dashboard: dark-nav shell (mirrors the locale platform) ------------- */
 
-function renderHome(): void {
-  stopCiPoll();
-  const stage = document.querySelector<HTMLElement>(".creator-stage");
-  if (!stage) return;
-  stage.classList.add("creator-stage-wide");
-  const tab = (id: HomeTab, label: string) =>
-    `<button type="button" class="cc-tab ${homeTab === id ? "on" : ""}" data-tab="${id}">${esc(label)}</button>`;
-  stage.innerHTML = `
-    <div class="creator-inbox">
-      <div class="ci-head">
-        <h1 class="ci-title">${esc(t("creator.home.title"))}</h1>
-        <div class="ci-actions">
-          <button type="button" class="ci-link" id="ci-accounts">${esc(t("creator.home.accounts"))}</button>
-          <button type="button" class="ci-link" id="ci-logout">${esc(t("account.signout"))}</button>
+function dashShell(): string {
+  const item = (v: DashView, label: string) =>
+    `<button type="button" class="pnav-item" data-view="${v}">${dic[v]}<span>${esc(label)}</span></button>`;
+  return `
+<div class="platform-app">
+  <aside class="pnav">
+    <div class="pnav-logo">tt<span class="dot">.</span></div>
+    <nav class="pnav-list">
+      ${item("account", t("creator.nav.account"))}
+      ${item("campaigns", t("creator.tab.campaigns"))}
+      ${item("messages", t("creator.tab.messages"))}
+    </nav>
+    <div class="pnav-foot">
+      <div class="rest-menu" id="cr-menu" hidden>
+        <div class="rest-menu-lang">
+          <span>${esc(t("account.language"))}</span>
+          <div class="account-lang" id="cr-lang"><button type="button" data-lang="de">DE</button><button type="button" data-lang="en">EN</button></div>
         </div>
+        <button type="button" class="rest-menu-item" id="cr-logout">${dic.logout}<span>${esc(t("account.signout"))}</span></button>
       </div>
-      <div class="cc-tabs">${tab("campaigns", t("creator.tab.campaigns"))}${tab("messages", t("creator.tab.messages"))}</div>
-      <div id="ci-body"></div>
-    </div>`;
-  byId("ci-accounts")?.addEventListener("click", () => go("handles"));
-  byId("ci-logout")?.addEventListener("click", async () => {
-    await logout();
-    window.location.assign("/login");
-  });
-  stage.querySelectorAll<HTMLElement>(".cc-tab").forEach((b) =>
-    b.addEventListener("click", () => { homeTab = b.dataset.tab as HomeTab; renderHome(); }));
-  if (homeTab === "campaigns") void renderCampaignsTab();
-  else renderMessagesTab();
-}
-
-/* ---- home › campaigns (assignments) -------------------------------------- */
-
-const assignmentPill = (s: string): string => `cc-status cc-status--${s}`;
-
-function assignmentCard(a: CreatorAssignment): string {
-  const g = (a.guidelines || {}) as { show?: string[]; must_include?: string[]; avoid?: string[]; notes?: string };
-  const chips = (vals?: string[]) => (vals || []).map((v) => `<span class="cc-chip">${esc(tChip(v))}</span>`).join("");
-  const glRow = (label: string, vals?: string[]) =>
-    vals && vals.length
-      ? `<div class="cc-gl"><span class="cc-gl-k">${esc(label)}</span><span class="cc-gl-v">${chips(vals)}</span></div>`
-      : "";
-  const canSubmit = a.status === "contacted" || a.status === "posted";
-  const submit = canSubmit
-    ? `<div class="cc-submit">
-        <input class="input cc-url" type="url" placeholder="${esc(t("creator.campaigns.linkPh"))}" />
-        <button type="button" class="btn btn-primary cc-submit-btn">${esc(t(a.post_count > 0 ? "creator.campaigns.update" : "creator.campaigns.submit"))}</button>
-      </div>
-      <p class="cc-err field-error" hidden></p>`
-    : "";
-  return `<div class="cc-card" data-cid="${a.campaign_id}">
-    <div class="cc-head">
-      <div class="cc-headinfo">
-        <div class="cc-rest">${esc(a.restaurant_name)}</div>
-        <div class="cc-title">${esc(a.title || t("creator.campaigns.untitled"))}</div>
-      </div>
-      <span class="${assignmentPill(a.status)}">${esc(t(`assignment.status.${a.status}`))}</span>
+      <button type="button" class="rest-selector" id="cr-selector">
+        <span class="rest-food">${dic.at}</span>
+        <span class="rest-name">${esc(me?.email || "Creator")}</span>
+        <span class="rest-chevron">${dic.chevron}</span>
+      </button>
     </div>
-    <div class="cc-meta">
-      <span><b>${esc(fmtEur(a.creator_payout_eur))}</b> ${esc(t("creator.campaigns.payout"))}</span>
-      ${a.content_deadline ? `<span><b>${esc(fmtISODate(a.content_deadline))}</b> ${esc(t("creator.campaigns.by"))}</span>` : ""}
-    </div>
-    ${glRow(t("account.g.show"), g.show)}${glRow(t("account.g.must"), g.must_include)}${glRow(t("account.g.avoid"), g.avoid)}
-    ${g.notes ? `<p class="cc-notes">${esc(g.notes)}</p>` : ""}
-    ${submit}
-  </div>`;
+  </aside>
+  <main class="platform-main" id="cr-main"></main>
+</div>`;
 }
 
-async function renderCampaignsTab(): Promise<void> {
-  const body = byId("ci-body");
-  if (!body) return;
-  body.innerHTML = `<p class="ci-loading" style="padding:20px">…</p>`;
-  let assignments: CreatorAssignment[];
-  try {
-    assignments = (await listCreatorCampaigns()).assignments;
-  } catch {
-    body.innerHTML = `<div class="msg-list-empty">${esc(t("creator.error"))}</div>`;
-    return;
-  }
-  if (step !== "home" || homeTab !== "campaigns") return;
-  if (!assignments.length) {
-    body.innerHTML = `<div class="cc-empty">${esc(t("creator.campaigns.empty"))}</div>`;
-    return;
-  }
-  body.innerHTML = `<div class="cc-grid">${assignments.map(assignmentCard).join("")}</div>`;
-  body.querySelectorAll<HTMLElement>(".cc-card").forEach((card) => {
-    const cid = Number(card.dataset.cid);
-    const btn = card.querySelector<HTMLButtonElement>(".cc-submit-btn");
-    const url = card.querySelector<HTMLInputElement>(".cc-url");
-    const err = card.querySelector<HTMLElement>(".cc-err");
-    btn?.addEventListener("click", async () => {
-      const v = url?.value.trim() || "";
-      if (err) err.hidden = true;
-      if (!v) return;
-      btn.disabled = true;
-      try {
-        await submitCreatorPost(cid, v);
-        await renderCampaignsTab();
-      } catch (e) {
-        btn.disabled = false;
-        if (err) { err.hidden = false; err.textContent = (e as Error).message || t("creator.error"); }
-      }
+function setDashNavActive(): void {
+  document.querySelectorAll<HTMLElement>(".pnav-item").forEach((b) =>
+    b.classList.toggle("on", b.dataset.view === dashView));
+}
+
+function renderDashboard(): void {
+  document.body.className = "theme-risograph account-page";
+  document.body.innerHTML = dashShell();
+  document.querySelectorAll<HTMLElement>(".pnav-item").forEach((b) =>
+    b.addEventListener("click", () => {
+      dashView = b.dataset.view as DashView;
+      if (dashView === "account") acctTab = "profile";
+      renderDashMain();
+    }));
+  const menu = byId("cr-menu");
+  byId("cr-selector")?.addEventListener("click", (e) => { e.stopPropagation(); if (menu) menu.hidden = !menu.hidden; });
+  if (!dashDocWired) {
+    document.addEventListener("click", (e) => {
+      const m = byId("cr-menu");
+      if (m && !m.hidden && !(e.target as HTMLElement).closest(".pnav-foot")) m.hidden = true;
     });
+    dashDocWired = true;
+  }
+  byId("cr-logout")?.addEventListener("click", async () => { await logout(); window.location.assign("/login"); });
+  byId("cr-lang")?.querySelectorAll<HTMLButtonElement>("button[data-lang]").forEach((b) => {
+    b.classList.toggle("on", b.dataset.lang === getLang());
+    b.addEventListener("click", (e) => { e.stopPropagation(); setLang(b.dataset.lang as "en" | "de"); });
   });
+  renderDashMain();
 }
 
-/* ---- home › messages ----------------------------------------------------- */
+function renderDashMain(): void {
+  setDashNavActive();
+  const m = byId("cr-main");
+  if (!m) return;
+  if (dashView === "account") renderAccountCenter(m);
+  else renderDashComingSoon(m, dashView);
+}
 
-function renderMessagesTab(): void {
-  const body = byId("ci-body");
-  if (!body) return;
-  body.innerHTML = `
-    <div class="msg-app${ciActive != null ? " thread-open" : ""}" id="cmsg-app">
-      <div class="msg-list" id="cmsg-list"><p class="ci-loading">…</p></div>
-      <div class="msg-convo" id="cmsg-convo"></div>
+function renderAccountCenter(m: HTMLElement): void {
+  const tab = (id: AcctTab, label: string) =>
+    `<button type="button" class="acct-tab ${acctTab === id ? "on" : ""}" data-atab="${id}">${esc(label)}</button>`;
+  m.innerHTML = `
+    <h1 class="admin-title">${esc(t("creator.nav.account"))}</h1>
+    <p class="pl-sub">${esc(t("creator.account.sub"))}</p>
+    <div class="acct-tabs">${tab("profile", t("creator.account.profileTab"))}${tab("channels", t("creator.account.channelsTab"))}</div>
+    <section class="card cr-editor" id="cr-editor"></section>`;
+  m.querySelectorAll<HTMLElement>(".acct-tab").forEach((b) =>
+    b.addEventListener("click", () => { acctTab = b.dataset.atab as AcctTab; renderAccountCenter(m); }));
+  const editor = byId("cr-editor");
+  if (!editor) return;
+  if (acctTab === "profile") renderProfile(editor, "account");
+  else renderHandles(editor, "account");
+}
+
+function renderDashComingSoon(m: HTMLElement, view: DashView): void {
+  const title = view === "campaigns" ? t("creator.tab.campaigns") : t("creator.tab.messages");
+  const sub = view === "campaigns" ? t("creator.campaigns.soon") : t("messages.comingSoon");
+  m.innerHTML = `
+    <div class="coming-wrap">
+      <div class="coming-blur" aria-hidden="true">
+        <h1 class="admin-title">${esc(title)}</h1>
+        ${crFaux()}
+      </div>
+      <div class="coming-overlay">
+        <div class="coming-badge">${esc(t("account.comingSoon"))}</div>
+        <p>${esc(sub)}</p>
+      </div>
     </div>`;
-  void loadCiThreads().then(() => {
-    if (ciActive != null) void openCiConversation(ciActive);
-    else renderCiEmpty();
-  });
-  ciPollTimer = window.setInterval(() => {
-    if (step !== "home" || homeTab !== "messages") return;
-    void loadCiThreads();
-    if (ciActive != null) void paintCiBubbles(ciActive, true);
-  }, 5000);
 }
 
-function renderCiEmpty(): void {
-  const convo = byId("cmsg-convo");
-  if (convo) convo.innerHTML = `<div class="msg-convo-empty">${esc(t("messages.selectThread"))}</div>`;
-}
-
-async function loadCiThreads(): Promise<void> {
-  const list = byId("cmsg-list");
-  if (!list) return;
-  let threads;
-  try {
-    threads = (await listCreatorThreads()).threads;
-  } catch {
-    list.innerHTML = `<div class="msg-list-empty">${esc(t("creator.error"))}</div>`;
-    return;
-  }
-  if (step !== "home") return;
-  list.innerHTML = threads.length
-    ? threads.map((th) => {
-        const name = th.restaurant_name || t("creator.venueFallback");
-        const preview = (th.last_sender === "creator" ? t("messages.youPrefix") + " " : "") + (th.last_body || "");
-        const unread = th.unread > 0 ? `<span class="msg-unread">${th.unread}</span>` : "";
-        return `<button type="button" class="msg-thread ${ciActive === th.restaurant_id ? "on" : ""}" data-rid="${th.restaurant_id}">
-          <span class="msg-thread-av">${esc(initial(name))}</span>
-          <span class="msg-thread-main">
-            <span class="msg-thread-top"><span class="msg-thread-name">${esc(name)}</span><span class="msg-thread-time">${esc(msgTime(th.last_at))}</span></span>
-            <span class="msg-thread-preview">${esc(preview)}</span>
-          </span>${unread}
-        </button>`;
-      }).join("")
-    : `<div class="msg-list-empty">${esc(t("messages.noThreads"))}</div>`;
-  list.querySelectorAll<HTMLElement>(".msg-thread").forEach((el) =>
-    el.addEventListener("click", () => void openCiConversation(Number(el.dataset.rid))));
-}
-
-async function openCiConversation(rid: number): Promise<void> {
-  ciActive = rid;
-  ciLastId = 0;
-  byId("cmsg-app")?.classList.add("thread-open");
-  byId("cmsg-list")?.querySelectorAll<HTMLElement>(".msg-thread")
-    .forEach((el) => el.classList.toggle("on", Number(el.dataset.rid) === rid));
-  const convo = byId("cmsg-convo");
-  if (!convo) return;
-  convo.innerHTML = `
-    <div class="msg-convo-head" id="cmsg-head"></div>
-    <div class="msg-bubbles" id="cmsg-bubbles"><p class="ci-loading">…</p></div>
-    <div class="msg-composer">
-      <textarea class="msg-input" id="cmsg-input" rows="1" placeholder="${esc(t("messages.placeholder"))}"></textarea>
-      <button type="button" class="msg-send" id="cmsg-send" aria-label="${esc(t("messages.send"))}">${sendIcon}</button>
-    </div>`;
-  const input = byId<HTMLTextAreaElement>("cmsg-input")!;
-  const send = byId<HTMLButtonElement>("cmsg-send")!;
-  const doSend = async (): Promise<void> => {
-    const body = input.value.trim();
-    if (!body) return;
-    input.value = "";
-    send.disabled = true;
-    try {
-      await sendCreatorMessage(rid, body);
-      await paintCiBubbles(rid, false);
-      await loadCiThreads();
-    } finally {
-      send.disabled = false;
-      input.focus();
-    }
-  };
-  send.addEventListener("click", () => void doSend());
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void doSend(); }
-  });
-  await paintCiBubbles(rid, false);
-  input.focus();
-}
-
-async function paintCiBubbles(rid: number, pollMode: boolean): Promise<void> {
-  if (ciActive !== rid || step !== "home") return;
-  let th;
-  try {
-    th = await getCreatorThread(rid);
-  } catch {
-    return;
-  }
-  if (ciActive !== rid || step !== "home") return;
-  const msgs = th.messages;
-  const latest = msgs.length ? msgs[msgs.length - 1].id : 0;
-  if (pollMode && latest === ciLastId) return;
-  ciLastId = latest;
-
-  const name = th.peer.name || t("creator.venueFallback");
-  const head = byId("cmsg-head");
-  if (head) {
-    head.innerHTML = `<button type="button" class="msg-convo-back" id="cmsg-back" aria-label="${esc(t("messages.back"))}">${backIcon}</button><span class="msg-convo-av">${esc(initial(name))}</span><span class="msg-convo-name">${esc(name)}</span>`;
-    byId("cmsg-back")?.addEventListener("click", () => {
-      ciActive = null;
-      byId("cmsg-app")?.classList.remove("thread-open");
-      byId("cmsg-list")?.querySelectorAll<HTMLElement>(".msg-thread").forEach((el) => el.classList.remove("on"));
-      renderCiEmpty();
-    });
-  }
-  const bubbles = byId("cmsg-bubbles");
-  if (bubbles) {
-    bubbles.innerHTML = msgs.length
-      ? msgs.map(ciBubble).join("")
-      : `<div class="msg-convo-empty">${esc(t("messages.sayHi", { name }))}</div>`;
-    bubbles.scrollTop = bubbles.scrollHeight;
-  }
-}
-
-function ciBubble(mm: Message): string {
-  const dir = mm.sender_role === "creator" ? "out" : "in";
-  return `<div class="msg-row ${dir}"><div class="msg-bubble">${esc(mm.body)}</div><span class="msg-time">${esc(msgTime(mm.created_at))}</span></div>`;
+function crFaux(): string {
+  const line = (w: string) => `<span class="fx-line" style="width:${w}"></span>`;
+  const pill = () => `<span class="fx-pill"></span>`;
+  const card = () => `<div class="card fx-creator">${line("58%")}${line("90%")}${line("74%")}<div class="fx-pills">${pill()}${pill()}${pill()}</div></div>`;
+  return `<div class="fx-cards">${Array.from({ length: 6 }, card).join("")}</div>`;
 }
 
 /* ---- routing ------------------------------------------------------------- */
 
 function render(): void {
-  if (step !== "home") stopCiPoll();
   if (step !== "verify") stopVerifyPoll();
-  if (step === "home") { renderHome(); return; }
+  if (step === "home") { renderDashboard(); return; }
+  // The dashboard replaces the body with the dark-nav shell; rebuild the
+  // onboarding shell (top bar + centered stage) when coming back to a step.
+  if (!document.querySelector(".creator-stage")) {
+    document.body.className = "theme-risograph creator-body";
+    document.body.innerHTML = shell();
+    wireLang();
+  }
   const stage = document.querySelector<HTMLElement>(".creator-stage");
   if (!stage) return;
-  // Returning from the home inbox, which replaced the stage's card with the
-  // wide inbox layout: drop that class and rebuild the card so card-based
-  // steps can render again (otherwise byId("creator-card") is null → no-op).
   stage.classList.remove("creator-stage-wide");
   let card = byId("creator-card");
   if (!card) {

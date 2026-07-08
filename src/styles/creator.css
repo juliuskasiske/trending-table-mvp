@@ -187,6 +187,10 @@
 
 .ch-hint-inline { font-weight: 600; font-size: 11.5px; color: var(--muted); }
 
+/* Account-center editor card holds the full-width profile / channels editors. */
+.cr-editor { width: 100%; max-width: none; margin-top: 8px; }
+.cr-editor .step-sub { margin-top: 0; }
+
 /* ranked chip: the numbered badge is an ABSOLUTE corner overlay, so it never
  * changes the chip's box — a ranked chip is pixel-identical to an unranked one,
  * so rows wrap the same in every column and stay aligned. */
