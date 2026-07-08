@@ -21,11 +21,12 @@ def verify_password(password_hash: str, password: str) -> bool:
 
 
 def password_problem(password: str, email: str) -> str | None:
-    """Return a human message if the password is unacceptable, else None."""
+    """Return a stable error CODE if the password is unacceptable, else None.
+    The frontend maps the code to a localized, specific message."""
     if len(password) < 8:
-        return "Use at least 8 characters."
+        return "password_too_short"
     if len(password) > 200:
-        return "That password is too long."
+        return "password_too_long"
     if password.strip().lower() == email.strip().lower():
-        return "Password can't be your email address."
+        return "password_is_email"
     return None

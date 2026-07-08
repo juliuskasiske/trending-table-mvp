@@ -44,7 +44,7 @@ import {
   type PlaceDetails,
 } from "./types.ts";
 import { loadStripe, type Stripe, type StripeElements } from "@stripe/stripe-js";
-import { getLang, onLangChange, t, tChip } from "./i18n.ts";
+import { getLang, localizeError, onLangChange, t, tChip } from "./i18n.ts";
 
 const STORAGE_KEY = "tt-onboarding";
 
@@ -261,6 +261,12 @@ export function initOnboarding(): void {
       const pwOk = (form!.elements.namedItem("password") as HTMLInputElement).value.length >= 8;
       setError("email", !emailOk);
       setError("password", !pwOk);
+      // Reset the password error text to the static rule — a prior backend error
+      // (e.g. "can't be your email") may have overwritten it.
+      if (!pwOk) {
+        const el = form!.querySelector<HTMLElement>('[data-error-for="password"]');
+        if (el) el.textContent = t("pw.password_too_short");
+      }
       ok = emailOk && pwOk;
     } else if (kind === "restaurant") {
       const profileShown = !byId("profile-block")?.hidden;
@@ -1223,7 +1229,7 @@ export function initOnboarding(): void {
   }
 
   function stepError(kind: string | undefined, err: unknown): void {
-    const msg = (err as Error)?.message || t("error.generic");
+    const msg = localizeError((err as Error)?.message || "") || t("error.generic");
     if (kind === "account") {
       const el = form!.querySelector<HTMLElement>('[data-error-for="password"]');
       if (el) el.textContent = msg;

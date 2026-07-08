@@ -59,6 +59,9 @@ const en: Dict = {
   "account.email.err": "Enter a valid email address.",
   "account.password.label": 'Password <span class="hint">(min. 8 characters)</span>',
   "account.password.err": "Use at least 8 characters.",
+  "pw.password_too_short": "Use at least 8 characters.",
+  "pw.password_too_long": "That password is too long (max 200 characters).",
+  "pw.password_is_email": "Your password can't be your email address.",
 
   // Step 2 — restaurant
   "restaurant.eyebrow": "One search, everything filled",
@@ -491,6 +494,7 @@ const en: Dict = {
   "creator.handles.title": "Your channels",
   "creator.handles.sub": "Add at least one — Instagram, TikTok or YouTube. Share your reach so we can match you to the right campaigns.",
   "creator.handles.handle": "Handle",
+  "creator.handles.handlePh": "@handle",
   "creator.handles.followers": "Followers",
   "creator.handles.monthlyViews": "Avg. monthly views",
   "creator.handles.perPost": "Avg. views per post",
@@ -578,6 +582,9 @@ const de: Dict = {
   "account.email.err": "Bitte gib eine gültige E-Mail-Adresse ein.",
   "account.password.label": 'Passwort <span class="hint">(mind. 8 Zeichen)</span>',
   "account.password.err": "Verwende mindestens 8 Zeichen.",
+  "pw.password_too_short": "Verwende mindestens 8 Zeichen.",
+  "pw.password_too_long": "Das Passwort ist zu lang (max. 200 Zeichen).",
+  "pw.password_is_email": "Dein Passwort darf nicht deine E-Mail-Adresse sein.",
 
   "restaurant.eyebrow": "Eine Suche, alles ausgefüllt",
   "restaurant.title": "Finde dein Lokal",
@@ -632,7 +639,7 @@ const de: Dict = {
   "guidelines.title": "Deine Content-Richtlinien",
   "guidelines.sub":
     "Sag Creatorn, wie gute Inhalte aussehen. Wir haben sinnvolle Voreinstellungen gewählt — passe sie an und ergänze unten alles Spezifische.",
-  "guidelines.handle.label": 'Handle zum Markieren <span class="hint">(optional)</span>',
+  "guidelines.handle.label": 'Nutzername zum Markieren <span class="hint">(optional)</span>',
   "guidelines.handle.ph": "@deinlokal",
   "guidelines.group.show": "Posts sollten zeigen",
   "guidelines.group.must": "Jeder Post muss",
@@ -765,7 +772,7 @@ const de: Dict = {
   "chip.Team & chef": "Team & Küchenchef",
   "chip.Plating close-ups": "Anrichte-Nahaufnahmen",
   "chip.Exterior / storefront": "Außenansicht / Fassade",
-  "chip.Tag our handle": "Unseren Handle markieren",
+  "chip.Tag our handle": "Unseren Nutzernamen markieren",
   "chip.Add the location tag": "Standort-Tag hinzufügen",
   "chip.Show at least one dish": "Mindestens ein Gericht zeigen",
   "chip.Other guests' faces": "Gesichter anderer Gäste",
@@ -879,7 +886,7 @@ const de: Dict = {
   "content.views": "Aufrufe",
   "content.likes": "Likes",
   "content.watchOn": "Auf {platform} ansehen",
-  "creators.search": "Name oder Handle suchen",
+  "creators.search": "Name oder Nutzername suchen",
   "creators.all": "Alle",
   "creators.empty": "Noch keine Creator für deine Suche gefunden.",
   "creators.noRating": "Noch keine Bewertungen",
@@ -948,7 +955,7 @@ const de: Dict = {
   "account.g.show": "In Posts zeigen",
   "account.g.must": "Muss enthalten",
   "account.g.avoid": "Vermeiden",
-  "account.g.handle": "Zu markierender Handle",
+  "account.g.handle": "Zu markierender Nutzername",
   "account.g.notes": "Notizen",
   "account.billing.status": "Status",
   "account.billing.cadence": "Abrechnungszyklus",
@@ -997,16 +1004,17 @@ const de: Dict = {
   "creator.signup.working": "Wird erstellt…",
   "creator.handles.title": "Deine Kanäle",
   "creator.handles.sub": "Gib mindestens einen an — Instagram, TikTok oder YouTube. Teile deine Reichweite, damit wir dich passenden Kampagnen zuordnen können.",
-  "creator.handles.handle": "Handle",
+  "creator.handles.handle": "Nutzername",
+  "creator.handles.handlePh": "@nutzername",
   "creator.handles.followers": "Follower",
   "creator.handles.monthlyViews": "Ø Aufrufe / Monat",
   "creator.handles.perPost": "Ø Aufrufe / Post",
   "creator.handles.statsHint": "Ungefähre Zahlen genügen — du kannst sie jederzeit aktualisieren.",
   "creator.handles.cta": "Weiter",
   "creator.handles.working": "Wird gespeichert…",
-  "creator.handles.needOne": "Gib mindestens einen Handle ein.",
+  "creator.handles.needOne": "Gib mindestens einen Nutzernamen ein.",
   "creator.connect.title": "Instagram verbinden",
-  "creator.connect.sub": "Verbinde Instagram, damit wir deine Statistiken automatisch lesen können. TikTok und YouTube bleiben vorerst nur als Handle.",
+  "creator.connect.sub": "Verbinde Instagram, damit wir deine Statistiken automatisch lesen können. TikTok und YouTube bleiben vorerst nur als Nutzername.",
   "creator.connect.ig": "Instagram verbinden",
   "creator.connect.opening": "Instagram wird geöffnet…",
   "creator.connect.finish": "Fertig",
@@ -1015,7 +1023,7 @@ const de: Dict = {
   "creator.connect.notConnected": "Noch nicht verbunden",
   "creator.connect.saved": "{handle} · gespeichert",
   "creator.connect.pillOn": "verbunden",
-  "creator.connect.pillOff": "Handle",
+  "creator.connect.pillOff": "Nutzername",
   "creator.connect.justConnected": "Instagram verbunden — deine Statistiken sind jetzt verknüpft.",
   "creator.connect.failed": "Instagram konnte nicht verbunden werden. Bitte erneut versuchen.",
   "creator.done.title": "Alles bereit.",
@@ -1069,6 +1077,15 @@ export function t(key: string, vars?: Record<string, string | number>): string {
     for (const [k, v] of Object.entries(vars)) s = s.split(`{${k}}`).join(String(v));
   }
   return s;
+}
+
+// Backend error detail strings that are stable CODES to localize (not prose).
+const ERROR_CODES = new Set(["password_too_short", "password_too_long", "password_is_email"]);
+
+/** Localize a backend error detail if it's a known code; otherwise return it
+ * unchanged (it's already a human sentence). */
+export function localizeError(detail: string): string {
+  return ERROR_CODES.has(detail) ? t(`pw.${detail}`) : detail;
 }
 
 /** Display label for a guideline chip. The stored value stays the English

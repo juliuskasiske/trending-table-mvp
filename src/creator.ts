@@ -25,7 +25,7 @@ import {
   type Principal,
   type SocialAccount,
 } from "./api.ts";
-import { getLang, initI18n, onLangChange, setLang, t, tChip } from "./i18n.ts";
+import { getLang, initI18n, localizeError, onLangChange, setLang, t, tChip } from "./i18n.ts";
 import { fmtEur } from "./format.ts";
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string) =>
@@ -110,7 +110,9 @@ function renderSignup(card: HTMLElement): void {
     const email = byId<HTMLInputElement>("c-email")?.value.trim() ?? "";
     const password = byId<HTMLInputElement>("c-password")?.value ?? "";
     const err = byId("c-err");
-    if (!email || !password) return;
+    const showErr = (m: string) => { if (err) { err.hidden = false; err.textContent = m; } };
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showErr(t("account.email.err")); return; }
+    if (password.length < 8) { showErr(t("pw.password_too_short")); return; }
     if (err) err.hidden = true;
     const btn = byId<HTMLButtonElement>("c-signup");
     if (btn) { btn.disabled = true; btn.textContent = t("creator.signup.working"); }
@@ -118,7 +120,7 @@ function renderSignup(card: HTMLElement): void {
       me = await signup(email, password, "creator");
       go("handles");
     } catch (e) {
-      if (err) { err.hidden = false; err.textContent = (e as Error).message || t("creator.error"); }
+      showErr(localizeError((e as Error).message) || t("creator.error"));
       if (btn) { btn.disabled = false; btn.textContent = t("creator.signup.cta"); }
     }
   });
@@ -141,7 +143,7 @@ function renderHandles(card: HTMLElement): void {
       <div class="ch-platform">
         <div class="ch-plat-head">${esc(p.label)}</div>
         <div class="field"><label for="h-${p.key}">${esc(t("creator.handles.handle"))}</label>
-          <input class="input" id="h-${p.key}" placeholder="@handle" autocomplete="off" value="${esc(h ? "@" + h : "")}" /></div>
+          <input class="input" id="h-${p.key}" placeholder="${esc(t("creator.handles.handlePh"))}" autocomplete="off" value="${esc(h ? "@" + h : "")}" /></div>
         <div class="ch-stats">
           <div class="field"><label for="f-${p.key}">${esc(t("creator.handles.followers"))}</label>
             <input class="input" id="f-${p.key}" type="number" min="0" inputmode="numeric" placeholder="0" value="${esc(statVal(p.key, "follower_count"))}" /></div>

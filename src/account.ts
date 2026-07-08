@@ -41,7 +41,7 @@ import {
   type RestaurantSummary,
 } from "./api.ts";
 import { MenuItem, GUIDELINE_PRESETS, defaultGuidelines, type PlaceDetails, type PlaceSuggestion } from "./types.ts";
-import { getLang, initI18n, onLangChange, setLang, t, tChip } from "./i18n.ts";
+import { getLang, initI18n, localizeError, onLangChange, setLang, t, tChip } from "./i18n.ts";
 import { fmtEur } from "./format.ts";
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string) =>
@@ -1033,7 +1033,7 @@ function renderAccountView(body: HTMLElement): void {
     } catch (e) {
       if (err) {
         err.hidden = false;
-        err.textContent = (e as Error).message || t("account.error.save");
+        err.textContent = localizeError((e as Error).message) || t("account.error.save");
       }
     }
   });
