@@ -232,22 +232,6 @@ export function activateRestaurant(id: number): Promise<{ ok: boolean; status: s
   return api(`/api/restaurants/${id}/activate`, { method: "POST" });
 }
 
-/* ---- bookings (campaigns) + post view ------------------------------------ */
-
-export interface Booking {
-  id: number;
-  creator_id: number;
-  creator_name: string | null;
-  creator_email: string | null;
-  creator_avatar: string | null;
-  status: string; // proposed | accepted | live | completed | cancelled
-  agreed_rate_eur: number | null;
-  deliverable: string | null;
-  scheduled_date: string | null; // ISO "YYYY-MM-DD"
-  created_at: string; // ISO datetime
-  post_count: number;
-}
-
 /* ---- campaigns (redesign) ------------------------------------------------ */
 
 export interface Campaign {
@@ -317,86 +301,6 @@ export function getCampaign(restaurantId: number, campaignId: number): Promise<C
 
 export function launchCampaign(restaurantId: number, campaignId: number): Promise<Campaign> {
   return api(`/api/restaurants/${restaurantId}/campaigns/${campaignId}/launch`, { method: "POST" });
-}
-
-/* ---- creators directory + reviews ---------------------------------------- */
-
-export interface CreatorSocial {
-  platform: string;
-  handle: string | null;
-  follower_count: number | null;
-  status?: string;
-}
-
-export interface CreatorSummary {
-  id: number;
-  display_name: string | null;
-  city: string | null;
-  avatar_url: string | null;
-  categories: string[];
-  base_rate_eur: number | null;
-  follower_total: number;
-  socials: CreatorSocial[] | null;
-  rating_avg: number | null;
-  rating_count: number;
-}
-
-export interface CreatorReview {
-  rating: number;
-  comment: string | null;
-  created_at: string;
-  restaurant_name: string;
-}
-
-export interface CreatorDetail {
-  creator: {
-    id: number;
-    display_name: string | null;
-    bio: string | null;
-    city: string | null;
-    categories: string[];
-    languages: string[];
-    avatar_url: string | null;
-    base_rate_eur: number | null;
-  };
-  socials: CreatorSocial[];
-  rating_avg: number | null;
-  rating_count: number;
-  reviews: CreatorReview[];
-  my_review: { rating: number; comment: string | null } | null;
-  can_review: boolean;
-  already_invited: boolean;
-}
-
-export function listCreators(opts: { q?: string; platform?: string; category?: string } = {}):
-  Promise<{ creators: CreatorSummary[] }> {
-  const p = new URLSearchParams();
-  if (opts.q) p.set("q", opts.q);
-  if (opts.platform) p.set("platform", opts.platform);
-  if (opts.category) p.set("category", opts.category);
-  const qs = p.toString();
-  return api(`/api/creators${qs ? "?" + qs : ""}`);
-}
-
-export function getCreator(creatorId: number, restaurantId?: number): Promise<CreatorDetail> {
-  const q = restaurantId ? `?restaurant_id=${restaurantId}` : "";
-  return api(`/api/creators/${creatorId}${q}`);
-}
-
-export function inviteCreator(restaurantId: number, creatorId: number):
-  Promise<{ id: number; status: string }> {
-  return api(`/api/restaurants/${restaurantId}/campaigns`, {
-    method: "POST",
-    json: { creator_id: creatorId, status: "proposed" },
-  });
-}
-
-export function reviewCreator(restaurantId: number, creatorId: number, rating: number, comment: string):
-  Promise<{ id: number; rating: number; comment: string | null }> {
-  return api(`/api/restaurants/${restaurantId}/creators/${creatorId}/review`, {
-    method: "POST",
-    json: { rating, comment: comment || null },
-  });
 }
 
 /* ---- messaging ----------------------------------------------------------- */

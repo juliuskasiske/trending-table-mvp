@@ -34,71 +34,27 @@
   font-weight: 600;
 }
 
-/* ---- bookings table ------------------------------------------------------ */
-.bk-wrap {
+/* Unified status pill — one shape + one width for every status, campaign and
+ * restaurant alike, so pills line up across cards instead of hugging their text. */
+.tt-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 128px;
+  padding: 5px 12px;
+  font: 800 11px/1.1 var(--font);
+  letter-spacing: 0.01em;
   border: 2px solid var(--ink);
-  background: var(--panel);
-  box-shadow: 6px 6px 0 var(--ink);
-  overflow-x: auto;
-}
-.bk-table { width: 100%; border-collapse: collapse; }
-.bk-table th, .bk-table td {
-  text-align: left;
-  padding: 14px 16px;
-  border-bottom: 2px solid rgba(23, 23, 23, 0.1);
-  font-size: 13.5px;
+  text-align: center;
   white-space: nowrap;
 }
-.bk-table th {
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: none;
-  letter-spacing: 0.02em;
-  color: var(--muted);
-  border-bottom: 2px solid var(--ink);
-}
-.bk-table td { font-weight: 700; }
-.bk-table tbody tr:last-child td { border-bottom: none; }
-.bk-table tbody tr:hover td { background: rgba(43, 85, 255, 0.06); }
-
-.bk-creator { display: flex; align-items: center; gap: 12px; }
-.bk-avatar {
-  width: 38px; height: 38px;
-  border: 2px solid var(--ink);
-  background-size: cover; background-position: center;
-  background-color: var(--bg);
-  flex-shrink: 0;
-  display: grid; place-items: center;
-  font: 800 15px/1 var(--font-display);
-  color: var(--ink);
-}
-.bk-status {
-  display: inline-block;
-  padding: 5px 10px;
-  font-size: 11px;
-  font-weight: 800;
-  border: 2px solid var(--ink);
-}
-.bk-status.pending { background: var(--accent); color: var(--on-accent); }   /* proposed */
-.bk-status.confirmed { background: var(--accent-2); color: #fff; }           /* accepted */
-.bk-status.live { background: #16a34a; color: #fff; }                        /* live */
-.bk-status.completed { background: var(--ink); color: #fff; }
-.bk-status.cancelled { background: var(--bg); color: var(--muted); text-decoration: line-through; }
-
-.bk-view-link {
-  color: var(--accent-2);
-  font-weight: 800;
-  text-decoration: none;
-  border: 0;
-  background: none;
-  cursor: pointer;
-  border-bottom: 2px solid var(--accent-2);
-  font-size: 13.5px;
-  font-family: var(--font);
-  padding: 0;
-}
-.bk-view-link:hover { color: var(--accent); border-color: var(--accent); }
-.bk-muted { color: var(--muted); }
+.tt-pill--draft { background: var(--bg); color: var(--muted); }
+.tt-pill--active { background: #16a34a; color: #fff; }
+.tt-pill--completed { background: var(--ink); color: #fff; }
+.tt-pill--cancelled { background: var(--bg); color: var(--muted); text-decoration: line-through; }
+.tt-pill--provisioning { background: var(--accent-2); color: #fff; }
+.tt-pill--suspended,
+.tt-pill--deleted { background: #fdeef2; color: var(--accent); border-color: var(--accent); }
 
 /* ---- post view (content grid) -------------------------------------------- */
 .ct-back {
@@ -396,7 +352,7 @@ body.no-scroll { overflow: hidden; }
 .dash-card-open:hover { background: var(--bg); }
 .dash-card-food { display: inline-grid; place-items: center; width: 42px; height: 42px; flex-shrink: 0; border: 2px solid var(--ink); background: var(--accent); color: var(--on-accent); }
 .dash-card-food svg { width: 22px; height: 22px; }
-.dash-card-body { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.dash-card-body { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; }
 .dash-card-name { font: 800 17px/1.15 var(--font-display); letter-spacing: -0.01em; }
 .dash-card-manage {
   border: 0; border-top: 2px solid var(--ink); background: var(--bg); cursor: pointer;

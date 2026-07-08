@@ -10,39 +10,34 @@ import "./styles/onboarding.css"; // shared card / field / input / button / chip
 import "./styles/admin.css"; // shared .admin-title + .pill
 import "./styles/account.css";
 import "./styles/platform.css";
-import "./styles/messages.css";
 import {
   changePassword,
   createCampaign,
   createRestaurant,
   deleteAccount,
+  deleteRestaurant,
   digitizeMenuUrl,
   getCampaign,
-  getGuidelines,
   getMe,
   getMenu,
   getRestaurant,
-  getThread,
   launchCampaign,
   listCampaigns,
   listRestaurants,
-  listThreads,
   logout,
-  putGuidelines,
   putMenu,
   putProfile,
   resendVerification,
   searchPlaces,
-  sendMessage,
   type Campaign,
   type CampaignDetail,
   type CampaignPost,
-  type Message,
   type Principal,
   type RestaurantSummary,
 } from "./api.ts";
 import { MenuItem, GUIDELINE_PRESETS, defaultGuidelines, type PlaceSuggestion } from "./types.ts";
-import { getLang, initI18n, onLangChange, setLang, t } from "./i18n.ts";
+import { getLang, initI18n, onLangChange, setLang, t, tChip } from "./i18n.ts";
+import { fmtEur } from "./format.ts";
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string) =>
   document.getElementById(id) as T | null;
@@ -57,7 +52,7 @@ const locale = () => (getLang() === "de" ? "de-DE" : "en-US");
 const svg = (paths: string) =>
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
 const ic = {
-  dashboard: svg('<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>'),
+  restaurants: svg('<path d="M3 9l1.3-4.6A1 1 0 0 1 5.3 4h13.4a1 1 0 0 1 1 .7L21 9"/><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"/><path d="M9.5 20v-5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v5"/>'),
   creators: svg('<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/>'),
   campaigns: svg('<path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>'),
   messages: svg('<path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z"/>'),
@@ -120,56 +115,32 @@ const fmtDateTime = (iso: string | null | undefined): string => {
     : new Intl.DateTimeFormat(locale(), { day: "numeric", month: "long", year: "numeric" }).format(d);
 };
 
-/** Compact chat timestamp: today → HH:MM, otherwise a short date. */
-const msgTime = (iso: string | null | undefined): string => {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return "";
-  const now = new Date();
-  const sameDay = d.toDateString() === now.toDateString();
-  return sameDay
-    ? new Intl.DateTimeFormat(locale(), { hour: "2-digit", minute: "2-digit" }).format(d)
-    : new Intl.DateTimeFormat(locale(), { day: "numeric", month: "short" }).format(d);
-};
+// Uniform status pill (shared .tt-pill base + per-status modifier). Campaign and
+// restaurant statuses both use it so every pill is the same width and shape.
+const CAMPAIGN_STATUSES = ["draft", "active", "completed", "cancelled"] as const;
+const REST_STATUSES = ["provisioning", "active", "suspended", "deleted"] as const;
+const campaignPill = (s: string): string =>
+  `tt-pill tt-pill--${(CAMPAIGN_STATUSES as readonly string[]).includes(s) ? s : "draft"}`;
+const restPill = (s: string): string =>
+  `tt-pill tt-pill--${(REST_STATUSES as readonly string[]).includes(s) ? s : "provisioning"}`;
 
-// campaign status → pill class + i18n label key
-const statusMeta = (s: string): { cls: string; key: string } => {
-  const map: Record<string, string> = {
-    draft: "pending", active: "live", completed: "completed", cancelled: "cancelled",
-  };
-  return { cls: map[s] || "pending", key: s };
-};
-
-// € amount (backend returns numeric as a string like "500.00"), German-style trailing €.
-const fmtEur = (v: string | number | null | undefined): string => {
-  if (v === null || v === undefined || v === "") return "—";
-  const n = typeof v === "string" ? parseFloat(v) : v;
-  if (!Number.isFinite(n)) return "—";
-  return new Intl.NumberFormat(locale(), { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(n) + " €";
-};
 
 /* ---- state --------------------------------------------------------------- */
 
-type MainView = "dashboard" | "campaigns" | "creators" | "messages" | "settings";
-type SettingsTab = "restaurants" | "account";
-type Tab = "profile" | "menu" | "guidelines";
+type MainView = "restaurants" | "campaigns" | "creators" | "messages" | "settings";
+type Tab = "profile" | "menu";
 
 let me: Principal | null = null;
 let restaurants: RestaurantSummary[] = [];
-let activeRestaurantId: number | null = null; // which restaurant Campaigns/Messages act on
-let mainView: MainView = "dashboard";
-let settingsTab: SettingsTab = "restaurants";
-let detail: { id: number; tab: Tab } | null = null;
+let activeRestaurantId: number | null = null; // which restaurant Campaigns act on
+let mainView: MainView = "restaurants";
+let detail: { id: number; tab: Tab } | null = null; // open restaurant (manage) within the Restaurants view
 let campaignView: number | null = null; // open campaign id (detail view)
-let msgActive: number | null = null; // creator_id of the open conversation
-let msgPollTimer: number | undefined;
-let msgLastId = 0; // latest painted message id (avoids needless re-render on poll)
 
 const main = () => byId("acct-main")!;
 const activeRestaurant = (): RestaurantSummary | null =>
   restaurants.find((r) => r.id === activeRestaurantId) ?? restaurants[0] ?? null;
 const restName = () => activeRestaurant()?.name || "Restaurant";
-const initial = (s: string | null | undefined) => (s || "?").trim().charAt(0).toUpperCase();
 const avatarStyle = (url: string | null | undefined) =>
   url ? ` style="background-image:url('${esc(url)}')"` : "";
 
@@ -183,7 +154,7 @@ function shell(): string {
   <aside class="pnav">
     <div class="pnav-logo">tt<span class="dot">.</span></div>
     <nav class="pnav-list">
-      ${item("dashboard")}
+      ${item("restaurants")}
       ${item("campaigns")}
       ${item("creators")}
       ${item("messages")}
@@ -223,10 +194,14 @@ function setNavActive(): void {
 function render(): void {
   setNavActive();
   const m = main();
-  if (mainView === "dashboard") { void renderDashboard(m); return; }
+  if (mainView === "restaurants") {
+    if (detail) { renderRestaurantDetail(detail.id, detail.tab, m); return; }
+    renderRestaurants(m);
+    return;
+  }
   if (mainView === "campaigns") { void renderCampaigns(m); return; }
-  if (mainView === "creators") return renderComingSoon(m, "creators");
-  if (mainView === "messages") { void renderMessages(m); return; }
+  if (mainView === "creators") return renderComingSoon(m, "creators", "creators.verifying");
+  if (mainView === "messages") return renderComingSoon(m, "messages", "messages.comingSoon");
   renderSettings(m);
 }
 
@@ -253,7 +228,7 @@ function fauxContent(): string {
     <div class="fx-cards">${rep(9, card)}</div>`;
 }
 
-function renderComingSoon(m: HTMLElement, key: MainView): void {
+function renderComingSoon(m: HTMLElement, key: MainView, subtitleKey: string): void {
   m.innerHTML = `
     <div class="coming-wrap">
       <div class="coming-blur" aria-hidden="true">
@@ -262,20 +237,20 @@ function renderComingSoon(m: HTMLElement, key: MainView): void {
       </div>
       <div class="coming-overlay">
         <div class="coming-badge">${esc(t("account.comingSoon"))}</div>
-        <p>${esc(t("creators.verifying"))}</p>
+        <p>${esc(t(subtitleKey))}</p>
       </div>
     </div>`;
 }
 
-/* ---- dashboard (the account's restaurants) ------------------------------- */
+/* ---- restaurants (the account's restaurants) ----------------------------- */
 
-function renderDashboard(m: HTMLElement): void {
+function renderRestaurants(m: HTMLElement): void {
   m.innerHTML = `
     <div class="pl-toolbar">
-      <h1 class="admin-title">${esc(t("account.nav.dashboard"))}</h1>
-      <button type="button" class="btn-invite" id="dash-new">${ic.plus}<span>${esc(t("dash.new"))}</span></button>
+      <h1 class="admin-title">${esc(t("account.nav.restaurants"))}</h1>
+      <button type="button" class="btn-invite" id="dash-new">${ic.plus}<span>${esc(t("restaurants.new"))}</span></button>
     </div>
-    <p class="pl-sub">${esc(t("dash.sub"))}</p>
+    <p class="pl-sub">${esc(t("restaurants.sub"))}</p>
     <div id="dash-create" hidden></div>
     <div class="dash-grid" id="dash-grid"></div>`;
   byId("dash-new")?.addEventListener("click", toggleRestaurantForm);
@@ -292,12 +267,12 @@ function renderRestaurantCards(): void {
           <span class="dash-card-food">${ic.food}</span>
           <span class="dash-card-body">
             <span class="dash-card-name">${esc(r.name || "—")}</span>
-            <span class="pill ${esc(r.status)}">${esc(t(`account.rstatus.${r.status}`) || r.status)}</span>
+            <span class="${restPill(r.status)}">${esc(t(`account.rstatus.${r.status}`) || r.status)}</span>
           </span>
         </button>
-        <button type="button" class="dash-card-manage" data-manage="${r.id}">${esc(t("dash.manage"))}</button>
+        <button type="button" class="dash-card-manage" data-manage="${r.id}">${esc(t("restaurants.manage"))}</button>
       </div>`).join("")
-    : `<div class="pl-empty">${esc(t("dash.empty"))}</div>`;
+    : `<div class="pl-empty">${esc(t("restaurants.empty"))}</div>`;
   grid.querySelectorAll<HTMLElement>("[data-open]").forEach((b) =>
     b.addEventListener("click", () => { activeRestaurantId = Number(b.dataset.open); navTo("campaigns"); }));
   grid.querySelectorAll<HTMLElement>("[data-manage]").forEach((b) =>
@@ -320,17 +295,17 @@ function toggleRestaurantForm(): void {
   box.hidden = false;
   box.innerHTML = `
     <div class="camp-create">
-      <div class="camp-field"><label>${esc(t("dash.search"))}</label>
+      <div class="camp-field"><label>${esc(t("restaurants.search"))}</label>
         <div class="dash-search-row">
-          <input class="input" id="dash-q" type="text" autocomplete="off" placeholder="${esc(t("dash.searchPh"))}" />
-          <button type="button" class="btn-review" id="dash-search-btn">${esc(t("dash.searchBtn"))}</button>
+          <input class="input" id="dash-q" type="text" autocomplete="off" placeholder="${esc(t("restaurants.searchPh"))}" />
+          <button type="button" class="btn-review" id="dash-search-btn">${esc(t("restaurants.searchBtn"))}</button>
         </div>
         <div class="dash-results" id="dash-results" hidden></div>
       </div>
       <div class="dash-manual">
-        <span class="dash-or">${esc(t("dash.or"))}</span>
-        <input class="input" id="dash-manual" type="text" placeholder="${esc(t("dash.manualPh"))}" />
-        <button type="button" class="btn-invite" id="dash-manual-add">${esc(t("dash.add"))}</button>
+        <span class="dash-or">${esc(t("restaurants.or"))}</span>
+        <input class="input" id="dash-manual" type="text" placeholder="${esc(t("restaurants.manualPh"))}" />
+        <button type="button" class="btn-invite" id="dash-manual-add">${esc(t("restaurants.add"))}</button>
       </div>
       <p class="field-error" id="dash-err" hidden></p>
     </div>`;
@@ -342,7 +317,7 @@ function toggleRestaurantForm(): void {
     const btn = byId<HTMLButtonElement>("dash-search-btn")!;
     btn.disabled = true;
     results.hidden = false;
-    results.innerHTML = `<div class="dash-result-empty">${esc(t("dash.searching"))}</div>`;
+    results.innerHTML = `<div class="dash-result-empty">${esc(t("restaurants.searching"))}</div>`;
     let places: PlaceSuggestion[];
     try {
       places = await searchPlaces(q);
@@ -352,7 +327,7 @@ function toggleRestaurantForm(): void {
     } finally {
       btn.disabled = false;
     }
-    if (!places.length) { results.innerHTML = `<div class="dash-result-empty">${esc(t("dash.noMatch"))}</div>`; return; }
+    if (!places.length) { results.innerHTML = `<div class="dash-result-empty">${esc(t("restaurants.noMatch"))}</div>`; return; }
     results.innerHTML = places.map((p) =>
       `<button type="button" class="dash-result" data-pid="${esc(p.placeId)}">
         <span class="dash-result-name">${esc(p.name)}</span><span class="dash-result-addr">${esc(p.address)}</span></button>`).join("");
@@ -497,7 +472,7 @@ function guidelineGroupHtml(g: { group: "show" | "mustInclude" | "avoid"; labelK
   return `<div class="camp-field">
     <label>${esc(t(g.labelKey))}</label>
     <div class="cf-chips" data-group="${g.group}">
-      ${g.presets.map((p) => `<button type="button" class="cf-chip${preselected.has(p) ? " on" : ""}" data-val="${esc(p)}">${esc(p)}</button>`).join("")}
+      ${g.presets.map((p) => `<button type="button" class="cf-chip${preselected.has(p) ? " on" : ""}" data-val="${esc(p)}">${esc(tChip(p))}</button>`).join("")}
     </div>
   </div>`;
 }
@@ -518,11 +493,10 @@ async function loadCampaignList(r: RestaurantSummary): Promise<void> {
     return;
   }
   const card = (c: Campaign): string => {
-    const st = statusMeta(c.status);
     return `<button type="button" class="camp-card" data-cid="${c.id}">
       <div class="camp-card-head">
         <span class="camp-card-title">${esc(c.title || t("campaigns.untitled"))}</span>
-        <span class="bk-status ${st.cls}">${esc(t(`campaigns.status.${st.key}`))}</span>
+        <span class="${campaignPill(c.status)}">${esc(t(`campaigns.status.${c.status}`))}</span>
       </div>
       <div class="camp-card-stats">
         <span><b>${esc(fmtEur(c.budget_eur))}</b> ${esc(t("campaigns.budget"))}</span>
@@ -554,12 +528,11 @@ async function renderCampaignDetail(m: HTMLElement, rid: number, cid: number): P
   }
   if (campaignView !== cid || mainView !== "campaigns") return;
   const c = data.campaign;
-  const st = statusMeta(c.status);
   const g = (c.guidelines || {}) as { show?: string[]; must_include?: string[]; avoid?: string[]; notes?: string };
   const glGroup = (labelKey: string, vals?: string[]) =>
     vals && vals.length
       ? `<div class="camp-gl-row"><span class="camp-gl-key">${esc(t(labelKey))}</span>
-          <span class="camp-gl-vals">${vals.map((v) => `<span class="camp-gl-chip">${esc(v)}</span>`).join("")}</span></div>`
+          <span class="camp-gl-vals">${vals.map((v) => `<span class="camp-gl-chip">${esc(tChip(v))}</span>`).join("")}</span></div>`
       : "";
   const glHtml = [
     glGroup("account.g.show", g.show),
@@ -582,7 +555,7 @@ async function renderCampaignDetail(m: HTMLElement, rid: number, cid: number): P
       <div class="camp-detail-head">
         <div>
           <div class="ct-name">${esc(c.title || t("campaigns.untitled"))}</div>
-          <span class="bk-status ${st.cls}">${esc(t(`campaigns.status.${st.key}`))}</span>
+          <span class="${campaignPill(c.status)}">${esc(t(`campaigns.status.${c.status}`))}</span>
         </div>
         ${launchBtn}
       </div>
@@ -634,210 +607,50 @@ async function renderCampaignDetail(m: HTMLElement, rid: number, cid: number): P
   });
 }
 
-
-/* ---- messages (two-pane inbox) ------------------------------------------- */
-
-async function renderMessages(m: HTMLElement): Promise<void> {
-  stopMsgPoll();
-  const r = activeRestaurant();
-  if (!r) {
-    m.innerHTML = `<h1 class="admin-title">${esc(t("account.nav.messages"))}</h1>
-      <div class="pl-empty">${esc(t("bookings.noRestaurant"))}</div>`;
-    return;
-  }
-  m.innerHTML = `
-    <h1 class="admin-title">${esc(t("account.nav.messages"))}</h1>
-    <div class="msg-app${msgActive != null ? " thread-open" : ""}" id="msg-app">
-      <div class="msg-list" id="msg-list"><p class="acct-loading" style="padding:20px">…</p></div>
-      <div class="msg-convo" id="msg-convo"></div>
-    </div>`;
-  await loadThreadList(r);
-  if (msgActive != null) await openConversation(r, msgActive);
-  else renderConvoEmpty();
-  msgPollTimer = window.setInterval(() => {
-    if (mainView !== "messages") return;
-    void loadThreadList(r);
-    if (msgActive != null) void paintBubbles(r, msgActive, true);
-  }, 5000);
-}
-
-function renderConvoEmpty(): void {
-  const convo = byId("msg-convo");
-  if (convo) convo.innerHTML = `<div class="msg-convo-empty">${esc(t("messages.selectThread"))}</div>`;
-}
-
-async function loadThreadList(r: RestaurantSummary): Promise<void> {
-  const list = byId("msg-list");
-  if (!list) return;
-  let threads;
-  try {
-    threads = (await listThreads(r.id)).threads;
-  } catch {
-    list.innerHTML = `<div class="msg-list-empty">${esc(t("account.error.load"))}</div>`;
-    return;
-  }
-  if (mainView !== "messages") return;
-  list.innerHTML = threads.length
-    ? threads.map((th) => {
-        const name = th.creator_name || t("bookings.creatorFallback");
-        const av = th.creator_avatar
-          ? `<span class="msg-thread-av"${avatarStyle(th.creator_avatar)}></span>`
-          : `<span class="msg-thread-av">${esc(initial(name))}</span>`;
-        const preview = (th.last_sender === "restaurant" ? t("messages.youPrefix") + " " : "") + (th.last_body || "");
-        const unread = th.unread > 0 ? `<span class="msg-unread">${th.unread}</span>` : "";
-        return `<button type="button" class="msg-thread ${msgActive === th.creator_id ? "on" : ""}" data-cid="${th.creator_id}">
-          ${av}
-          <span class="msg-thread-main">
-            <span class="msg-thread-top"><span class="msg-thread-name">${esc(name)}</span><span class="msg-thread-time">${esc(msgTime(th.last_at))}</span></span>
-            <span class="msg-thread-preview">${esc(preview)}</span>
-          </span>${unread}
-        </button>`;
-      }).join("")
-    : `<div class="msg-list-empty">${esc(t("messages.noThreads"))}</div>`;
-  list.querySelectorAll<HTMLElement>(".msg-thread").forEach((el) =>
-    el.addEventListener("click", () => void openConversation(r, Number(el.dataset.cid))));
-}
-
-async function openConversation(r: RestaurantSummary, cid: number): Promise<void> {
-  msgActive = cid;
-  msgLastId = 0;
-  byId("msg-app")?.classList.add("thread-open");
-  byId("msg-list")?.querySelectorAll<HTMLElement>(".msg-thread")
-    .forEach((el) => el.classList.toggle("on", Number(el.dataset.cid) === cid));
-  const convo = byId("msg-convo");
-  if (!convo) return;
-  convo.innerHTML = `
-    <div class="msg-convo-head" id="msg-head"></div>
-    <div class="msg-bubbles" id="msg-bubbles"><p class="acct-loading" style="padding:20px">…</p></div>
-    <div class="msg-composer">
-      <textarea class="msg-input" id="msg-input" rows="1" placeholder="${esc(t("messages.placeholder"))}"></textarea>
-      <button type="button" class="msg-send" id="msg-send" aria-label="${esc(t("messages.send"))}">${ic.send}</button>
-    </div>`;
-  const input = byId<HTMLTextAreaElement>("msg-input")!;
-  const send = byId<HTMLButtonElement>("msg-send")!;
-  const doSend = async (): Promise<void> => {
-    const body = input.value.trim();
-    if (!body) return;
-    input.value = "";
-    send.disabled = true;
-    try {
-      await sendMessage(r.id, cid, body);
-      await paintBubbles(r, cid, false);
-      await loadThreadList(r);
-    } finally {
-      send.disabled = false;
-      input.focus();
-    }
-  };
-  send.addEventListener("click", () => void doSend());
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void doSend(); }
-  });
-  await paintBubbles(r, cid, false);
-  input.focus();
-}
-
-async function paintBubbles(r: RestaurantSummary, cid: number, pollMode: boolean): Promise<void> {
-  if (msgActive !== cid || mainView !== "messages") return;
-  let th;
-  try {
-    th = await getThread(r.id, cid);
-  } catch {
-    return;
-  }
-  if (msgActive !== cid || mainView !== "messages") return;
-  const msgs = th.messages;
-  const latest = msgs.length ? msgs[msgs.length - 1].id : 0;
-  if (pollMode && latest === msgLastId) return;
-  msgLastId = latest;
-
-  const name = th.peer.name || t("bookings.creatorFallback");
-  const head = byId("msg-head");
-  if (head) {
-    const av = th.peer.avatar
-      ? `<span class="msg-convo-av"${avatarStyle(th.peer.avatar)}></span>`
-      : `<span class="msg-convo-av">${esc(initial(name))}</span>`;
-    head.innerHTML = `<button type="button" class="msg-convo-back" id="msg-back" aria-label="${esc(t("messages.back"))}">${ic.chevronLeft}</button>${av}<span class="msg-convo-name">${esc(name)}</span>`;
-    byId("msg-back")?.addEventListener("click", () => {
-      msgActive = null;
-      byId("msg-app")?.classList.remove("thread-open");
-      byId("msg-list")?.querySelectorAll<HTMLElement>(".msg-thread").forEach((el) => el.classList.remove("on"));
-      renderConvoEmpty();
-    });
-  }
-  const bubbles = byId("msg-bubbles");
-  if (bubbles) {
-    bubbles.innerHTML = msgs.length
-      ? msgs.map(bubble).join("")
-      : `<div class="msg-convo-empty">${esc(t("messages.sayHi", { name }))}</div>`;
-    bubbles.scrollTop = bubbles.scrollHeight;
-  }
-}
-
-function bubble(mm: Message): string {
-  const dir = mm.sender_role === "restaurant" ? "out" : "in";
-  return `<div class="msg-row ${dir}"><div class="msg-bubble">${esc(mm.body)}</div><span class="msg-time">${esc(msgTime(mm.created_at))}</span></div>`;
-}
-
 function renderSettings(m: HTMLElement): void {
-  const tab = (id: SettingsTab) =>
-    `<button type="button" class="acct-subtab ${settingsTab === id ? "on" : ""}" data-st="${id}">${esc(t(`account.settings.${id}`))}</button>`;
   m.innerHTML = `
     <h1 class="admin-title">${esc(t("account.nav.settings"))}</h1>
-    <div class="acct-subtabs">${tab("restaurants")}${tab("account")}</div>
     <div id="settings-body"><p class="acct-loading">…</p></div>`;
-  m.querySelectorAll<HTMLElement>(".acct-subtab").forEach((b) =>
-    b.addEventListener("click", () => openSettings(b.dataset.st as SettingsTab)),
-  );
-  const body = byId("settings-body")!;
-  if (settingsTab === "account") renderAccountView(body);
-  else if (detail) renderDetail(detail.id, detail.tab, body);
-  else renderRestaurantsList(body);
+  renderAccountView(byId("settings-body")!);
 }
 
-/* ---- settings › restaurants --------------------------------------------- */
+/* ---- restaurant detail (manage: profile + menu) -------------------------- */
 
-function renderRestaurantsList(body: HTMLElement): void {
-  const cards = restaurants.length
-    ? restaurants
-        .map(
-          (r) => `
-      <button type="button" class="acct-card" data-open="${r.id}">
-        <span class="acct-card-name">${esc(r.name || "—")}</span>
-        <span class="acct-card-meta">
-          <span class="pill ${esc(r.status)}">${esc(t(`account.rstatus.${r.status}`) || r.status)}</span>
-        </span>
-      </button>`,
-        )
-        .join("")
-    : `<p class="acct-empty">${esc(t("account.rest.empty"))}</p>`;
-  body.innerHTML = `
-    <div class="acct-cards">${cards}</div>
-    <button type="button" class="btn btn-primary acct-add" id="acct-add-rest">${esc(t("account.rest.add"))}</button>`;
-  byId("acct-add-rest")?.addEventListener("click", () => navTo("dashboard"));
-  body.querySelectorAll<HTMLElement>("[data-open]").forEach((b) =>
-    b.addEventListener("click", () => openRestaurant(Number(b.dataset.open))),
-  );
-}
-
-function renderDetail(id: number, tab: Tab, body: HTMLElement): void {
+function renderRestaurantDetail(id: number, tab: Tab, m: HTMLElement): void {
   const r = restaurants.find((x) => x.id === id);
-  const tabs: Tab[] = ["profile", "menu", "guidelines"];
-  body.innerHTML = `
-    <button type="button" class="linklike acct-back" id="acct-back">← ${esc(t("account.settings.restaurants"))}</button>
-    <h2 class="acct-detail-name">${esc(r?.name || "—")}</h2>
+  const tabs: Tab[] = ["profile", "menu"];
+  m.innerHTML = `
+    <button type="button" class="ct-back" id="acct-back">← ${esc(t("account.nav.restaurants"))}</button>
+    <h1 class="admin-title acct-detail-name">${esc(r?.name || "—")}</h1>
     <div class="acct-tabs">
       ${tabs.map((tb) => `<button type="button" class="acct-tab ${tb === tab ? "on" : ""}" data-tab="${tb}">${esc(t(`account.tab.${tb}`))}</button>`).join("")}
     </div>
-    <div class="acct-tab-body" id="acct-tab-body"><p class="acct-loading">…</p></div>`;
+    <div class="acct-tab-body" id="acct-tab-body"><p class="acct-loading">…</p></div>
+    <div class="danger-zone">
+      <h2>${esc(t("restaurants.delete"))}</h2>
+      <p class="acct-note">${esc(t("restaurants.deleteHint"))}</p>
+      <button type="button" class="btn btn-danger" id="rest-del">${esc(t("restaurants.delete"))}</button>
+    </div>`;
   byId("acct-back")?.addEventListener("click", () => backToList());
-  body.querySelectorAll<HTMLElement>(".acct-tab").forEach((b) =>
+  m.querySelectorAll<HTMLElement>(".acct-tab").forEach((b) =>
     b.addEventListener("click", () => setDetailTab(b.dataset.tab as Tab)),
   );
+  byId("rest-del")?.addEventListener("click", () => {
+    confirmBox(
+      t("restaurants.delete"),
+      t("restaurants.deleteConfirm", { name: r?.name ?? "" }),
+      r?.name ?? "",
+      async () => {
+        await deleteRestaurant(id);
+        restaurants = (await listRestaurants().catch(() => ({ restaurants }))).restaurants;
+        if (activeRestaurantId === id) activeRestaurantId = restaurants[0]?.id ?? null;
+        backToList();
+      },
+    );
+  });
   const tb = byId("acct-tab-body")!;
   if (tab === "profile") void renderProfile(id, tb);
-  else if (tab === "menu") void renderMenu(id, tb);
-  else void renderGuidelines(id, tb);
+  else void renderMenu(id, tb);
 }
 
 /** A labelled input row. */
@@ -966,32 +779,6 @@ async function renderMenu(id: number, body: HTMLElement): Promise<void> {
   draw();
 }
 
-async function renderGuidelines(id: number, body: HTMLElement): Promise<void> {
-  const { guidelines: g } = await getGuidelines(id);
-  const v = g ?? { show: [], must_include: [], avoid: [], handle: "", notes: "" };
-  const join = (a: string[]) => (a ?? []).join(", ");
-  body.innerHTML = `
-    <p class="acct-note">${esc(t("account.g.hint"))}</p>
-    ${field("g-show", t("account.g.show"), join(v.show))}
-    ${field("g-must", t("account.g.must"), join(v.must_include))}
-    ${field("g-avoid", t("account.g.avoid"), join(v.avoid))}
-    ${field("g-handle", t("account.g.handle"), v.handle ?? "")}
-    ${field("g-notes", t("account.g.notes"), v.notes ?? "", { area: true })}
-    ${saveButton("g-save")}`;
-  byId("g-save")?.addEventListener("click", async () => {
-    const arr = (i: string) => (byId<HTMLInputElement>(i)?.value ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-    await putGuidelines(id, {
-      show: arr("g-show"),
-      must_include: arr("g-must"),
-      avoid: arr("g-avoid"),
-      handle: byId<HTMLInputElement>("g-handle")?.value.trim() || undefined,
-      notes: byId<HTMLTextAreaElement>("g-notes")?.value.trim() || undefined,
-    });
-    flashSaved("g-save-ok");
-  });
-}
-
-
 /* ---- settings › account -------------------------------------------------- */
 
 function renderAccountView(body: HTMLElement): void {
@@ -1101,27 +888,21 @@ function confirmBox(title: string, message: string, matchWord: string | null, on
 /* ---- navigation ---------------------------------------------------------- */
 
 function navTo(v: MainView): void {
-  if (v !== "messages") { msgActive = null; stopMsgPoll(); }
   mainView = v;
   campaignView = null;
+  detail = null;
   closeRestMenu();
   render();
 }
 
-function stopMsgPoll(): void {
-  window.clearInterval(msgPollTimer);
-  msgPollTimer = undefined;
-}
-function openSettings(tab: SettingsTab): void {
+function openSettings(): void {
   mainView = "settings";
-  settingsTab = tab;
   detail = null;
   closeRestMenu();
   render();
 }
 function openRestaurant(id: number): void {
-  mainView = "settings";
-  settingsTab = "restaurants";
+  mainView = "restaurants";
   detail = { id, tab: "profile" };
   render();
 }
@@ -1150,7 +931,7 @@ function wireShell(): void {
   document.addEventListener("click", (e) => {
     if (!menu.hidden && !(e.target as HTMLElement).closest(".pnav-foot")) menu.hidden = true;
   });
-  byId("menu-settings")?.addEventListener("click", () => openSettings(settingsTab));
+  byId("menu-settings")?.addEventListener("click", () => openSettings());
   byId("menu-logout")?.addEventListener("click", async () => {
     await logout();
     window.location.assign("/login");

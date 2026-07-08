@@ -33,6 +33,7 @@ import {
   type PipelineSettings,
 } from "./api.ts";
 import type { PlaceSuggestion } from "./types.ts";
+import { fmtEur as fmtEurShared } from "./format.ts";
 
 type View = "overview" | "pipeline" | "restaurants" | "creators" | "outreach" | "schema";
 
@@ -182,11 +183,9 @@ function fmtDate(iso: string): string {
       });
 }
 
-function fmtEur(v: number | string | null): string {
-  if (v === null || v === undefined || v === "") return "—";
-  const n = typeof v === "string" ? parseFloat(v) : v;
-  return Number.isFinite(n) ? "€" + new Intl.NumberFormat().format(Math.round(n)) : "—";
-}
+// Control tower is English + whole-euro, €-prefixed.
+const fmtEur = (v: number | string | null): string =>
+  fmtEurShared(v, { decimals: 0, position: "prefix", locale: "en-US" });
 
 const statusPill = (s: string) => `<span class="pill ${esc(s)}">${esc(s)}</span>`;
 const boolPill = (v: boolean) =>
