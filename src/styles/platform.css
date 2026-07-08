@@ -362,3 +362,57 @@ body.no-scroll { overflow: hidden; }
 .camp-guidelines { margin: 16px 0 0; font-size: 14px; line-height: 1.5; color: var(--ink); }
 .ct-post-creator { padding: 10px 16px 0; font-weight: 800; font-size: 13px; }
 @media (max-width: 720px) { .camp-detail-stats { grid-template-columns: repeat(2, 1fr); } }
+
+/* ---- campaign guidelines (structured chips) ------------------------------ */
+.camp-guidelines { display: flex; flex-direction: column; gap: 12px; }
+.camp-gl-label { margin: 0; font: 800 12px/1 var(--font); }
+.cf-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.cf-chip {
+  font: 700 12.5px/1 var(--font); color: var(--ink); background: var(--panel);
+  border: 2px solid var(--ink); padding: 7px 12px; cursor: pointer;
+}
+.cf-chip:hover { background: var(--bg); }
+.cf-chip.on { background: var(--accent); color: var(--on-accent); }
+/* read-only guidelines on the campaign detail */
+.camp-gl-view { margin-top: 18px; border-top: 2px solid rgba(23,23,23,0.1); padding-top: 16px; }
+.camp-gl-title { font: 700 15px/1 var(--font-display); margin: 0 0 12px; }
+.camp-gl-row { display: flex; gap: 12px; align-items: baseline; margin-bottom: 10px; flex-wrap: wrap; }
+.camp-gl-key { font: 800 12px/1.4 var(--font); min-width: 110px; color: var(--muted); }
+.camp-gl-vals { display: flex; flex-wrap: wrap; gap: 6px; }
+.camp-gl-chip { font: 700 12px/1 var(--font); border: 2px solid var(--ink); background: var(--bg); padding: 5px 10px; }
+.camp-gl-notes { margin: 10px 0 0; font-size: 14px; line-height: 1.5; }
+
+/* ---- dashboard (restaurants) --------------------------------------------- */
+.dash-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px; }
+.dash-card {
+  border: 2px solid var(--ink); background: var(--panel); box-shadow: 5px 5px 0 var(--ink);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.dash-card.on { box-shadow: 5px 5px 0 var(--accent); }
+.dash-card-open {
+  display: flex; align-items: center; gap: 14px; padding: 18px; background: var(--panel);
+  border: 0; cursor: pointer; text-align: left; width: 100%; font-family: var(--font);
+}
+.dash-card-open:hover { background: var(--bg); }
+.dash-card-food { display: inline-grid; place-items: center; width: 42px; height: 42px; flex-shrink: 0; border: 2px solid var(--ink); background: var(--accent); color: var(--on-accent); }
+.dash-card-food svg { width: 22px; height: 22px; }
+.dash-card-body { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.dash-card-name { font: 800 17px/1.15 var(--font-display); letter-spacing: -0.01em; }
+.dash-card-manage {
+  border: 0; border-top: 2px solid var(--ink); background: var(--bg); cursor: pointer;
+  font: 800 12.5px/1 var(--font); color: var(--ink); padding: 11px; text-align: center;
+}
+.dash-card-manage:hover { background: var(--accent-2); color: #fff; }
+
+.dash-search-row, .dash-manual { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.dash-search-row .input { flex: 1 1 220px; }
+.dash-manual { margin-top: 14px; }
+.dash-manual .input { flex: 1 1 200px; }
+.dash-or { font-weight: 700; font-size: 12.5px; color: var(--muted); }
+.dash-results { position: relative; margin-top: 10px; border: 2px solid var(--ink); background: var(--panel); max-height: 300px; overflow-y: auto; }
+.dash-result { display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left; padding: 10px 14px; background: var(--panel); border: 0; border-bottom: 1px solid #e6e2da; cursor: pointer; }
+.dash-result:last-child { border-bottom: 0; }
+.dash-result:hover { background: var(--bg); }
+.dash-result-name { font-weight: 800; font-size: 14px; }
+.dash-result-addr { font-size: 12.5px; color: var(--muted); }
+.dash-result-empty { padding: 12px 14px; color: var(--muted); font-size: 13px; }

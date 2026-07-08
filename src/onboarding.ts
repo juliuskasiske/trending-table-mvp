@@ -72,12 +72,12 @@ export function initOnboarding(): void {
   const form = document.querySelector<HTMLFormElement>("#onboarding");
   if (!form) return;
 
-  // Campaign redesign: no €50 subscription and no card at signup, and content
-  // guidelines are per-campaign now — so the billing + guidelines steps are
-  // dropped from the flow (account → restaurant → review → done). Their DOM is
-  // kept in place (billing helper code still references the slider etc.) but
-  // hidden and excluded from the step sequence.
-  const SKIP_STEPS = new Set(["billing", "guidelines"]);
+  // Campaign redesign: onboarding now only creates the ACCOUNT. Restaurants (and
+  // their content guidelines, which are per-campaign) are created later in the
+  // dashboard. So every step except "account" (and the "done" screen) is dropped
+  // from the flow. Their DOM stays (helper code still references the slider etc.)
+  // but is hidden and excluded from the sequence.
+  const SKIP_STEPS = new Set(["restaurant", "billing", "guidelines", "review"]);
   const steps = Array.from(form.querySelectorAll<HTMLElement>(".step"))
     .filter((s) => !SKIP_STEPS.has(s.dataset.step || ""));
   const doneIndex = steps.findIndex((s) => s.dataset.step === "done");
@@ -1247,8 +1247,12 @@ export function initOnboarding(): void {
     const nextBtn = steps[index].querySelector<HTMLButtonElement>("[data-next]");
     if (nextBtn) nextBtn.disabled = true;
     try {
-      if (kind === "account") await persistAccount();
-      else if (kind === "restaurant") await persistRestaurant();
+      if (kind === "account") {
+        await persistAccount();
+        // Account is the only onboarding step now — go straight into the app,
+        // where the dashboard is used to create restaurants.
+        if (index + 1 >= flowCount) { window.location.assign("/account"); return; }
+      } else if (kind === "restaurant") await persistRestaurant();
       else if (kind === "billing") await persistBilling();
       else if (kind === "guidelines") await persistGuidelines();
       const target = index + 1;
