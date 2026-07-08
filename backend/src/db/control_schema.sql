@@ -141,6 +141,8 @@ CREATE TABLE IF NOT EXISTS social_accounts (
     handle            TEXT,
     platform_user_id  TEXT,
     follower_count    INTEGER,
+    avg_monthly_views  BIGINT,   -- self-reported during onboarding
+    avg_views_per_post BIGINT,   -- self-reported during onboarding
     access_token_enc  TEXT,
     refresh_token_enc TEXT,
     token_expires_at  TIMESTAMPTZ,

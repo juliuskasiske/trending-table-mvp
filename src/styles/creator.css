@@ -124,3 +124,15 @@
 .cc-err { margin: 0; }
 
 @media (max-width: 560px) { .cc-grid { grid-template-columns: 1fr; } }
+
+/* ---- onboarding: per-platform handle + reach stats ----------------------- */
+.ch-platform {
+  border: 2px solid var(--ink); background: var(--panel);
+  padding: 14px 16px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 10px;
+}
+.ch-plat-head { font: 800 14px/1 var(--font-display); letter-spacing: -0.01em; }
+.ch-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.ch-stats .field { gap: 4px; }
+.ch-stats label { font-size: 11.5px; }
+.ch-hint { color: var(--muted); font-size: 12.5px; font-weight: 600; margin: 0 0 4px; }
+@media (max-width: 520px) { .ch-stats { grid-template-columns: 1fr; } }

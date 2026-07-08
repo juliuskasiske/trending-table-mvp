@@ -37,10 +37,16 @@ class ConnectIn(BaseModel):
     follower_count: int | None = None
 
 
+class PlatformStatsIn(BaseModel):
+    platform: str  # instagram | tiktok | youtube
+    handle: str | None = None
+    follower_count: int | None = None
+    avg_monthly_views: int | None = None
+    avg_views_per_post: int | None = None
+
+
 class HandlesIn(BaseModel):
-    instagram: str | None = None
-    tiktok: str | None = None
-    youtube: str | None = None
+    accounts: list[PlatformStatsIn] = []
 
 
 class PostIn(BaseModel):
@@ -148,34 +154,49 @@ def list_social(principal: dict = Depends(deps.require_creator)) -> dict:
         return {"accounts": cur.fetchall()}
 
 
+_PLATFORMS = ("instagram", "tiktok", "youtube")
+
+
 @router.post("/handles")
 def set_handles(body: HandlesIn, principal: dict = Depends(deps.require_creator)) -> dict:
-    """Capture the creator's social handles early in onboarding. At least one of
-    Instagram / TikTok / YouTube is required. Handles are stored 'pending' until
-    the platform is actually connected (Instagram is connected via OAuth)."""
-    handles = {p: _clean_handle(getattr(body, p)) for p in ("instagram", "tiktok", "youtube")}
-    handles = {p: h for p, h in handles.items() if h}
-    if not handles:
+    """Capture the creator's social handles + self-reported reach stats during
+    onboarding (follower count, average monthly views, average views per post).
+    At least one platform with a handle is required. Handles start 'pending'
+    until the platform is actually connected (Instagram is connected via OAuth)."""
+    rows = []
+    for a in body.accounts:
+        if a.platform not in _PLATFORMS:
+            raise HTTPException(status_code=400, detail=f"Unknown platform: {a.platform}")
+        handle = _clean_handle(a.handle)
+        if not handle:
+            continue
+        rows.append((a.platform, handle, a.follower_count, a.avg_monthly_views, a.avg_views_per_post))
+    if not rows:
         raise HTTPException(status_code=400, detail="Enter at least one handle (Instagram, TikTok, or YouTube).")
     with get_control_connection() as conn, conn.cursor() as cur:
-        for platform, handle in handles.items():
+        for platform, handle, followers, monthly, per_post in rows:
             # New rows start 'pending'; existing rows keep their status (a
-            # connected account stays connected, we just refresh the handle).
+            # connected account stays connected, we just refresh handle + stats).
             cur.execute(
-                "INSERT INTO social_accounts (creator_id, platform, handle, status)"
-                " VALUES (%s, %s, %s, 'pending')"
-                " ON CONFLICT (creator_id, platform) DO UPDATE SET handle = EXCLUDED.handle",
-                (principal["id"], platform, handle),
+                "INSERT INTO social_accounts (creator_id, platform, handle,"
+                "   follower_count, avg_monthly_views, avg_views_per_post, status)"
+                " VALUES (%s, %s, %s, %s, %s, %s, 'pending')"
+                " ON CONFLICT (creator_id, platform) DO UPDATE SET handle = EXCLUDED.handle,"
+                "   follower_count = EXCLUDED.follower_count,"
+                "   avg_monthly_views = EXCLUDED.avg_monthly_views,"
+                "   avg_views_per_post = EXCLUDED.avg_views_per_post",
+                (principal["id"], platform, handle, followers, monthly, per_post),
             )
         conn.commit()
-    return {"ok": True, "handles": handles}
+    return {"ok": True, "count": len(rows)}
 
 
 @router.get("/handles")
 def get_handles(principal: dict = Depends(deps.require_creator)) -> dict:
     with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
-            "SELECT platform, handle, follower_count, status FROM social_accounts"
+            "SELECT platform, handle, follower_count, avg_monthly_views,"
+            "   avg_views_per_post, status FROM social_accounts"
             " WHERE creator_id = %s ORDER BY platform",
             (principal["id"],),
         )

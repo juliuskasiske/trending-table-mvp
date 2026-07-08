@@ -512,12 +512,22 @@ export interface SocialAccount {
   platform: "instagram" | "tiktok" | "youtube" | string;
   handle: string | null;
   follower_count: number | null;
+  avg_monthly_views: number | null;
+  avg_views_per_post: number | null;
   status: string; // pending | connected | expired | revoked
 }
 
-export function setCreatorHandles(h: { instagram?: string; tiktok?: string; youtube?: string }):
-  Promise<{ ok: boolean }> {
-  return api("/api/creator/handles", { method: "POST", json: h });
+export interface PlatformStats {
+  platform: "instagram" | "tiktok" | "youtube";
+  handle: string;
+  follower_count?: number | null;
+  avg_monthly_views?: number | null;
+  avg_views_per_post?: number | null;
+}
+
+export function setCreatorHandles(accounts: PlatformStats[]):
+  Promise<{ ok: boolean; count: number }> {
+  return api("/api/creator/handles", { method: "POST", json: { accounts } });
 }
 
 export function getCreatorHandles(): Promise<{ accounts: SocialAccount[]; instagramEnabled: boolean }> {

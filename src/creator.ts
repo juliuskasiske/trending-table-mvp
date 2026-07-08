@@ -124,8 +124,10 @@ function renderSignup(card: HTMLElement): void {
   });
 }
 
-function handleValue(p: string): string {
-  return accounts.find((a) => a.platform === p)?.handle ?? "";
+function statVal(platform: string, field: "handle" | "follower_count" | "avg_monthly_views" | "avg_views_per_post"): string {
+  const a = accounts.find((x) => x.platform === platform);
+  const v = a ? a[field] : null;
+  return v == null ? "" : String(v);
 }
 
 function renderHandles(card: HTMLElement): void {
@@ -133,16 +135,41 @@ function renderHandles(card: HTMLElement): void {
     <p class="step-eyebrow">${esc(t("creator.eyebrow"))}</p>
     <h1 class="step-title">${esc(t("creator.handles.title"))}</h1>
     <p class="step-sub">${esc(t("creator.handles.sub"))}</p>
-    ${PLATFORMS.map((p) => `
-      <div class="field"><label for="h-${p.key}">${esc(p.label)}</label>
-        <input class="input" id="h-${p.key}" placeholder="@handle" autocomplete="off" value="${esc(handleValue(p.key))}" /></div>`).join("")}
+    ${PLATFORMS.map((p) => {
+      const h = statVal(p.key, "handle");
+      return `
+      <div class="ch-platform">
+        <div class="ch-plat-head">${esc(p.label)}</div>
+        <div class="field"><label for="h-${p.key}">${esc(t("creator.handles.handle"))}</label>
+          <input class="input" id="h-${p.key}" placeholder="@handle" autocomplete="off" value="${esc(h ? "@" + h : "")}" /></div>
+        <div class="ch-stats">
+          <div class="field"><label for="f-${p.key}">${esc(t("creator.handles.followers"))}</label>
+            <input class="input" id="f-${p.key}" type="number" min="0" inputmode="numeric" placeholder="0" value="${esc(statVal(p.key, "follower_count"))}" /></div>
+          <div class="field"><label for="m-${p.key}">${esc(t("creator.handles.monthlyViews"))}</label>
+            <input class="input" id="m-${p.key}" type="number" min="0" inputmode="numeric" placeholder="0" value="${esc(statVal(p.key, "avg_monthly_views"))}" /></div>
+          <div class="field"><label for="v-${p.key}">${esc(t("creator.handles.perPost"))}</label>
+            <input class="input" id="v-${p.key}" type="number" min="0" inputmode="numeric" placeholder="0" value="${esc(statVal(p.key, "avg_views_per_post"))}" /></div>
+        </div>
+      </div>`;
+    }).join("")}
+    <p class="ch-hint">${esc(t("creator.handles.statsHint"))}</p>
     <p class="field-error" id="h-err" hidden></p>
     <button type="button" class="btn btn-primary creator-cta" id="h-save">${esc(t("creator.handles.cta"))}</button>`;
   byId("h-save")?.addEventListener("click", async () => {
-    const val = (k: string) => byId<HTMLInputElement>(`h-${k}`)?.value.trim() ?? "";
-    const handles = { instagram: val("instagram"), tiktok: val("tiktok"), youtube: val("youtube") };
+    const num = (id: string): number | null => {
+      const v = byId<HTMLInputElement>(id)?.value.trim();
+      const n = v ? Number(v) : NaN;
+      return Number.isFinite(n) && n >= 0 ? n : null;
+    };
+    const payload = PLATFORMS.map((p) => ({
+      platform: p.key,
+      handle: (byId<HTMLInputElement>(`h-${p.key}`)?.value.trim() ?? "").replace(/^@+/, ""),
+      follower_count: num(`f-${p.key}`),
+      avg_monthly_views: num(`m-${p.key}`),
+      avg_views_per_post: num(`v-${p.key}`),
+    })).filter((a) => a.handle);
     const err = byId("h-err");
-    if (!handles.instagram && !handles.tiktok && !handles.youtube) {
+    if (!payload.length) {
       if (err) { err.hidden = false; err.textContent = t("creator.handles.needOne"); }
       return;
     }
@@ -150,7 +177,7 @@ function renderHandles(card: HTMLElement): void {
     const btn = byId<HTMLButtonElement>("h-save");
     if (btn) { btn.disabled = true; btn.textContent = t("creator.handles.working"); }
     try {
-      await setCreatorHandles(handles);
+      await setCreatorHandles(payload);
       go("connect");
     } catch (e) {
       if (err) { err.hidden = false; err.textContent = (e as Error).message || t("creator.error"); }
