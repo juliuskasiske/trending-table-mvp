@@ -1577,18 +1577,17 @@ export function initOnboarding(): void {
       window.history.replaceState(null, "", window.location.pathname);
     }
 
-    // Routing: onboarding is account creation only. A signed-in account always
-    // goes to the app (locales are created there now — never the old "add
-    // another restaurant" done screen). /register starts a fresh signup;
-    // everything else shows the /login gate.
+    // Routing: /register always shows the signup flow (even with a session, so
+    // it can be reached directly). Otherwise a signed-in account/creator goes to
+    // its app, and everyone else sees the /login gate.
     const me = await getMe();
     const path = window.location.pathname.replace(/\/+$/, "");
-    if (me && me.role === "account") {
+    if (path === "/register") {
+      startFlow(0);
+    } else if (me && me.role === "account") {
       window.location.assign("/account");
     } else if (me && me.role === "creator") {
       window.location.assign("/creator");
-    } else if (path === "/register") {
-      startFlow(0);
     } else {
       showGate();
     }
