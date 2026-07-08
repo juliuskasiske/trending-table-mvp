@@ -295,10 +295,43 @@ function citySelect(platform: string, rank: number, selected: string): string {
     </select>`;
 }
 
-function chipRow(kind: "age" | "gender", platform: string, options: readonly string[], selected: string[], labelFn: (v: string) => string): string {
-  return `<div class="ch-chips cf-chips" data-p="${platform}" data-kind="${kind}">
-      ${options.map((o) => `<button type="button" class="cf-chip${selected.includes(o) ? " on" : ""}" data-val="${esc(o)}">${esc(labelFn(o))}</button>`).join("")}
+// Ranked chip group: clicking assigns the next rank (1, 2, …) in selection order,
+// shown as a numbered badge; the stored order IS the ranking.
+function rankChipRow(kind: "age" | "gender", platform: string, options: readonly string[], selected: string[], labelFn: (v: string) => string): string {
+  return `<div class="ch-chips rank-chips" data-p="${platform}" data-kind="${kind}">
+      ${options.map((o) => {
+        const r = selected.indexOf(o) + 1; // 0 → not selected
+        return `<button type="button" class="cf-chip rank-chip${r ? " on" : ""}" data-val="${esc(o)}"${r ? ` data-rank="${r}"` : ""}>
+          <span class="chip-rank">${r || ""}</span><span>${esc(labelFn(o))}</span>
+        </button>`;
+      }).join("")}
     </div>`;
+}
+
+function wireRankChips(group: HTMLElement): void {
+  const chips = Array.from(group.querySelectorAll<HTMLElement>(".rank-chip"));
+  const renumber = () => {
+    chips.filter((c) => c.classList.contains("on"))
+      .sort((a, b) => Number(a.dataset.rank || 0) - Number(b.dataset.rank || 0))
+      .forEach((c, i) => {
+        c.dataset.rank = String(i + 1);
+        const badge = c.querySelector(".chip-rank");
+        if (badge) badge.textContent = String(i + 1);
+      });
+  };
+  chips.forEach((chip) => chip.addEventListener("click", () => {
+    if (chip.classList.contains("on")) {
+      chip.classList.remove("on");
+      delete chip.dataset.rank;
+      const badge = chip.querySelector(".chip-rank");
+      if (badge) badge.textContent = "";
+    } else {
+      chip.classList.add("on");
+      const maxRank = Math.max(0, ...chips.filter((c) => c.classList.contains("on")).map((c) => Number(c.dataset.rank || 0)));
+      chip.dataset.rank = String(maxRank + 1);
+    }
+    renumber();
+  }));
 }
 
 function renderHandles(card: HTMLElement): void {
@@ -309,6 +342,7 @@ function renderHandles(card: HTMLElement): void {
     <p class="step-eyebrow">${esc(t("creator.eyebrow"))}</p>
     <h1 class="step-title">${esc(t("creator.handles.title"))}</h1>
     <p class="step-sub">${esc(t("creator.handles.sub"))}</p>
+    <div class="ch-platforms">
     ${PLATFORMS.map((p) => {
       const a = acctFor(p.key);
       const cities = a?.top_cities ?? [];
@@ -325,10 +359,10 @@ function renderHandles(card: HTMLElement): void {
           </div>
         </div>
 
-        <div class="field"><label>${esc(t("creator.channels.ageRange"))}</label>
-          ${chipRow("age", p.key, AGE_RANGES, a?.top_age_ranges ?? [], ageLabel)}</div>
-        <div class="field"><label>${esc(t("creator.channels.gender"))}</label>
-          ${chipRow("gender", p.key, AUD_GENDERS, a?.top_genders ?? [], genLabel)}</div>
+        <div class="field"><label>${esc(t("creator.channels.ageRange"))} <span class="ch-hint-inline">${esc(t("creator.channels.rankHint"))}</span></label>
+          ${rankChipRow("age", p.key, AGE_RANGES, a?.top_age_ranges ?? [], ageLabel)}</div>
+        <div class="field"><label>${esc(t("creator.channels.gender"))} <span class="ch-hint-inline">${esc(t("creator.channels.rankHint"))}</span></label>
+          ${rankChipRow("gender", p.key, AUD_GENDERS, a?.top_genders ?? [], genLabel)}</div>
 
         <div class="ch-stats">
           <div class="field"><label for="v-${p.key}">${esc(t(m.views))}</label>
@@ -340,14 +374,14 @@ function renderHandles(card: HTMLElement): void {
         </div>
       </div>`;
     }).join("")}
+    </div>
     <p class="ch-hint">${esc(t("creator.handles.statsHint"))}</p>
     <p class="field-error" id="h-err" hidden></p>
     <div class="creator-actions">
       <button type="button" class="btn btn-ghost" id="h-back">${esc(t("btn.back"))}</button>
       <button type="button" class="btn btn-primary creator-cta" id="h-save">${esc(t("creator.handles.cta"))}</button>
     </div>`;
-  card.querySelectorAll<HTMLElement>(".ch-chips .cf-chip").forEach((c) =>
-    c.addEventListener("click", () => c.classList.toggle("on")));
+  card.querySelectorAll<HTMLElement>(".ch-chips").forEach((g) => wireRankChips(g));
   byId("h-back")?.addEventListener("click", () => go("profile"));
   byId("h-save")?.addEventListener("click", async () => {
     const num = (id: string): number | null => {
@@ -356,7 +390,9 @@ function renderHandles(card: HTMLElement): void {
       return Number.isFinite(n) && n >= 0 ? n : null;
     };
     const pickChips = (platform: string, kind: string) =>
-      Array.from(card.querySelectorAll<HTMLElement>(`.ch-chips[data-p="${platform}"][data-kind="${kind}"] .cf-chip.on`)).map((c) => c.dataset.val || "");
+      Array.from(card.querySelectorAll<HTMLElement>(`.ch-chips[data-p="${platform}"][data-kind="${kind}"] .rank-chip.on`))
+        .sort((a, b) => Number(a.dataset.rank || 0) - Number(b.dataset.rank || 0))
+        .map((c) => c.dataset.val || "");
     const pickCities = (platform: string) =>
       Array.from(card.querySelectorAll<HTMLSelectElement>(`.ch-city[data-p="${platform}"]`))
         .sort((a, b) => Number(a.dataset.rank) - Number(b.dataset.rank))
@@ -717,6 +753,9 @@ function render(): void {
   if (step === "home") { renderHome(); return; }
   const card = byId("creator-card");
   if (!card) return;
+  // Wider card for the content-heavy steps; simple steps stay narrow.
+  card.className = "card creator-card"
+    + (step === "profile" ? " creator-card--md" : step === "handles" ? " creator-card--lg" : "");
   if (step === "signup") renderSignup(card);
   else if (step === "profile") renderProfile(card);
   else if (step === "handles") renderHandles(card);
