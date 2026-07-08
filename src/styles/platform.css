@@ -367,11 +367,15 @@ body.no-scroll { overflow: hidden; }
 .camp-gl-notes { margin: 10px 0 0; font-size: 14px; line-height: 1.5; }
 
 /* ---- dashboard (restaurants) --------------------------------------------- */
-.dash-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px; align-items: start; }
+/* Every card is the same height: grid-auto-rows:1fr equalises all rows, and the
+ * clickable body flex-grows so the Verwalten bar always sits flush at the
+ * bottom (no dead white strip on shorter, single-line-name cards). */
+.dash-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px; grid-auto-rows: 1fr; }
 .dash-card {
   border: 2px solid var(--ink); background: var(--panel); box-shadow: 5px 5px 0 var(--ink);
   display: flex; flex-direction: column; overflow: hidden;
 }
+.dash-card-open { flex: 1; }
 .dash-card.on { box-shadow: 5px 5px 0 var(--accent); }
 .dash-card-open {
   display: flex; align-items: center; gap: 14px; padding: 18px; background: var(--panel);
