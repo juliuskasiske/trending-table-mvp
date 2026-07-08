@@ -15,6 +15,7 @@ import {
   createCampaign,
   createRestaurant,
   deleteAccount,
+  cancelCampaign,
   deleteRestaurant,
   digitizeMenuUrl,
   getCampaign,
@@ -511,14 +512,30 @@ function toggleCampaignForm(): void {
       input.addEventListener("blur", commit);
     });
   });
+  // Clear a field's invalid highlight as soon as the user edits it.
+  box.querySelectorAll<HTMLElement>(".input").forEach((el) => {
+    const evt = el.tagName === "SELECT" ? "change" : "input";
+    el.addEventListener(evt, () => el.classList.remove("invalid"));
+  });
   byId("cf-create")?.addEventListener("click", async () => {
     const rid = Number(byId<HTMLSelectElement>("cf-restaurant")!.value);
     const title = byId<HTMLInputElement>("cf-title")!.value.trim();
     const budgetV = Number(budget.value);
     const err = byId("cf-err")!;
     err.hidden = true;
-    if (!rid || !title || !(budgetV > 0)) {
-      err.hidden = false; err.textContent = t("campaigns.err.required"); return;
+    // Highlight every missing required field, not just show a generic message.
+    const required: Array<{ id: string; ok: boolean }> = [
+      { id: "cf-restaurant", ok: !!rid },
+      { id: "cf-title", ok: !!title },
+      { id: "cf-budget", ok: budgetV > 0 },
+    ];
+    box.querySelectorAll<HTMLElement>(".input.invalid").forEach((el) => el.classList.remove("invalid"));
+    const missing = required.filter((f) => !f.ok);
+    if (missing.length) {
+      missing.forEach((f) => byId(f.id)?.classList.add("invalid"));
+      byId(missing[0].id)?.focus();
+      err.hidden = false; err.textContent = t("campaigns.err.required");
+      return;
     }
     const pick = (group: string) => Array.from(
       box.querySelectorAll<HTMLElement>(`.cf-chips[data-group="${group}"] .cf-chip.on`)).map((c) => c.dataset.val || "");
@@ -723,6 +740,10 @@ async function renderCampaignDetail(m: HTMLElement, rid: number, cid: number): P
   const launchBtn = c.status === "draft"
     ? `<button type="button" class="btn-review" id="camp-launch">${esc(t("campaigns.launch", { fee: "€9,99" }))}</button>`
     : "";
+  // A campaign can always be cancelled while it's still a draft or active.
+  const cancelBtn = (c.status === "draft" || c.status === "active")
+    ? `<button type="button" class="btn-cancel-camp" id="camp-cancel">${esc(t("campaigns.cancel"))}</button>`
+    : "";
 
   const header = `
     <div class="ct-panel">
@@ -731,7 +752,7 @@ async function renderCampaignDetail(m: HTMLElement, rid: number, cid: number): P
           <div class="ct-name">${esc(c.title || t("campaigns.untitled"))}</div>
           <span class="${campaignPill(c.status)}">${esc(t(`campaigns.status.${c.status}`))}</span>
         </div>
-        ${launchBtn}
+        <div class="camp-detail-actions">${launchBtn}${cancelBtn}</div>
       </div>
       <div class="ct-stats camp-detail-stats">
         ${stat(ic.wallet, fmtEur(c.budget_eur), t("campaigns.budget"))}
@@ -769,16 +790,29 @@ async function renderCampaignDetail(m: HTMLElement, rid: number, cid: number): P
     : `<div class="pl-empty">${esc(t("campaigns.noPosts"))}</div>`;
 
   body.innerHTML = header + analyticsSection(analytics) + grid;
-  byId("camp-launch")?.addEventListener("click", async () => {
-    const btn = byId<HTMLButtonElement>("camp-launch")!;
-    btn.disabled = true;
-    try {
-      await launchCampaign(rid, cid);
-      await renderCampaignDetail(m, rid, cid);
-    } catch (e) {
-      btn.disabled = false;
-      alert((e as Error).message || t("account.error.save"));
-    }
+  byId("camp-launch")?.addEventListener("click", () => {
+    confirmBox(
+      t("campaigns.launchConfirmTitle"),
+      t("campaigns.launchConfirmMsg", { fee: "9,99 €" }),
+      null,
+      async () => {
+        await launchCampaign(rid, cid);
+        await renderCampaignDetail(m, rid, cid);
+      },
+      { variant: "primary", confirmLabel: t("campaigns.launchConfirmCta", { fee: "9,99 €" }) },
+    );
+  });
+  byId("camp-cancel")?.addEventListener("click", () => {
+    confirmBox(
+      t("campaigns.cancelConfirmTitle"),
+      t("campaigns.cancelConfirmMsg"),
+      null,
+      async () => {
+        await cancelCampaign(rid, cid);
+        await renderCampaignDetail(m, rid, cid);
+      },
+      { confirmLabel: t("campaigns.cancelConfirmCta"), cancelLabel: t("campaigns.keepIt") },
+    );
   });
 }
 
@@ -1018,7 +1052,23 @@ function renderAccountView(body: HTMLElement): void {
 
 /* ---- confirm dialog ------------------------------------------------------ */
 
-function confirmBox(title: string, message: string, matchWord: string | null, onConfirm: () => Promise<void>): void {
+interface ConfirmOpts {
+  confirmLabel?: string;
+  cancelLabel?: string;
+  /** Style the confirm button. Defaults to "danger"; use "primary" for non-destructive confirms (e.g. launch). */
+  variant?: "danger" | "primary";
+}
+
+function confirmBox(
+  title: string,
+  message: string,
+  matchWord: string | null,
+  onConfirm: () => Promise<void>,
+  opts: ConfirmOpts = {},
+): void {
+  const confirmLabel = opts.confirmLabel ?? t("account.confirm.confirm");
+  const cancelLabel = opts.cancelLabel ?? t("account.confirm.cancel");
+  const okClass = opts.variant === "primary" ? "btn-primary" : "btn-danger";
   const wrap = document.createElement("div");
   wrap.className = "confirm-wrap";
   wrap.innerHTML = `
@@ -1027,8 +1077,8 @@ function confirmBox(title: string, message: string, matchWord: string | null, on
       <p>${esc(message)}</p>
       ${matchWord !== null ? `<input class="input" id="confirm-input" autocomplete="off" />` : ""}
       <div class="confirm-actions">
-        <button type="button" class="btn btn-ghost" id="confirm-cancel">${esc(t("account.confirm.cancel"))}</button>
-        <button type="button" class="btn btn-danger" id="confirm-ok" ${matchWord !== null ? "disabled" : ""}>${esc(t("account.confirm.confirm"))}</button>
+        <button type="button" class="btn btn-ghost" id="confirm-cancel">${esc(cancelLabel)}</button>
+        <button type="button" class="btn ${okClass}" id="confirm-ok" ${matchWord !== null ? "disabled" : ""}>${esc(confirmLabel)}</button>
       </div>
     </div>`;
   document.body.appendChild(wrap);
@@ -1050,7 +1100,7 @@ function confirmBox(title: string, message: string, matchWord: string | null, on
       await onConfirm();
     } catch (e) {
       okBtn.disabled = false;
-      okBtn.textContent = t("account.confirm.confirm");
+      okBtn.textContent = confirmLabel;
       const p = wrap.querySelector("p");
       if (p) p.textContent = (e as Error).message || t("account.error.save");
       return;

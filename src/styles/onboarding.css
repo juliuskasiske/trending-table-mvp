@@ -490,8 +490,11 @@ select.select {
 }
 
 .input.invalid,
-.select.invalid {
+.select.invalid,
+.textarea.invalid {
   border-color: var(--accent);
+  box-shadow: 3px 3px 0 var(--accent);
+  background: #fdeef2;
 }
 
 .field-error {

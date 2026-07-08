@@ -315,6 +315,10 @@ export function getCampaignAnalytics(restaurantId: number, campaignId: number): 
   return api(`/api/restaurants/${restaurantId}/campaigns/${campaignId}/analytics`);
 }
 
+export function cancelCampaign(restaurantId: number, campaignId: number): Promise<Campaign> {
+  return api(`/api/restaurants/${restaurantId}/campaigns/${campaignId}/cancel`, { method: "POST" });
+}
+
 export function launchCampaign(restaurantId: number, campaignId: number): Promise<Campaign> {
   return api(`/api/restaurants/${restaurantId}/campaigns/${campaignId}/launch`, { method: "POST" });
 }

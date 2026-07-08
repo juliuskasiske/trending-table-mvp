@@ -82,8 +82,10 @@ def list_campaigns(ctx: dict = Depends(restaurant_ctx)) -> dict:
             "           ORDER BY captured_at DESC LIMIT 1) lv ON true"
             "       WHERE p.campaign_id = c.id) AS total_views"
             " FROM campaigns c"
-            " WHERE c.restaurant_id = %s AND c.status <> 'cancelled'"
-            " ORDER BY c.created_at DESC",
+            " WHERE c.restaurant_id = %s"
+            # Live campaigns first (draft/active), then finished ones (completed/
+            # cancelled) — cancelled stays visible, just sinks to the bottom.
+            " ORDER BY (c.status IN ('completed', 'cancelled')) ASC, c.created_at DESC",
             (rid,),
         )
         return {"campaigns": cur.fetchall()}
@@ -143,6 +145,26 @@ def launch_campaign(campaign_id: int, ctx: dict = Depends(restaurant_ctx)) -> di
             raise HTTPException(status_code=400, detail="Campaign not found or already launched.")
         conn.commit()
         audit.record(conn, "campaign_launched", account_id=ctx["account_id"],
+                     restaurant_id=rid, detail={"campaign_id": campaign_id})
+    return campaign
+
+
+@router.post("/{restaurant_id}/campaigns/{campaign_id}/cancel")
+def cancel_campaign(campaign_id: int, ctx: dict = Depends(restaurant_ctx)) -> dict:
+    """Cancel a draft or active campaign. It stays visible, marked 'cancelled'."""
+    rid = ctx["restaurant_id"]
+    with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            "UPDATE campaigns SET status = 'cancelled'"
+            " WHERE id = %s AND restaurant_id = %s AND status IN ('draft', 'active')"
+            f" RETURNING {_COLS}",
+            (campaign_id, rid),
+        )
+        campaign = cur.fetchone()
+        if not campaign:
+            raise HTTPException(status_code=400, detail="Campaign not found or can't be cancelled.")
+        conn.commit()
+        audit.record(conn, "campaign_cancelled", account_id=ctx["account_id"],
                      restaurant_id=rid, detail={"campaign_id": campaign_id})
     return campaign
 
