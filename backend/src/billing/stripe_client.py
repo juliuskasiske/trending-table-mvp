@@ -105,6 +105,58 @@ def has_payment_method(customer_id: str | None) -> bool:
     return bool(pms.data)
 
 
+def default_payment_method(customer_id: str | None) -> str | None:
+    """The card to charge off-session: the customer's default, else its newest card."""
+    if not customer_id:
+        return None
+    _client()
+    cust = stripe.Customer.retrieve(customer_id)
+    dpm = (cust.get("invoice_settings") or {}).get("default_payment_method")
+    if dpm:
+        return dpm
+    pms = stripe.PaymentMethod.list(customer=customer_id, type="card", limit=1)
+    return pms.data[0].id if pms.data else None
+
+
+def charge_off_session(customer_id: str | None, amount_cents: int, description: str,
+                       idempotency_key: str) -> dict:
+    """Charge the customer's saved card off-session (merchant-initiated). This is
+    the ONLY function that moves money off a locale account's card. It never runs
+    a subscription — every charge is a discrete, idempotent campaign event.
+
+    Returns {charged, id, status, reason}. Never raises: a missing card or a
+    decline is reported, not thrown, so the campaign flow isn't blocked.
+    """
+    if amount_cents <= 0:
+        return {"charged": False, "id": None, "status": "skipped", "reason": "zero_amount"}
+    if not configured():
+        return {"charged": False, "id": None, "status": "skipped", "reason": "stripe_off"}
+    pm = default_payment_method(customer_id)
+    if not pm:
+        return {"charged": False, "id": None, "status": "skipped", "reason": "no_card"}
+    _client()
+    try:
+        intent = stripe.PaymentIntent.create(
+            amount=amount_cents,
+            currency="eur",
+            customer=customer_id,
+            payment_method=pm,
+            off_session=True,
+            confirm=True,
+            description=description,
+            idempotency_key=idempotency_key,
+        )
+        return {"charged": intent.status == "succeeded", "id": intent.id,
+                "status": intent.status, "reason": None}
+    except stripe.error.CardError as e:  # declined / auth required
+        pi = getattr(e, "error", None) and getattr(e.error, "payment_intent", None)
+        return {"charged": False, "id": (pi or {}).get("id"), "status": "failed",
+                "reason": "card_declined"}
+    except stripe.error.StripeError as e:
+        return {"charged": False, "id": None, "status": "failed",
+                "reason": type(e).__name__}
+
+
 def _price_for(cadence: str) -> str:
     price = config.STRIPE_PRICE_ANNUAL if cadence == "annual" else config.STRIPE_PRICE_MONTHLY
     if not price:

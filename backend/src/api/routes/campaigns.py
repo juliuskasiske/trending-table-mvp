@@ -19,6 +19,7 @@ from pydantic import BaseModel
 
 from ... import audit, config
 from ...db.connection import get_control_connection
+from . import billing
 from .restaurants import restaurant_ctx
 
 router = APIRouter(prefix="/api/restaurants", tags=["campaigns"])
@@ -130,22 +131,33 @@ def campaign_detail(campaign_id: int, ctx: dict = Depends(restaurant_ctx)) -> di
 
 @router.post("/{restaurant_id}/campaigns/{campaign_id}/launch")
 def launch_campaign(campaign_id: int, ctx: dict = Depends(restaurant_ctx)) -> dict:
-    """Launch a draft campaign. The €9.99 fee is charged via Stripe in a later
-    phase; here launching just activates it."""
+    """Launch a draft campaign — charges the one-time launch fee to the account's
+    saved card (idempotent: skipped if the fee was already charged)."""
     rid = ctx["restaurant_id"]
     with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             "UPDATE campaigns SET status = 'active', fee_paid_at = NOW()"
             " WHERE id = %s AND restaurant_id = %s AND status = 'draft'"
-            f" RETURNING {_COLS}",
+            f" RETURNING {_COLS}, fee_payment_intent_id",
             (campaign_id, rid),
         )
         campaign = cur.fetchone()
         if not campaign:
             raise HTTPException(status_code=400, detail="Campaign not found or already launched.")
+        charge = None
+        if not campaign.get("fee_payment_intent_id"):
+            charge = billing.charge_restaurant_owner(
+                conn, rid, config.CAMPAIGN_FEE_CENTS,
+                f"Campaign launch fee — {campaign.get('title') or campaign_id}",
+                f"launch-fee-{campaign_id}",
+            )
+            if charge.get("id"):
+                cur.execute("UPDATE campaigns SET fee_payment_intent_id = %s WHERE id = %s",
+                            (charge["id"], campaign_id))
         conn.commit()
         audit.record(conn, "campaign_launched", account_id=ctx["account_id"],
-                     restaurant_id=rid, detail={"campaign_id": campaign_id})
+                     restaurant_id=rid, detail={"campaign_id": campaign_id, "fee_charge": charge})
+    campaign.pop("fee_payment_intent_id", None)
     return campaign
 
 
@@ -166,6 +178,92 @@ def cancel_campaign(campaign_id: int, ctx: dict = Depends(restaurant_ctx)) -> di
         conn.commit()
         audit.record(conn, "campaign_cancelled", account_id=ctx["account_id"],
                      restaurant_id=rid, detail={"campaign_id": campaign_id})
+    return campaign
+
+
+@router.post("/{restaurant_id}/campaigns/{campaign_id}/assignments/{assignment_id}/approve")
+def approve_assignment(campaign_id: int, assignment_id: int,
+                       ctx: dict = Depends(restaurant_ctx)) -> dict:
+    """Approve a creator's post and pay out: charges the restaurant's card the
+    agreed per-creator amount, then marks the assignment paid. Idempotent — a
+    second call won't charge again (the stored charge id guards it)."""
+    rid = ctx["restaurant_id"]
+    with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            "SELECT cc.id, cc.status, cc.restaurant_charge_eur, cc.charge_payment_intent_id"
+            " FROM campaign_creators cc JOIN campaigns c ON c.id = cc.campaign_id"
+            " WHERE cc.id = %s AND cc.campaign_id = %s AND c.restaurant_id = %s",
+            (assignment_id, campaign_id, rid),
+        )
+        a = cur.fetchone()
+        if not a:
+            raise HTTPException(status_code=404, detail="Assignment not found.")
+        charge = None
+        charge_id = a["charge_payment_intent_id"]
+        if charge_id is None and a["restaurant_charge_eur"]:
+            cents = int(round(float(a["restaurant_charge_eur"]) * 100))
+            charge = billing.charge_restaurant_owner(
+                conn, rid, cents,
+                f"Creator payout — campaign {campaign_id}, assignment {assignment_id}",
+                f"payout-{assignment_id}",
+            )
+            charge_id = charge.get("id")
+        cur.execute(
+            "UPDATE campaign_creators SET status = 'paid',"
+            " approved_at = COALESCE(approved_at, NOW()), paid_at = NOW(),"
+            " charge_payment_intent_id = COALESCE(charge_payment_intent_id, %s)"
+            " WHERE id = %s",
+            (charge_id, assignment_id),
+        )
+        conn.commit()
+        audit.record(conn, "assignment_paid", account_id=ctx["account_id"], restaurant_id=rid,
+                     detail={"campaign_id": campaign_id, "assignment_id": assignment_id, "charge": charge})
+    return {"ok": True, "charge": charge}
+
+
+@router.post("/{restaurant_id}/campaigns/{campaign_id}/complete")
+def complete_campaign(campaign_id: int, ctx: dict = Depends(restaurant_ctx)) -> dict:
+    """End a campaign: pull the unspent remainder of the budget (budget minus what
+    was already charged for creator payouts) to the platform, then mark it
+    completed. Idempotent via the stored settlement charge id."""
+    rid = ctx["restaurant_id"]
+    with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            "SELECT id, title, budget_eur, status, settle_charge_id FROM campaigns"
+            " WHERE id = %s AND restaurant_id = %s",
+            (campaign_id, rid),
+        )
+        c = cur.fetchone()
+        if not c:
+            raise HTTPException(status_code=404, detail="Campaign not found.")
+        if c["status"] not in ("active", "draft"):
+            raise HTTPException(status_code=400, detail="Campaign can't be completed.")
+        cur.execute(
+            "SELECT COALESCE(SUM(restaurant_charge_eur), 0) AS spent FROM campaign_creators"
+            " WHERE campaign_id = %s AND status = 'paid'",
+            (campaign_id,),
+        )
+        spent = float(cur.fetchone()["spent"])
+        remainder_cents = int(round((float(c["budget_eur"] or 0) - spent) * 100))
+        charge = None
+        settle_id = c["settle_charge_id"]
+        if settle_id is None and remainder_cents > 0:
+            charge = billing.charge_restaurant_owner(
+                conn, rid, remainder_cents,
+                f"Campaign settlement — {c.get('title') or campaign_id}",
+                f"settle-{campaign_id}",
+            )
+            settle_id = charge.get("id")
+        cur.execute(
+            "UPDATE campaigns SET status = 'completed', completed_at = NOW(),"
+            " settle_charge_id = COALESCE(settle_charge_id, %s)"
+            f" WHERE id = %s RETURNING {_COLS}",
+            (settle_id, campaign_id),
+        )
+        campaign = cur.fetchone()
+        conn.commit()
+        audit.record(conn, "campaign_completed", account_id=ctx["account_id"], restaurant_id=rid,
+                     detail={"campaign_id": campaign_id, "remainder_cents": remainder_cents, "charge": charge})
     return campaign
 
 

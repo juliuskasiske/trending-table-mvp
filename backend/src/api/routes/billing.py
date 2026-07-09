@@ -78,6 +78,25 @@ class PromoIn(BaseModel):
     code: str
 
 
+def charge_restaurant_owner(conn, restaurant_id: int, amount_cents: int,
+                            description: str, idempotency_key: str) -> dict:
+    """Charge a campaign event to the owning account's saved card (the card
+    collected at onboarding). This is the single entry point campaigns use to
+    move money off the card — launch fee, creator payout, end-of-campaign
+    settlement. Never raises; returns the charge result dict."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT a.stripe_customer_id FROM accounts a"
+            " JOIN memberships m ON m.account_id = a.id"
+            " WHERE m.restaurant_id = %s AND m.role = 'owner'"
+            " ORDER BY m.account_id LIMIT 1",
+            (restaurant_id,),
+        )
+        row = cur.fetchone()
+    customer_id = row[0] if row else None
+    return stripe_client.charge_off_session(customer_id, amount_cents, description, idempotency_key)
+
+
 def _ensure_customer(conn, rid: int, email: str | None) -> str:
     with conn.cursor() as cur:
         cur.execute("SELECT name, stripe_customer_id FROM restaurants WHERE id = %s", (rid,))

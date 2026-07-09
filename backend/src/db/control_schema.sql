@@ -221,6 +221,10 @@ ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS guidelines JSONB NOT NULL DEFAULT
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS estimated_views BIGINT;
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS fee_payment_intent_id TEXT;
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS fee_paid_at TIMESTAMPTZ;
+-- End-of-campaign settlement charge (pull the unspent budget remainder). One
+-- charge per campaign; the id makes it idempotent across retries/redeploys.
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS settle_charge_id TEXT;
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
 ALTER TABLE campaigns ALTER COLUMN creator_id DROP NOT NULL;
 -- New status set: draft (created, unpaid) → active (launched) → completed | cancelled.
 -- Drop the old CHECK first, then remap legacy statuses, then add the new CHECK.

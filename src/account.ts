@@ -16,6 +16,7 @@ import {
   createRestaurant,
   deleteAccount,
   cancelCampaign,
+  completeCampaign,
   deleteRestaurant,
   digitizeMenuUrl,
   getCampaign,
@@ -741,6 +742,10 @@ async function renderCampaignDetail(m: HTMLElement, rid: number, cid: number): P
   const launchBtn = c.status === "draft"
     ? `<button type="button" class="btn-review" id="camp-launch">${esc(t("campaigns.launch", { fee: "€9,99" }))}</button>`
     : "";
+  // Ending an active campaign pulls the unspent budget remainder to the platform.
+  const endBtn = c.status === "active"
+    ? `<button type="button" class="btn-review" id="camp-end">${esc(t("campaigns.end"))}</button>`
+    : "";
   // A campaign can always be cancelled while it's still a draft or active.
   const cancelBtn = (c.status === "draft" || c.status === "active")
     ? `<button type="button" class="btn-cancel-camp" id="camp-cancel">${esc(t("campaigns.cancel"))}</button>`
@@ -753,7 +758,7 @@ async function renderCampaignDetail(m: HTMLElement, rid: number, cid: number): P
           <div class="ct-name">${esc(c.title || t("campaigns.untitled"))}</div>
           <span class="${campaignPill(c.status)}">${esc(t(`campaigns.status.${c.status}`))}</span>
         </div>
-        <div class="camp-detail-actions">${launchBtn}${cancelBtn}</div>
+        <div class="camp-detail-actions">${launchBtn}${endBtn}${cancelBtn}</div>
       </div>
       <div class="ct-stats camp-detail-stats">
         ${stat(ic.wallet, fmtEur(c.budget_eur), t("campaigns.budget"))}
@@ -801,6 +806,18 @@ async function renderCampaignDetail(m: HTMLElement, rid: number, cid: number): P
         await renderCampaignDetail(m, rid, cid);
       },
       { variant: "primary", confirmLabel: t("campaigns.launchConfirmCta", { fee: "9,99 €" }) },
+    );
+  });
+  byId("camp-end")?.addEventListener("click", () => {
+    confirmBox(
+      t("campaigns.endConfirmTitle"),
+      t("campaigns.endConfirmMsg"),
+      null,
+      async () => {
+        await completeCampaign(rid, cid);
+        await renderCampaignDetail(m, rid, cid);
+      },
+      { variant: "primary", confirmLabel: t("campaigns.endConfirmCta") },
     );
   });
   byId("camp-cancel")?.addEventListener("click", () => {

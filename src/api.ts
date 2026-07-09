@@ -319,6 +319,14 @@ export function cancelCampaign(restaurantId: number, campaignId: number): Promis
   return api(`/api/restaurants/${restaurantId}/campaigns/${campaignId}/cancel`, { method: "POST" });
 }
 
+export function completeCampaign(restaurantId: number, campaignId: number): Promise<Campaign> {
+  return api(`/api/restaurants/${restaurantId}/campaigns/${campaignId}/complete`, { method: "POST" });
+}
+
+export function approveAssignment(restaurantId: number, campaignId: number, assignmentId: number): Promise<{ ok: boolean }> {
+  return api(`/api/restaurants/${restaurantId}/campaigns/${campaignId}/assignments/${assignmentId}/approve`, { method: "POST" });
+}
+
 export function launchCampaign(restaurantId: number, campaignId: number): Promise<Campaign> {
   return api(`/api/restaurants/${restaurantId}/campaigns/${campaignId}/launch`, { method: "POST" });
 }
