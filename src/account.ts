@@ -440,11 +440,22 @@ async function renderCampaigns(m: HTMLElement): Promise<void> {
   await loadCampaignList();
 }
 
+// Minimum spend + lead time for a campaign, enforced here and on the server.
+const MIN_CAMPAIGN_BUDGET = 250;
+const CAMPAIGN_LEAD_DAYS = 21; // post-by date must be at least 3 weeks out
+const minCampaignDeadline = (): string => {
+  const d = new Date();
+  d.setDate(d.getDate() + CAMPAIGN_LEAD_DAYS);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
 function toggleCampaignForm(): void {
   const box = byId("camp-form");
   if (!box) return;
   if (!box.hidden) { box.hidden = true; box.innerHTML = ""; return; }
   box.hidden = false;
+  const md = minCampaignDeadline();
   const restOptions = restaurants.map((r) => `<option value="${r.id}">${esc(r.name || "—")}</option>`).join("");
   box.innerHTML = `
     <div class="camp-create">
@@ -454,9 +465,9 @@ function toggleCampaignForm(): void {
         <input class="input" id="cf-title" type="text" maxlength="120" /></div>
       <div class="camp-row">
         <div class="camp-field"><label>${esc(t("campaigns.f.budget"))}</label>
-          <input class="input" id="cf-budget" type="number" min="1" step="1" /></div>
+          <input class="input" id="cf-budget" type="number" min="${MIN_CAMPAIGN_BUDGET}" step="1" placeholder="${MIN_CAMPAIGN_BUDGET}" /></div>
         <div class="camp-field"><label>${esc(t("campaigns.f.deadline"))}</label>
-          <input class="input" id="cf-deadline" type="date" /></div>
+          <input class="input" id="cf-deadline" type="date" min="${md}" value="${md}" /></div>
       </div>
       <p class="camp-estimate" id="cf-estimate">${esc(t("campaigns.estimateHint"))}</p>
       <div class="camp-guidelines">
@@ -523,20 +534,36 @@ function toggleCampaignForm(): void {
     const rid = Number(byId<HTMLSelectElement>("cf-restaurant")!.value);
     const title = byId<HTMLInputElement>("cf-title")!.value.trim();
     const budgetV = Number(budget.value);
+    const deadlineV = byId<HTMLInputElement>("cf-deadline")!.value;
     const err = byId("cf-err")!;
     err.hidden = true;
+    box.querySelectorAll<HTMLElement>(".input.invalid").forEach((el) => el.classList.remove("invalid"));
+    const fail = (id: string, msg: string) => {
+      byId(id)?.classList.add("invalid");
+      byId(id)?.focus();
+      err.hidden = false; err.textContent = msg;
+    };
     // Highlight every missing required field, not just show a generic message.
     const required: Array<{ id: string; ok: boolean }> = [
       { id: "cf-restaurant", ok: !!rid },
       { id: "cf-title", ok: !!title },
-      { id: "cf-budget", ok: budgetV > 0 },
+      { id: "cf-budget", ok: !!budget.value },
+      { id: "cf-deadline", ok: !!deadlineV },
     ];
-    box.querySelectorAll<HTMLElement>(".input.invalid").forEach((el) => el.classList.remove("invalid"));
     const missing = required.filter((f) => !f.ok);
     if (missing.length) {
       missing.forEach((f) => byId(f.id)?.classList.add("invalid"));
       byId(missing[0].id)?.focus();
       err.hidden = false; err.textContent = t("campaigns.err.required");
+      return;
+    }
+    // Minimum spend + 3-week lead time (also enforced server-side).
+    if (budgetV < MIN_CAMPAIGN_BUDGET) {
+      fail("cf-budget", t("campaigns.err.minBudget", { min: fmtEur(MIN_CAMPAIGN_BUDGET) }));
+      return;
+    }
+    if (deadlineV < minCampaignDeadline()) {
+      fail("cf-deadline", t("campaigns.err.minDeadline"));
       return;
     }
     const pick = (group: string) => Array.from(
@@ -608,10 +635,8 @@ async function loadCampaignList(): Promise<void> {
   }
   const card = (c: CampaignWithRest): string => {
     return `<button type="button" class="camp-card" data-cid="${c.id}" data-rid="${c.restaurant_id}">
-      <div class="camp-card-head">
-        <span class="camp-card-title">${esc(c.title || t("campaigns.untitled"))}</span>
-        <span class="${campaignPill(c.status)}">${esc(t(`campaigns.status.${c.status}`))}</span>
-      </div>
+      <span class="camp-card-title">${esc(c.title || t("campaigns.untitled"))}</span>
+      <span class="${campaignPill(c.status)} camp-card-status">${esc(t(`campaigns.status.${c.status}`))}</span>
       <div class="camp-card-rest">${ic.food}<span>${esc(c._rname)}</span></div>
       <div class="camp-card-stats">
         <span><b>${esc(fmtEur(c.budget_eur))}</b> ${esc(t("campaigns.budget"))}</span>

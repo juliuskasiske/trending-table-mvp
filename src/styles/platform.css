@@ -305,9 +305,17 @@ body.no-scroll { overflow: hidden; }
   padding: 18px; cursor: pointer; display: flex; flex-direction: column; gap: 12px; font-family: var(--font);
 }
 .camp-card:hover { transform: translate(-2px, -2px); box-shadow: 7px 7px 0 var(--accent); }
-.camp-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.camp-card-title { font: 800 17px/1.15 var(--font-display); letter-spacing: -0.01em; }
-.camp-card-rest { display: flex; align-items: center; gap: 6px; color: var(--muted); font-weight: 700; font-size: 12.5px; margin-top: -4px; }
+/* Title wraps to 2 lines and reserves that height so the status pill, locale
+ * name and stats line up across cards regardless of title length. */
+.camp-card-title {
+  font: 800 17px/1.15 var(--font-display); letter-spacing: -0.01em;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; overflow-wrap: anywhere; min-height: 2.3em;
+}
+/* Status tag sits on its own line between the title and the locale name; it
+ * hugs its content so a long title can never collide with it. */
+.camp-card-status { align-self: flex-start; margin: -4px 0 -2px; }
+.camp-card-rest { display: flex; align-items: center; gap: 6px; color: var(--muted); font-weight: 700; font-size: 12.5px; }
 .camp-card-rest svg { width: 14px; height: 14px; flex-shrink: 0; }
 .camp-card-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
 .camp-card-stats span { font-size: 12.5px; color: var(--muted); }

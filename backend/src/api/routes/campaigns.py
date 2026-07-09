@@ -9,7 +9,7 @@ costs €9.99 (real Stripe wired in a later phase; here it just activates).
 """
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -49,8 +49,19 @@ def create_campaign(body: CampaignIn, ctx: dict = Depends(restaurant_ctx)) -> di
     title = (body.title or "").strip()
     if not title:
         raise HTTPException(status_code=400, detail="Give the campaign a title.")
-    if not body.budget_eur or body.budget_eur <= 0:
-        raise HTTPException(status_code=400, detail="Budget must be greater than 0.")
+    if not body.budget_eur or body.budget_eur < config.MIN_CAMPAIGN_BUDGET_EUR:
+        raise HTTPException(status_code=400,
+                            detail=f"The minimum campaign budget is €{config.MIN_CAMPAIGN_BUDGET_EUR:.0f}.")
+    # The post-by date is required and must be at least 3 weeks out.
+    if not body.content_deadline:
+        raise HTTPException(status_code=400, detail="A post-by date is required.")
+    try:
+        deadline = date.fromisoformat(body.content_deadline)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid post-by date.")
+    if deadline < date.today() + timedelta(days=config.CAMPAIGN_LEAD_DAYS):
+        raise HTTPException(status_code=400,
+                            detail="The post-by date must be at least 3 weeks from today.")
     est = _estimate_views(body.budget_eur)
     with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         cur.execute(

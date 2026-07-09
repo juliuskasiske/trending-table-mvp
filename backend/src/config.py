@@ -75,6 +75,9 @@ from decimal import Decimal as _Decimal
 VIEW_ESTIMATE_RATE_EUR = _Decimal(os.environ.get("VIEW_ESTIMATE_RATE_EUR", "0.015"))
 # The one-time fee (in cents) to launch a campaign. €9.99.
 CAMPAIGN_FEE_CENTS = int(os.environ.get("CAMPAIGN_FEE_CENTS", "999"))
+# Minimum campaign budget (€) and required lead time (days) for the post-by date.
+MIN_CAMPAIGN_BUDGET_EUR = int(os.environ.get("MIN_CAMPAIGN_BUDGET_EUR", "250"))
+CAMPAIGN_LEAD_DAYS = int(os.environ.get("CAMPAIGN_LEAD_DAYS", "21"))
 
 # Metrics poller: how often (seconds) the API polls live posts for fresh view
 # counts (analytics only now). 0 / unset = disabled (default). In production
