@@ -62,13 +62,29 @@ def search(query: str) -> list[dict]:
     return out
 
 
+def _city_from(components: list | None) -> str:
+    """Pull the city out of Google's structured address components (locality,
+    with sensible fallbacks) — no address-string parsing / LLM needed."""
+    by_type: dict[str, str] = {}
+    for comp in components or []:
+        text = comp.get("longText") or comp.get("shortText") or ""
+        for typ in comp.get("types", []):
+            by_type.setdefault(typ, text)
+    for key in ("locality", "postal_town", "administrative_area_level_3",
+                "administrative_area_level_2"):
+        if by_type.get(key):
+            return by_type[key]
+    return ""
+
+
 def details(place_id: str) -> dict:
     r = httpx.get(
         f"{BASE}/places/{place_id}",
         headers={
             "X-Goog-Api-Key": _key(),
             "X-Goog-FieldMask": ",".join([
-                "id", "displayName", "formattedAddress", "rating", "userRatingCount",
+                "id", "displayName", "formattedAddress", "addressComponents",
+                "rating", "userRatingCount",
                 "types", "primaryTypeDisplayName", "editorialSummary", "websiteUri",
                 "priceLevel", "photos",
             ]),
@@ -82,6 +98,7 @@ def details(place_id: str) -> dict:
         "placeId": p.get("id"),
         "name": (p.get("displayName") or {}).get("text", ""),
         "address": p.get("formattedAddress", ""),
+        "city": _city_from(p.get("addressComponents")),
         "rating": p.get("rating"),
         "reviews": p.get("userRatingCount"),
         "category": (p.get("primaryTypeDisplayName") or {}).get("text") or category,

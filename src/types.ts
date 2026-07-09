@@ -30,6 +30,7 @@ export interface PlaceDetails extends PlaceSuggestion {
   category: string; // Kategorisierung — friendly primary category
   tags: string[]; // secondary categories derived from Google types
   description: string; // Kurzbeschreibung — editorial summary when available
+  city?: string; // pulled from Google's structured address components
   website?: string;
   priceLevel?: string;
   photoName?: string; // Google photo resource name (served via /api/places/photo)

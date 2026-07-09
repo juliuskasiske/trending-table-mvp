@@ -18,7 +18,10 @@ import {
   cancelCampaign,
   completeCampaign,
   deleteRestaurant,
+  digitizeMenu,
   digitizeMenuUrl,
+  faviconLogo,
+  improveMenuWithAi,
   getCampaign,
   getCampaignAnalytics,
   getMe,
@@ -37,6 +40,7 @@ import {
   type CampaignAnalytics,
   type CampaignDetail,
   type CampaignPost,
+  type MenuSource,
   type Principal,
   type RestaurantProfileInput,
   type RestaurantSummary,
@@ -138,12 +142,11 @@ const restPill = (s: string): string =>
 /* ---- state --------------------------------------------------------------- */
 
 type MainView = "restaurants" | "campaigns" | "creators" | "messages" | "settings";
-type Tab = "profile" | "menu";
 
 let me: Principal | null = null;
 let restaurants: RestaurantSummary[] = [];
 let mainView: MainView = "restaurants";
-let detail: { id: number; tab: Tab } | null = null; // open restaurant (manage) within the Restaurants view
+let detail: { id: number } | null = null; // open restaurant (manage) within the Restaurants view
 let campaignView: { rid: number; cid: number } | null = null; // open campaign (detail view)
 
 const main = () => byId("acct-main")!;
@@ -200,7 +203,7 @@ function render(): void {
   setNavActive();
   const m = main();
   if (mainView === "restaurants") {
-    if (detail) { renderRestaurantDetail(detail.id, detail.tab, m); return; }
+    if (detail) { renderRestaurantDetail(detail.id, m); return; }
     renderRestaurants(m);
     return;
   }
@@ -384,6 +387,7 @@ function renderRestaurantReview(box: HTMLElement, p: Partial<PlaceDetails> & { c
     const val = (id: string) => byId<HTMLInputElement>(id)?.value.trim() ?? "";
     const name = val("rf-name");
     if (!name) { showDashErr(t("restaurants.err.name")); return; }
+    const website = val("rf-website");
     const btn = byId<HTMLButtonElement>("rf-create")!;
     btn.disabled = true;
     try {
@@ -393,8 +397,10 @@ function renderRestaurantReview(box: HTMLElement, p: Partial<PlaceDetails> & { c
         category: val("rf-category") || undefined,
         address: val("rf-address") || undefined,
         city: val("rf-city") || undefined,
-        website: val("rf-website") || undefined,
+        website: website || undefined,
         description: val("rf-description") || undefined,
+        // Auto-pull the logo from the website's favicon, exactly like onboarding.
+        logo_url: website ? faviconLogo(website) : undefined,
         photo_ref: p.photoName,
         tags: p.tags,
         google_rating: p.rating,
@@ -868,25 +874,25 @@ function renderSettings(m: HTMLElement): void {
 
 /* ---- restaurant detail (manage: profile + menu) -------------------------- */
 
-function renderRestaurantDetail(id: number, tab: Tab, m: HTMLElement): void {
+function renderRestaurantDetail(id: number, m: HTMLElement): void {
   const r = restaurants.find((x) => x.id === id);
-  const tabs: Tab[] = ["profile", "menu"];
+  // No tabs — the profile (grouped into panels) and the menu sit on one page.
   m.innerHTML = `
     <button type="button" class="ct-back" id="acct-back">← ${esc(t("account.nav.restaurants"))}</button>
     <h1 class="admin-title acct-detail-name">${esc(r?.name || "—")}</h1>
-    <div class="acct-tabs">
-      ${tabs.map((tb) => `<button type="button" class="acct-tab ${tb === tab ? "on" : ""}" data-tab="${tb}">${esc(t(`account.tab.${tb}`))}</button>`).join("")}
+    <div class="acct-detail">
+      <div id="pf-profile-host"><p class="acct-loading">…</p></div>
+      <section class="acct-panel">
+        <h2 class="acct-panel-title">${esc(t("account.tab.menu"))}</h2>
+        <div id="pf-menu-host"><p class="acct-loading">…</p></div>
+      </section>
     </div>
-    <div class="acct-tab-body" id="acct-tab-body"><p class="acct-loading">…</p></div>
     <div class="danger-zone">
       <h2>${esc(t("restaurants.delete"))}</h2>
       <p class="acct-note">${esc(t("restaurants.deleteHint"))}</p>
       <button type="button" class="btn btn-danger" id="rest-del">${esc(t("restaurants.delete"))}</button>
     </div>`;
   byId("acct-back")?.addEventListener("click", () => backToList());
-  m.querySelectorAll<HTMLElement>(".acct-tab").forEach((b) =>
-    b.addEventListener("click", () => setDetailTab(b.dataset.tab as Tab)),
-  );
   byId("rest-del")?.addEventListener("click", () => {
     confirmBox(
       t("restaurants.delete"),
@@ -899,9 +905,8 @@ function renderRestaurantDetail(id: number, tab: Tab, m: HTMLElement): void {
       },
     );
   });
-  const tb = byId("acct-tab-body")!;
-  if (tab === "profile") void renderProfile(id, tb);
-  else void renderMenu(id, tb);
+  void renderProfile(id, byId("pf-profile-host")!);
+  void renderMenu(id, byId("pf-menu-host")!);
 }
 
 /** A labelled input row. */
@@ -923,20 +928,48 @@ function flashSaved(okId: string): void {
   window.setTimeout(() => (ok.hidden = true), 2000);
 }
 
-async function renderProfile(id: number, body: HTMLElement): Promise<void> {
+/** Price level as the $ / $$ / $$$ scale Google uses — never the raw enum. */
+function priceSelect(id: string, current: string): string {
+  const opts: Array<[string, string]> = [
+    ["", t("account.profile.priceNone")],
+    ["PRICE_LEVEL_INEXPENSIVE", "$"],
+    ["PRICE_LEVEL_MODERATE", "$$"],
+    ["PRICE_LEVEL_EXPENSIVE", "$$$"],
+    ["PRICE_LEVEL_VERY_EXPENSIVE", "$$$$"],
+  ];
+  const html = opts.map(([v, label]) =>
+    `<option value="${esc(v)}"${v === current ? " selected" : ""}>${esc(label)}</option>`).join("");
+  return `<div class="field"><label for="${id}">${esc(t("account.profile.price"))}</label>
+    <select class="input" id="${id}">${html}</select></div>`;
+}
+
+async function renderProfile(id: number, host: HTMLElement): Promise<void> {
   const { profile: p } = await getRestaurant(id);
   const v = p ?? {};
-  body.innerHTML = `
-    ${field("pf-name", t("account.profile.name"), v.name ?? "")}
-    ${field("pf-address", t("account.profile.address"), v.address ?? "")}
-    ${field("pf-city", t("account.profile.city"), v.city ?? "")}
-    ${field("pf-category", t("account.profile.category"), v.category ?? "")}
-    ${field("pf-tags", t("account.profile.tags"), (v.tags ?? []).join(", "))}
-    ${field("pf-description", t("account.profile.description"), v.description ?? "", { area: true })}
-    ${field("pf-website", t("account.profile.website"), v.website ?? "")}
-    ${field("pf-logo", t("account.profile.logo"), v.logo_url ?? "")}
-    ${field("pf-price", t("account.profile.price"), v.price_level ?? "")}
-    ${saveButton("pf-save")}`;
+  const section = (title: string, inner: string) =>
+    `<section class="acct-panel"><h2 class="acct-panel-title">${esc(title)}</h2>${inner}</section>`;
+  host.innerHTML = `
+    <div class="pf-form">
+      ${section(t("account.profile.secLocation"),
+        field("pf-name", t("account.profile.name"), v.name ?? "") +
+        `<div class="pf-grid2">
+          ${field("pf-address", t("account.profile.address"), v.address ?? "")}
+          ${field("pf-city", t("account.profile.city"), v.city ?? "")}
+        </div>`)}
+      ${section(t("account.profile.secAbout"),
+        `<div class="pf-grid2">
+          ${field("pf-category", t("account.profile.category"), v.category ?? "")}
+          ${field("pf-tags", t("account.profile.tags"), (v.tags ?? []).join(", "))}
+        </div>` +
+        field("pf-description", t("account.profile.description"), v.description ?? "", { area: true }))}
+      ${section(t("account.profile.secBrand"),
+        field("pf-website", t("account.profile.website"), v.website ?? "") +
+        `<div class="pf-grid2">
+          ${field("pf-logo", t("account.profile.logo"), v.logo_url ?? "")}
+          ${priceSelect("pf-price", v.price_level ?? "")}
+        </div>`)}
+      ${saveButton("pf-save")}
+    </div>`;
   byId("pf-save")?.addEventListener("click", async () => {
     const val = (i: string) => byId<HTMLInputElement>(i)?.value.trim() ?? "";
     await putProfile(id, {
@@ -948,7 +981,7 @@ async function renderProfile(id: number, body: HTMLElement): Promise<void> {
       description: val("pf-description"),
       website: val("pf-website"),
       logo_url: val("pf-logo"),
-      price_level: val("pf-price"),
+      price_level: byId<HTMLSelectElement>("pf-price")?.value ?? "",
     });
     const r = restaurants.find((x) => x.id === id);
     if (r) r.name = val("pf-name") || r.name;
@@ -956,36 +989,66 @@ async function renderProfile(id: number, body: HTMLElement): Promise<void> {
   });
 }
 
-async function renderMenu(id: number, body: HTMLElement): Promise<void> {
+/** Read a File as raw base64 (no data-URL prefix) for the digitize endpoint. */
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("read failed"));
+    reader.onload = () => {
+      const s = String(reader.result || "");
+      resolve(s.includes(",") ? s.split(",")[1] : s);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function renderMenu(id: number, host: HTMLElement): Promise<void> {
   const { items } = await getMenu(id);
   let rows: MenuItem[] = items.length ? items : [];
+  // Remember the last import source so "improve with AI" can re-run it.
+  let lastSource: MenuSource | null = null;
 
-  const draw = () => {
-    body.innerHTML = `
+  const note = (msg: string, kind: "info" | "error" = "info") => {
+    const n = byId("menu-note");
+    if (n) { n.hidden = false; n.textContent = msg; n.className = "acct-note menu-note" + (kind === "error" ? " error" : ""); }
+  };
+  const runImport = async (fn: () => Promise<MenuItem[]>, src: MenuSource) => {
+    note(t("account.menu.scanning"));
+    try {
+      const found = await fn();
+      lastSource = src;
+      rows = found.length ? found : rows;
+      draw();
+      if (!found.length) note(t("account.menu.scanFail"), "error");
+    } catch {
+      note(t("account.menu.scanFail"), "error");
+    }
+  };
+
+  function draw(): void {
+    host.innerHTML = `
+      <div class="menu-tools">
+        <label class="btn btn-ghost menu-tool"><input type="file" id="menu-pdf" accept="application/pdf" hidden />${esc(t("account.menu.uploadPdf"))}</label>
+        <div class="menu-scan-row menu-tool-url">
+          <input class="input" id="menu-url" placeholder="${esc(t("account.menu.urlPlaceholder"))}" />
+          <button type="button" class="btn btn-ghost" id="menu-scan-btn">${esc(t("account.menu.scan"))}</button>
+        </div>
+        <button type="button" class="btn btn-ghost menu-improve" id="menu-improve"${lastSource ? "" : " hidden"}>${esc(t("account.menu.improveAi"))}</button>
+      </div>
+      <p class="acct-note menu-note" id="menu-note" hidden></p>
       <div class="menu-editor">
-        ${rows
-          .map(
-            (it, i) => `
+        ${rows.map((it, i) => `
         <div class="menu-row" data-i="${i}">
           <input class="input" data-f="section" placeholder="${esc(t("account.menu.section"))}" value="${esc(it.section ?? "")}" />
           <input class="input" data-f="name" placeholder="${esc(t("account.menu.name"))}" value="${esc(it.name ?? "")}" />
           <input class="input" data-f="price" placeholder="${esc(t("account.menu.price"))}" value="${esc(it.price ?? "")}" />
           <button type="button" class="linklike menu-del" data-del="${i}">${esc(t("account.menu.remove"))}</button>
-        </div>`,
-          )
-          .join("") || `<p class="acct-empty">${esc(t("account.menu.empty"))}</p>`}
+        </div>`).join("") || `<p class="acct-empty">${esc(t("account.menu.empty"))}</p>`}
       </div>
       <button type="button" class="linklike menu-add" id="menu-add">+ ${esc(t("account.menu.add"))}</button>
-      <div class="field menu-scan">
-        <label for="menu-url">${esc(t("account.menu.redigitizeUrl"))}</label>
-        <div class="menu-scan-row">
-          <input class="input" id="menu-url" placeholder="${esc(t("account.menu.urlPlaceholder"))}" />
-          <button type="button" class="btn btn-ghost" id="menu-scan-btn">${esc(t("account.menu.scan"))}</button>
-        </div>
-        <p class="acct-note" id="menu-scan-note" hidden></p>
-      </div>
       ${saveButton("menu-save")}`;
-    body.querySelectorAll<HTMLElement>(".menu-row").forEach((row) => {
+
+    host.querySelectorAll<HTMLElement>(".menu-row").forEach((row) => {
       const i = Number(row.dataset.i);
       row.querySelectorAll<HTMLInputElement>("input[data-f]").forEach((inp) => {
         inp.addEventListener("input", () => {
@@ -996,37 +1059,37 @@ async function renderMenu(id: number, body: HTMLElement): Promise<void> {
         });
       });
     });
-    body.querySelectorAll<HTMLElement>("[data-del]").forEach((b) =>
-      b.addEventListener("click", () => {
-        rows.splice(Number(b.dataset.del), 1);
-        draw();
-      }),
-    );
+    host.querySelectorAll<HTMLElement>("[data-del]").forEach((b) =>
+      b.addEventListener("click", () => { rows.splice(Number(b.dataset.del), 1); draw(); }));
     byId("menu-add")?.addEventListener("click", () => {
-      rows.push({ name: "", section: "", price: "", source: "manual" });
-      draw();
+      rows.push({ name: "", section: "", price: "", source: "manual" }); draw();
     });
-    byId("menu-scan-btn")?.addEventListener("click", async () => {
+    // Digitize from an uploaded PDF (PDF → markdown → items).
+    byId<HTMLInputElement>("menu-pdf")?.addEventListener("change", async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      note(t("account.menu.scanning"));
+      let base64: string;
+      try { base64 = await fileToBase64(file); } catch { note(t("account.menu.scanFail"), "error"); return; }
+      await runImport(() => digitizeMenu(base64), { data: base64 });
+    });
+    // Digitize from a menu link.
+    byId("menu-scan-btn")?.addEventListener("click", () => {
       const url = byId<HTMLInputElement>("menu-url")?.value.trim();
-      const note = byId("menu-scan-note");
       if (!url) return;
-      if (note) {
-        note.hidden = false;
-        note.textContent = t("account.menu.scanning");
-      }
-      try {
-        const found = await digitizeMenuUrl(url);
-        rows = found.length ? found : rows;
-        draw();
-      } catch {
-        if (note) note.textContent = t("account.menu.scanFail");
-      }
+      void runImport(() => digitizeMenuUrl(url), { url });
+    });
+    // Re-run the last import through the AI enrichment pass.
+    byId("menu-improve")?.addEventListener("click", () => {
+      if (!lastSource) return;
+      const src = lastSource;
+      void runImport(() => improveMenuWithAi(src), src);
     });
     byId("menu-save")?.addEventListener("click", async () => {
       await putMenu(id, rows.filter((r) => r.name.trim()));
       flashSaved("menu-save-ok");
     });
-  };
+  }
   draw();
 }
 
@@ -1170,11 +1233,7 @@ function openSettings(): void {
 }
 function openRestaurant(id: number): void {
   mainView = "restaurants";
-  detail = { id, tab: "profile" };
-  render();
-}
-function setDetailTab(tab: Tab): void {
-  if (detail) detail.tab = tab;
+  detail = { id };
   render();
 }
 function backToList(): void {
