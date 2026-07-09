@@ -92,7 +92,10 @@ def create_customer(email: str | None, name: str | None) -> str:
 
 def create_setup_intent(customer_id: str) -> str:
     _client()
-    intent = stripe.SetupIntent.create(customer=customer_id, usage="off_session")
+    # Card only — no Klarna / other methods on the Payment Element.
+    intent = stripe.SetupIntent.create(
+        customer=customer_id, usage="off_session", payment_method_types=["card"],
+    )
     return intent.client_secret
 
 

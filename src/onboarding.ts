@@ -46,7 +46,7 @@ import {
 } from "./types.ts";
 import { loadStripe, type Stripe, type StripeElements } from "@stripe/stripe-js";
 import { getLang, localizeError, onLangChange, t, tChip } from "./i18n.ts";
-import { renderVerifyFullpage } from "./verify-screen.ts";
+import { renderVerifyInto, stopVerifyPoll } from "./verify-screen.ts";
 
 const STORAGE_KEY = "tt-onboarding";
 
@@ -136,6 +136,8 @@ export function initOnboarding(): void {
 
   /* ---- Navigation ------------------------------------------------------ */
 
+  const stepIndex = (name: string) => steps.findIndex((s) => s.dataset.step === name);
+
   function show(next: number): void {
     // The "You're in / add another locale" success interstitial is gone for
     // good — finishing (or any stray attempt to reach it) always lands in the
@@ -144,6 +146,12 @@ export function initOnboarding(): void {
       window.location.assign("/account");
       return;
     }
+    // Confirm-email step (between account and payment): already verified → skip
+    // straight to payment; otherwise render the verify gate and advance on OK.
+    if (steps[next]?.dataset.step === "verify") {
+      if (accountVerified) { show(stepIndex("payment")); return; }
+    }
+    if (steps[next]?.dataset.step !== "verify") stopVerifyPoll();
     index = next;
     steps.forEach((s, i) => s.classList.toggle("active", i === index));
     const onFlow = index < flowCount;
@@ -162,6 +170,13 @@ export function initOnboarding(): void {
     }
 
     if (steps[index].dataset.step === "billing") ensureStripe();
+    if (steps[index].dataset.step === "verify") {
+      const host = byId("onb-verify");
+      if (host) renderVerifyInto(host, {
+        email: principalEmail,
+        onVerified: () => { accountVerified = true; show(stepIndex("payment")); },
+      });
+    }
     if (steps[index].dataset.step === "payment") void mountPaymentElement();
     if (index === doneIndex) window.localStorage.removeItem(STORAGE_KEY);
 
@@ -1070,13 +1085,9 @@ export function initOnboarding(): void {
     }
   }
 
-  /** End of onboarding: enforce the email-verify barrier, then into the app. */
+  /** End of onboarding (after the email is already confirmed): into the app. */
   function finishOnboarding(): void {
-    if (!accountVerified) {
-      renderVerifyFullpage({ email: principalEmail, onVerified: () => window.location.assign("/account") });
-    } else {
-      window.location.assign("/account");
-    }
+    window.location.assign("/account");
   }
 
   byId("pay-later")?.addEventListener("click", () => finishOnboarding());
@@ -1358,8 +1369,8 @@ export function initOnboarding(): void {
       if (kind === "account") {
         const p = await persistAccount();
         accountVerified = p.email_verified;
-        // Next step is the payment card-on-file screen; the email-verify barrier
-        // and the hand-off into the app both happen after that (finishOnboarding).
+        // Flow: account → verify email → payment → app. show() renders the
+        // verify gate on the next step and advances to payment once confirmed.
       } else if (kind === "restaurant") await persistRestaurant();
       else if (kind === "billing") await persistBilling();
       else if (kind === "guidelines") await persistGuidelines();

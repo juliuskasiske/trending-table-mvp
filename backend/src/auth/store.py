@@ -45,6 +45,24 @@ def create(conn: psycopg.Connection, role: str, email: str, password_hash: str,
     return row
 
 
+def set_password(conn: psycopg.Connection, role: str, subject_id: int, password_hash: str) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            sql.SQL("UPDATE {} SET password_hash = %s WHERE id = %s").format(_ident(role)),
+            (password_hash, subject_id),
+        )
+    conn.commit()
+
+
+def soft_delete(conn: psycopg.Connection, role: str, subject_id: int) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            sql.SQL("UPDATE {} SET deleted_at = NOW() WHERE id = %s").format(_ident(role)),
+            (subject_id,),
+        )
+    conn.commit()
+
+
 def mark_verified(conn: psycopg.Connection, role: str, subject_id: int) -> None:
     with conn.cursor() as cur:
         cur.execute(

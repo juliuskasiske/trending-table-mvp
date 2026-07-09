@@ -130,48 +130,46 @@ def update_me(body: UpdateMeIn, principal: dict = Depends(deps.require_account))
 
 @router.post("/change-password")
 def change_password(body: ChangePasswordIn,
-                    principal: dict = Depends(deps.require_account)) -> dict:
+                    principal: dict = Depends(deps.current_principal)) -> dict:
+    role = principal["role"]
     with get_control_connection() as conn:
-        row = store.get_by_id(conn, "account", principal["id"])
+        row = store.get_by_id(conn, role, principal["id"])
         if not row or not passwords.verify_password(row["password_hash"], body.current_password):
             raise HTTPException(status_code=401, detail="Current password is incorrect.")
         problem = passwords.password_problem(body.new_password, row["email"])
         if problem:
             raise HTTPException(status_code=400, detail=problem)
-        with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE accounts SET password_hash = %s WHERE id = %s",
-                (passwords.hash_password(body.new_password), principal["id"]),
-            )
-        audit.record(conn, "password_changed", account_id=principal["id"])
-        conn.commit()
+        store.set_password(conn, role, principal["id"], passwords.hash_password(body.new_password))
+        audit.record(conn, "password_changed", **_audit_kwargs(role, principal["id"]))
     return {"ok": True}
 
 
 @router.post("/delete-account")
 def delete_account(response: Response,
-                   principal: dict = Depends(deps.require_account)) -> dict:
-    """Soft-delete the account: cancel Stripe billing (platform + usage) on every
-    restaurant it owns, tag those restaurants and the account deleted, and end
-    the session. Rows are kept in both databases — just tombstoned."""
-    aid = principal["id"]
+                   principal: dict = Depends(deps.current_principal)) -> dict:
+    """Soft-delete the caller (account or creator). For an account: cancel Stripe
+    billing on every restaurant it owns and tombstone those restaurants too. For
+    a creator: just tombstone the creator. Rows are kept — only marked deleted —
+    and the session is ended."""
+    role, sid = principal["role"], principal["id"]
     with get_control_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT r.id, r.stripe_subscription_id, r.stripe_usage_subscription_id"
-                " FROM restaurants r JOIN memberships m ON m.restaurant_id = r.id"
-                " WHERE m.account_id = %s AND m.role = 'owner' AND r.status <> 'deleted'",
-                (aid,),
-            )
-            owned = cur.fetchall()
-        for _rid, sub_id, usage_id in owned:
-            stripe_client.cancel_subscription(sub_id)
-            stripe_client.cancel_subscription(usage_id)
-        with conn.cursor() as cur:
-            for rid, *_ in owned:
-                cur.execute("UPDATE restaurants SET status = 'deleted' WHERE id = %s", (rid,))
-            cur.execute("UPDATE accounts SET deleted_at = NOW() WHERE id = %s", (aid,))
-        audit.record(conn, "account_deleted", account_id=aid)
+        if role == "account":
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT r.id, r.stripe_subscription_id, r.stripe_usage_subscription_id"
+                    " FROM restaurants r JOIN memberships m ON m.restaurant_id = r.id"
+                    " WHERE m.account_id = %s AND m.role = 'owner' AND r.status <> 'deleted'",
+                    (sid,),
+                )
+                owned = cur.fetchall()
+            for _rid, sub_id, usage_id in owned:
+                stripe_client.cancel_subscription(sub_id)
+                stripe_client.cancel_subscription(usage_id)
+            with conn.cursor() as cur:
+                for rid, *_ in owned:
+                    cur.execute("UPDATE restaurants SET status = 'deleted' WHERE id = %s", (rid,))
+        store.soft_delete(conn, role, sid)
+        audit.record(conn, "account_deleted", **_audit_kwargs(role, sid))
         conn.commit()
     sessions.clear_session(response)
     return {"ok": True}

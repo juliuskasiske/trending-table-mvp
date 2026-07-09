@@ -397,6 +397,7 @@ body.no-scroll { overflow: hidden; }
   border: 0; cursor: pointer; text-align: left; width: 100%; font-family: var(--font);
 }
 .dash-card-open:hover { background: var(--bg); }
+.cf-notes-fixed { resize: none; }
 .dash-card-food { position: relative; display: inline-grid; place-items: center; width: 42px; height: 42px; flex-shrink: 0; border: 2px solid var(--ink); background: var(--accent); color: var(--on-accent); overflow: hidden; }
 .dash-card-food svg { width: 22px; height: 22px; }
 /* Real logo (from Google) overlays the fallback icon; removed on load error. */

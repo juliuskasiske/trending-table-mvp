@@ -75,6 +75,8 @@ ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS stripe_usage_subscription_id TE
 ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS stripe_payment_method_id TEXT;
 -- Redesign: creator payouts via Stripe Connect (Express).
 ALTER TABLE creators ADD COLUMN IF NOT EXISTS stripe_account_id TEXT;
+-- Soft-delete tombstone for creators (mirrors accounts.deleted_at).
+ALTER TABLE creators ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 ALTER TABLE creators ADD COLUMN IF NOT EXISTS payouts_enabled BOOLEAN NOT NULL DEFAULT false;
 -- Soft-delete tombstone for accounts (rows are kept, login is revoked).
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;

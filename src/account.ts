@@ -47,6 +47,7 @@ import {
 } from "./api.ts";
 import { MenuItem, GUIDELINE_PRESETS, defaultGuidelines, type PlaceDetails, type PlaceSuggestion } from "./types.ts";
 import { getLang, initI18n, localizeError, onLangChange, setLang, t, tChip } from "./i18n.ts";
+import { confirmBox } from "./confirm.ts";
 import { renderVerifyFullpage } from "./verify-screen.ts";
 import { fmtEur } from "./format.ts";
 
@@ -486,7 +487,7 @@ function toggleCampaignForm(): void {
         <p class="camp-gl-label">${esc(t("campaigns.f.guidelines"))}</p>
         ${GUIDELINE_GROUPS.map(guidelineGroupHtml).join("")}
         <div class="camp-field"><label>${esc(t("account.g.notes"))}</label>
-          <textarea class="input" id="cf-notes" rows="2" placeholder="${esc(t("campaigns.g.notesPh"))}"></textarea></div>
+          <textarea class="input cf-notes-fixed" id="cf-notes" rows="3" placeholder="${esc(t("campaigns.g.notesPh"))}"></textarea></div>
       </div>
       <p class="field-error" id="cf-err" hidden></p>
       <div class="camp-actions">
@@ -497,9 +498,17 @@ function toggleCampaignForm(): void {
   const est = byId("cf-estimate")!;
   budget.addEventListener("input", () => {
     const v = Number(budget.value);
-    est.textContent = v > 0
-      ? t("campaigns.estimate", { n: new Intl.NumberFormat(locale()).format(estimateViews(v)) })
-      : t("campaigns.estimateHint");
+    // Below the €250 minimum the budget is rejected: no estimate is computed and
+    // the field is flagged. The estimate only appears once the budget qualifies.
+    const belowMin = budget.value !== "" && v < MIN_CAMPAIGN_BUDGET;
+    budget.classList.toggle("invalid", belowMin);
+    if (v >= MIN_CAMPAIGN_BUDGET) {
+      est.textContent = t("campaigns.estimate", { n: new Intl.NumberFormat(locale()).format(estimateViews(v)) });
+    } else if (belowMin) {
+      est.textContent = t("campaigns.err.minBudget", { min: fmtEur(MIN_CAMPAIGN_BUDGET) });
+    } else {
+      est.textContent = t("campaigns.estimateHint");
+    }
   });
   // Preset chips toggle on click; the + button lets the user add their own.
   const toggleChip = (c: HTMLElement) => c.addEventListener("click", () => c.classList.toggle("on"));
@@ -537,8 +546,10 @@ function toggleCampaignForm(): void {
       input.addEventListener("blur", commit);
     });
   });
-  // Clear a field's invalid highlight as soon as the user edits it.
+  // Clear a field's invalid highlight as soon as the user edits it. The budget
+  // is excluded — its own input handler owns the below-minimum flag.
   box.querySelectorAll<HTMLElement>(".input").forEach((el) => {
+    if (el.id === "cf-budget") return;
     const evt = el.tagName === "SELECT" ? "change" : "input";
     el.addEventListener(evt, () => el.classList.remove("invalid"));
   });
@@ -938,10 +949,10 @@ function flashSaved(okId: string): void {
 function priceSelect(id: string, current: string): string {
   const opts: Array<[string, string]> = [
     ["", t("account.profile.priceNone")],
-    ["PRICE_LEVEL_INEXPENSIVE", "$"],
-    ["PRICE_LEVEL_MODERATE", "$$"],
-    ["PRICE_LEVEL_EXPENSIVE", "$$$"],
-    ["PRICE_LEVEL_VERY_EXPENSIVE", "$$$$"],
+    ["PRICE_LEVEL_INEXPENSIVE", "€"],
+    ["PRICE_LEVEL_MODERATE", "€€"],
+    ["PRICE_LEVEL_EXPENSIVE", "€€€"],
+    ["PRICE_LEVEL_VERY_EXPENSIVE", "€€€€"],
   ];
   const html = opts.map(([v, label]) =>
     `<option value="${esc(v)}"${v === current ? " selected" : ""}>${esc(label)}</option>`).join("");
@@ -1159,65 +1170,6 @@ function renderAccountView(body: HTMLElement): void {
         window.location.assign("/login");
       },
     );
-  });
-}
-
-/* ---- confirm dialog ------------------------------------------------------ */
-
-interface ConfirmOpts {
-  confirmLabel?: string;
-  cancelLabel?: string;
-  /** Style the confirm button. Defaults to "danger"; use "primary" for non-destructive confirms (e.g. launch). */
-  variant?: "danger" | "primary";
-}
-
-function confirmBox(
-  title: string,
-  message: string,
-  matchWord: string | null,
-  onConfirm: () => Promise<void>,
-  opts: ConfirmOpts = {},
-): void {
-  const confirmLabel = opts.confirmLabel ?? t("account.confirm.confirm");
-  const cancelLabel = opts.cancelLabel ?? t("account.confirm.cancel");
-  const okClass = opts.variant === "primary" ? "btn-primary" : "btn-danger";
-  const wrap = document.createElement("div");
-  wrap.className = "confirm-wrap";
-  wrap.innerHTML = `
-    <div class="confirm-box card">
-      <h2>${esc(title)}</h2>
-      <p>${esc(message)}</p>
-      ${matchWord !== null ? `<input class="input" id="confirm-input" autocomplete="off" />` : ""}
-      <div class="confirm-actions">
-        <button type="button" class="btn btn-ghost" id="confirm-cancel">${esc(cancelLabel)}</button>
-        <button type="button" class="btn ${okClass}" id="confirm-ok" ${matchWord !== null ? "disabled" : ""}>${esc(confirmLabel)}</button>
-      </div>
-    </div>`;
-  document.body.appendChild(wrap);
-  const okBtn = wrap.querySelector<HTMLButtonElement>("#confirm-ok")!;
-  const input = wrap.querySelector<HTMLInputElement>("#confirm-input");
-  input?.addEventListener("input", () => {
-    okBtn.disabled = input.value.trim() !== matchWord;
-  });
-  input?.focus();
-  const close = () => wrap.remove();
-  wrap.querySelector("#confirm-cancel")?.addEventListener("click", close);
-  wrap.addEventListener("click", (e) => {
-    if (e.target === wrap) close();
-  });
-  okBtn.addEventListener("click", async () => {
-    okBtn.disabled = true;
-    okBtn.textContent = t("account.confirm.working");
-    try {
-      await onConfirm();
-    } catch (e) {
-      okBtn.disabled = false;
-      okBtn.textContent = confirmLabel;
-      const p = wrap.querySelector("p");
-      if (p) p.textContent = (e as Error).message || t("account.error.save");
-      return;
-    }
-    close();
   });
 }
 

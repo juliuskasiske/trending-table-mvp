@@ -10,12 +10,15 @@ import "./styles/admin.css";   // shared .admin-title
 import "./styles/account.css"; // dark platform nav + coming-soon shell
 import "./styles/creator.css";
 import {
+  changePassword,
+  deleteAccount,
   getCreatorHandles,
   getCreatorProfile,
   getMe,
   instagramConnectUrl,
   logout,
   putCreatorProfile,
+  resendVerification,
   setCreatorHandles,
   signup,
   type CreatorProfile,
@@ -24,6 +27,7 @@ import {
   type SocialAccount,
 } from "./api.ts";
 import { getLang, initI18n, localizeError, onLangChange, setLang, t } from "./i18n.ts";
+import { confirmBox } from "./confirm.ts";
 import { renderVerifyInto, stopVerifyPoll } from "./verify-screen.ts";
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string) =>
@@ -44,10 +48,11 @@ const dic = {
   logout: svg('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/>'),
   chevron: svg('<path d="m6 9 6 6 6-6"/>'),
   at: svg('<circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/>'),
+  settings: svg('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'),
 };
 
 type Step = "signup" | "verify" | "profile" | "handles" | "connect" | "done" | "home";
-type DashView = "account" | "campaigns" | "messages";
+type DashView = "account" | "campaigns" | "messages" | "settings";
 type AcctTab = "profile" | "channels";
 type EditorMode = "onboard" | "account";
 
@@ -435,6 +440,27 @@ function renderHandles(card: HTMLElement, mode: EditorMode = "onboard"): void {
       if (err) { err.hidden = false; err.textContent = t("creator.handles.needOne"); }
       return;
     }
+    // Onboarding: at least one channel must be fully set up — all 5 cities, every
+    // age group + gender ranked, and all three reach metrics filled in.
+    const isComplete = (a: PlatformStats): boolean =>
+      !!a.handle &&
+      (a.top_cities?.length ?? 0) === 5 &&
+      (a.top_age_ranges?.length ?? 0) === AGE_RANGES.length &&
+      (a.top_genders?.length ?? 0) === AUD_GENDERS.length &&
+      a.views_30d != null && a.reached_30d != null && a.link_clicks_30d != null;
+    if (mode === "onboard" && !payload.some(isComplete)) {
+      card.querySelectorAll<HTMLElement>(".input.invalid").forEach((el) => el.classList.remove("invalid"));
+      const target = (payload.find((a) => a.handle) ?? payload[0]).platform;
+      card.querySelectorAll<HTMLSelectElement>(`.ch-city[data-p="${target}"]`)
+        .forEach((s) => { if (!s.value) s.classList.add("invalid"); });
+      ["v", "r", "l"].forEach((pre) => {
+        const el = byId<HTMLInputElement>(`${pre}-${target}`);
+        if (el && !el.value.trim()) el.classList.add("invalid");
+      });
+      if (err) { err.hidden = false; err.textContent = t("creator.handles.needComplete"); }
+      byId(`h-${target}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+      return;
+    }
     if (err) err.hidden = true;
     const btn = byId<HTMLButtonElement>("h-save");
     const restore = mode === "account" ? t("account.save") : t("creator.handles.cta");
@@ -505,7 +531,12 @@ async function renderConnect(card: HTMLElement): Promise<void> {
     ${banner}
     <div class="social-list">${accounts.map(socialRow).join("") || `<p class="acct-empty">${esc(t("creator.connect.none"))}</p>`}</div>
     ${igButton}
-    <button type="button" class="btn btn-ghost creator-finish" id="c-finish">${esc(t("creator.connect.finish"))}</button>`;
+    <div class="creator-actions">
+      <button type="button" class="btn btn-ghost" id="c-back">${esc(t("btn.back"))}</button>
+      <button type="button" class="btn btn-primary creator-cta" id="c-finish">${esc(t("creator.connect.finish"))}</button>
+    </div>`;
+  // Back to the channel-metrics form to edit cities / ranks / stats.
+  byId("c-back")?.addEventListener("click", () => go("handles"));
 
   byId("c-ig")?.addEventListener("click", async () => {
     const btn = byId<HTMLButtonElement>("c-ig");
@@ -554,6 +585,7 @@ function dashShell(): string {
           <span>${esc(t("account.language"))}</span>
           <div class="account-lang" id="cr-lang"><button type="button" data-lang="de">DE</button><button type="button" data-lang="en">EN</button></div>
         </div>
+        <button type="button" class="rest-menu-item" id="cr-settings">${dic.settings}<span>${esc(t("account.nav.settings"))}</span></button>
         <button type="button" class="rest-menu-item" id="cr-logout">${dic.logout}<span>${esc(t("account.signout"))}</span></button>
       </div>
       <button type="button" class="rest-selector" id="cr-selector">
@@ -570,6 +602,7 @@ function dashShell(): string {
 function setDashNavActive(): void {
   document.querySelectorAll<HTMLElement>(".pnav-item").forEach((b) =>
     b.classList.toggle("on", b.dataset.view === dashView));
+  byId("cr-selector")?.classList.toggle("on", dashView === "settings");
 }
 
 function renderDashboard(): void {
@@ -590,6 +623,11 @@ function renderDashboard(): void {
     });
     dashDocWired = true;
   }
+  byId("cr-settings")?.addEventListener("click", () => {
+    if (menu) menu.hidden = true;
+    dashView = "settings";
+    renderDashMain();
+  });
   byId("cr-logout")?.addEventListener("click", async () => { await logout(); window.location.assign("/login"); });
   byId("cr-lang")?.querySelectorAll<HTMLButtonElement>("button[data-lang]").forEach((b) => {
     b.classList.toggle("on", b.dataset.lang === getLang());
@@ -603,7 +641,61 @@ function renderDashMain(): void {
   const m = byId("cr-main");
   if (!m) return;
   if (dashView === "account") renderAccountCenter(m);
+  else if (dashView === "settings") renderCreatorSettings(m);
   else renderDashComingSoon(m, dashView);
+}
+
+/** Account settings — change password + delete account (mirrors the locale app). */
+function renderCreatorSettings(m: HTMLElement): void {
+  const verified = me?.email_verified;
+  m.innerHTML = `
+    <h1 class="admin-title">${esc(t("account.nav.settings"))}</h1>
+    <div class="acct-detail">
+      <section class="acct-panel">
+        <div class="bill-line"><span>${esc(t("account.acct.email"))}</span><b>${esc(me?.email ?? "")}</b></div>
+        <div class="bill-line"><span>${esc(t("account.acct.status"))}</span>
+          <span class="pill ${verified ? "yes" : "no"}">${esc(verified ? t("account.acct.verified") : t("account.acct.unverified"))}</span></div>
+        ${verified ? "" : `<button type="button" class="linklike" id="cs-resend">${esc(t("account.acct.resend"))}</button><span class="acct-saved" id="cs-resend-ok" hidden>${esc(t("account.acct.resent"))}</span>`}
+      </section>
+      <section class="acct-panel">
+        <h2 class="acct-panel-title">${esc(t("account.acct.password"))}</h2>
+        <div class="field"><label for="cs-cur">${esc(t("account.acct.currentPw"))}</label><input class="input" id="cs-cur" type="password" autocomplete="current-password" /></div>
+        <div class="field"><label for="cs-new">${esc(t("account.acct.newPw"))}</label><input class="input" id="cs-new" type="password" autocomplete="new-password" /></div>
+        <p class="field-error" id="cs-pw-err" hidden></p>
+        <div class="acct-save-row"><button type="button" class="btn btn-ink" id="cs-pw-save">${esc(t("account.acct.changePw"))}</button><span class="acct-saved" id="cs-pw-ok" hidden>${esc(t("account.acct.pwChanged"))}</span></div>
+      </section>
+      <div class="danger-zone">
+        <h2>${esc(t("account.danger.title"))}</h2>
+        <p class="acct-note">${esc(t("account.danger.deleteAccountHint"))}</p>
+        <button type="button" class="btn btn-danger" id="cs-del">${esc(t("account.danger.deleteAccount"))}</button>
+      </div>
+    </div>`;
+  byId("cs-resend")?.addEventListener("click", async () => {
+    await resendVerification().catch(() => {});
+    flashSaved("cs-resend-ok");
+  });
+  byId("cs-pw-save")?.addEventListener("click", async () => {
+    const cur = byId<HTMLInputElement>("cs-cur")?.value ?? "";
+    const nw = byId<HTMLInputElement>("cs-new")?.value ?? "";
+    const err = byId("cs-pw-err");
+    if (err) err.hidden = true;
+    try {
+      await changePassword(cur, nw);
+      byId<HTMLInputElement>("cs-cur")!.value = "";
+      byId<HTMLInputElement>("cs-new")!.value = "";
+      flashSaved("cs-pw-ok");
+    } catch (e) {
+      if (err) { err.hidden = false; err.textContent = localizeError((e as Error).message) || t("creator.error"); }
+    }
+  });
+  byId("cs-del")?.addEventListener("click", () => {
+    confirmBox(
+      t("account.danger.deleteAccount"),
+      t("account.danger.deleteAccountConfirm", { email: me?.email ?? "" }),
+      me?.email ?? "",
+      async () => { await deleteAccount(); window.location.assign("/login"); },
+    );
+  });
 }
 
 function renderAccountCenter(m: HTMLElement): void {
