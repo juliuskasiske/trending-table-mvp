@@ -88,7 +88,7 @@ def list_restaurants(principal: dict = Depends(deps.require_account)) -> dict:
     with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             "SELECT r.id, r.name, r.status, r.spending_limit_eur,"
-            " r.stripe_subscription_status, m.role"
+            " r.stripe_subscription_status, r.logo_url, m.role"
             " FROM restaurants r JOIN memberships m ON m.restaurant_id = r.id"
             " WHERE m.account_id = %s AND r.status <> 'deleted' ORDER BY r.created_at",
             (principal["id"],),
@@ -120,6 +120,8 @@ def put_profile(body: ProfileIn, ctx: dict = Depends(restaurant_ctx)) -> dict:
         repo.upsert_profile(conn, rid, data)
     if body.name:  # keep the denormalized control-plane name in sync
         provision.set_restaurant_name(rid, body.name)
+    if body.logo_url is not None:  # keep the denormalized control-plane logo in sync
+        provision.set_restaurant_logo(rid, body.logo_url)
     return {"ok": True}
 
 

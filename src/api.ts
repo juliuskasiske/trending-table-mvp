@@ -191,6 +191,7 @@ export interface RestaurantSummary {
   status: string;
   spending_limit_eur: number | null;
   stripe_subscription_status: string | null;
+  logo_url: string | null;
   role: string;
 }
 

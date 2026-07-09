@@ -125,6 +125,9 @@ def main() -> None:
     apply_control()
     print("migrate: app migrations")
     apply_app_migrations()
+    print("migrate: backfill control-plane logos")
+    from ..tenancy import provision
+    provision.backfill_restaurant_logos()
     print("migrate: done")
 
 

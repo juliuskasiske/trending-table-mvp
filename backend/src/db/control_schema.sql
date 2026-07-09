@@ -65,6 +65,9 @@ CREATE TABLE IF NOT EXISTS restaurants (
 
 -- Additive columns for DBs created before these flows (idempotent).
 ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS stripe_subscription_status TEXT;
+-- Denormalized logo (from the tenant profile) so the control-plane locale list
+-- can show it without querying each tenant DB.
+ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS logo_url TEXT;
 ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS stripe_usage_subscription_id TEXT;
 -- Redesign: the saved card used for the €9.99 launch fee + off-session
 -- per-approval charges. The old subscription/spending-limit columns above are

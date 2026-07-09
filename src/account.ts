@@ -272,7 +272,9 @@ function renderRestaurantCards(): void {
     ? restaurants.map((r) => `
       <div class="dash-card">
         <button type="button" class="dash-card-open" data-manage="${r.id}">
-          <span class="dash-card-food">${ic.food}</span>
+          <span class="dash-card-food">${ic.food}${r.logo_url
+            ? `<img class="dash-card-logo" src="${esc(r.logo_url)}" alt="" loading="lazy" />`
+            : ""}</span>
           <span class="dash-card-body">
             <span class="dash-card-name">${esc(r.name || "—")}</span>
             <span class="${restPill(r.status)}">${esc(t(`account.rstatus.${r.status}`) || r.status)}</span>
@@ -283,6 +285,10 @@ function renderRestaurantCards(): void {
     : `<div class="pl-empty">${esc(t("restaurants.empty"))}</div>`;
   grid.querySelectorAll<HTMLElement>("[data-manage]").forEach((b) =>
     b.addEventListener("click", () => openRestaurant(Number(b.dataset.manage))));
+  // A broken logo URL falls back to the generic icon underneath it.
+  grid.querySelectorAll<HTMLImageElement>(".dash-card-logo").forEach((img) => {
+    img.addEventListener("error", () => img.remove());
+  });
 }
 
 async function createAndRefresh(profile: RestaurantProfileInput & { name: string }): Promise<void> {
