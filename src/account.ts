@@ -431,7 +431,7 @@ function showDashErr(msg: string): void {
 
 // Internal only — used to preview the expected-views estimate as the user types
 // a budget. Never labelled as a rate in the UI (budget ÷ rate = views).
-const VIEW_ESTIMATE_RATE = 0.015;
+const VIEW_ESTIMATE_RATE = 0.03;
 const estimateViews = (budget: number) => (budget > 0 ? Math.floor(budget / VIEW_ESTIMATE_RATE) : 0);
 
 async function renderCampaigns(m: HTMLElement): Promise<void> {

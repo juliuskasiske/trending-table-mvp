@@ -72,7 +72,7 @@ INSTAGRAM_REDIRECT_URI = os.environ.get("INSTAGRAM_REDIRECT_URI", "")
 # see the view number, never the €/view. €0.015 = 1.5¢/view.
 from decimal import Decimal as _Decimal
 
-VIEW_ESTIMATE_RATE_EUR = _Decimal(os.environ.get("VIEW_ESTIMATE_RATE_EUR", "0.015"))
+VIEW_ESTIMATE_RATE_EUR = _Decimal(os.environ.get("VIEW_ESTIMATE_RATE_EUR", "0.03"))
 # The one-time fee (in cents) to launch a campaign. €9.99.
 CAMPAIGN_FEE_CENTS = int(os.environ.get("CAMPAIGN_FEE_CENTS", "999"))
 # Minimum campaign budget (€) and required lead time (days) for the post-by date.
