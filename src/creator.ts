@@ -15,7 +15,6 @@ import {
   getCreatorHandles,
   getCreatorProfile,
   getMe,
-  instagramConnectUrl,
   logout,
   putCreatorProfile,
   resendVerification,
@@ -36,7 +35,6 @@ const esc = (s: unknown): string =>
   String(s ?? "").replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string,
   );
-const nf = () => new Intl.NumberFormat(getLang() === "de" ? "de-DE" : "en-US");
 
 // Small line-icon set for the dark platform nav (mirrors the locale app).
 const svg = (p: string) =>
@@ -51,7 +49,7 @@ const dic = {
   settings: svg('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'),
 };
 
-type Step = "signup" | "verify" | "profile" | "handles" | "connect" | "done" | "home";
+type Step = "signup" | "verify" | "profile" | "handles" | "done" | "home";
 type DashView = "account" | "campaigns" | "messages" | "settings";
 type AcctTab = "profile" | "channels";
 type EditorMode = "onboard" | "account";
@@ -66,7 +64,6 @@ let profile: CreatorProfile | null = null;
 let avatarData = "";      // staged profile picture (small JPEG data URL), "" = none
 let avatarDirty = false;  // did the user change the picture this session?
 let igEnabled = false;
-let igBanner: "connected" | "error" | null = null;
 
 // Audience/demographic option sets (values are stable codes; labels come from i18n).
 const AGE_RANGES = ["18-24", "25-34", "35-44", "45-54", "55+"] as const;
@@ -121,8 +118,16 @@ function renderSignup(card: HTMLElement): void {
       <input class="input" id="c-password" type="password" autocomplete="new-password" /></div>
     <div class="field"><label for="c-password2">${esc(t("account.password2.label"))}</label>
       <input class="input" id="c-password2" type="password" autocomplete="new-password" /></div>
+    <button type="button" class="linklike c-pw-toggle" id="c-pw-toggle">${esc(t("pw.show"))}</button>
     <p class="field-error" id="c-err" hidden></p>
     <button type="button" class="btn btn-primary creator-cta" id="c-signup">${esc(t("creator.signup.cta"))}</button>`;
+  byId("c-pw-toggle")?.addEventListener("click", () => {
+    const pws = [byId<HTMLInputElement>("c-password"), byId<HTMLInputElement>("c-password2")];
+    const show = pws[0]?.type === "password";
+    pws.forEach((el) => { if (el) el.type = show ? "text" : "password"; });
+    const btn = byId("c-pw-toggle");
+    if (btn) btn.textContent = show ? t("pw.hide") : t("pw.show");
+  });
   byId("c-signup")?.addEventListener("click", async () => {
     const email = byId<HTMLInputElement>("c-email")?.value.trim() ?? "";
     const password = byId<HTMLInputElement>("c-password")?.value ?? "";
@@ -479,78 +484,8 @@ function renderHandles(card: HTMLElement, mode: EditorMode = "onboard"): void {
       flashSaved("h-ok");
       return;
     }
-    go("connect");
+    go("done");
   });
-}
-
-function socialRow(a: SocialAccount): string {
-  const name = PLATFORMS.find((p) => p.key === a.platform)?.label ?? a.platform;
-  const connected = a.status === "connected";
-  const detail = connected
-    ? t("creator.connect.connected", {
-        handle: a.handle ? "@" + a.handle : "",
-        followers: a.follower_count != null ? nf().format(a.follower_count) : "—",
-      })
-    : a.platform === "instagram"
-      ? t("creator.connect.notConnected")
-      : t("creator.connect.saved", { handle: a.handle ? "@" + a.handle : "" });
-  return `
-    <div class="social-row ${connected ? "on" : ""}">
-      <span class="social-name">${esc(name)}</span>
-      <span class="social-detail">${esc(detail)}</span>
-      <span class="social-pill ${connected ? "yes" : ""}">${esc(connected ? t("creator.connect.pillOn") : t("creator.connect.pillOff"))}</span>
-    </div>`;
-}
-
-async function renderConnect(card: HTMLElement): Promise<void> {
-  card.innerHTML = `<p class="acct-loading">…</p>`;
-  try {
-    const res = await getCreatorHandles();
-    accounts = res.accounts;
-    igEnabled = res.instagramEnabled;
-  } catch {
-    /* keep whatever we had */
-  }
-  const ig = accounts.find((a) => a.platform === "instagram");
-  const igConnected = ig?.status === "connected";
-  const banner =
-    igBanner === "connected"
-      ? `<div class="notice ok creator-banner">${esc(t("creator.connect.justConnected"))}</div>`
-      : igBanner === "error"
-        ? `<div class="notice error creator-banner">${esc(t("creator.connect.failed"))}</div>`
-        : "";
-  const igButton =
-    ig && !igConnected && igEnabled
-      ? `<button type="button" class="btn btn-ink creator-cta" id="c-ig">${esc(t("creator.connect.ig"))}</button>`
-      : "";
-
-  card.innerHTML = `
-    <p class="step-eyebrow">${esc(t("creator.eyebrow"))}</p>
-    <h1 class="step-title">${esc(t("creator.connect.title"))}</h1>
-    <p class="step-sub">${esc(t("creator.connect.sub"))}</p>
-    ${banner}
-    <div class="social-list">${accounts.map(socialRow).join("") || `<p class="acct-empty">${esc(t("creator.connect.none"))}</p>`}</div>
-    ${igButton}
-    <div class="creator-actions">
-      <button type="button" class="btn btn-ghost" id="c-back">${esc(t("btn.back"))}</button>
-      <button type="button" class="btn btn-primary creator-cta" id="c-finish">${esc(t("creator.connect.finish"))}</button>
-    </div>`;
-  // Back to the channel-metrics form to edit cities / ranks / stats.
-  byId("c-back")?.addEventListener("click", () => go("handles"));
-
-  byId("c-ig")?.addEventListener("click", async () => {
-    const btn = byId<HTMLButtonElement>("c-ig");
-    if (btn) { btn.disabled = true; btn.textContent = t("creator.connect.opening"); }
-    try {
-      const { url } = await instagramConnectUrl();
-      window.location.assign(url); // top-level nav to Instagram's authorization page
-    } catch (e) {
-      if (btn) { btn.disabled = false; btn.textContent = t("creator.connect.ig"); }
-      const list = card.querySelector(".social-list");
-      if (list) list.insertAdjacentHTML("beforebegin", `<div class="notice error creator-banner">${esc((e as Error).message || t("creator.error"))}</div>`);
-    }
-  });
-  byId("c-finish")?.addEventListener("click", () => go("done"));
 }
 
 function renderDone(card: HTMLElement): void {
@@ -765,7 +700,6 @@ function render(): void {
   else if (step === "signup") renderSignup(card);
   else if (step === "profile") renderProfile(card);
   else if (step === "handles") renderHandles(card);
-  else if (step === "connect") void renderConnect(card);
   else renderDone(card);
 }
 
@@ -789,10 +723,6 @@ export async function initCreator(): Promise<void> {
   document.title = t("creator.pageTitle");
   document.body.className = "theme-risograph creator-body";
 
-  const params = new URLSearchParams(window.location.search);
-  const ig = params.get("ig");
-  igBanner = ig === "connected" ? "connected" : ig === "error" ? "error" : null;
-
   me = await getMe().catch(() => null);
   if (me && me.role === "creator") {
     const [handles, prof] = await Promise.all([
@@ -805,15 +735,12 @@ export async function initCreator(): Promise<void> {
     // Hard barrier: an unverified creator can't proceed past the verify gate.
     // Otherwise: no channels yet → onboarding from profile; else home.
     step = !me.email_verified ? "verify"
-      : igBanner ? "connect" : accounts.length ? "home" : "profile";
+      : accounts.length ? "home" : "profile";
   } else {
     // Logged out, or signed in as a locale account choosing "register as a
     // creator" — show the creator signup. Signing up creates a creator account.
     step = "signup";
   }
-  // Drop the ?ig= param so a refresh doesn't re-show the banner.
-  if (ig) window.history.replaceState(null, "", "/creator");
-
   document.body.innerHTML = shell();
   wireLang();
   render();

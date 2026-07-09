@@ -139,6 +139,15 @@ export function resendVerification(): Promise<{ ok: boolean; dev_verify_token?: 
   return api("/api/auth/resend-verification", { method: "POST" });
 }
 
+export function forgotPassword(email: string, role: "account" | "creator" = "account"):
+  Promise<{ ok: boolean; dev_reset_token?: string }> {
+  return api("/api/auth/forgot-password", { method: "POST", json: { email, role } });
+}
+
+export function resetPassword(token: string, newPassword: string): Promise<{ ok: boolean }> {
+  return api("/api/auth/reset-password", { method: "POST", json: { token, new_password: newPassword } });
+}
+
 /* ---- places -------------------------------------------------------------- */
 
 export async function searchPlaces(query: string): Promise<PlaceSuggestion[]> {

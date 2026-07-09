@@ -42,6 +42,16 @@ class ChangePasswordIn(BaseModel):
     new_password: str
 
 
+class ForgotPasswordIn(BaseModel):
+    email: EmailStr
+    role: Role = "account"
+
+
+class ResetPasswordIn(BaseModel):
+    token: str
+    new_password: str
+
+
 def _audit_kwargs(role: str, subject_id: int) -> dict:
     return {"account_id": subject_id} if role == "account" else {"creator_id": subject_id}
 
@@ -200,3 +210,42 @@ def resend_verification(principal: dict = Depends(deps.current_principal)) -> di
     if config.IS_DEV:
         out["dev_verify_token"] = raw
     return out
+
+
+@router.post("/forgot-password", dependencies=[Depends(rate_limit("forgot", 3, 60))])
+def forgot_password(body: ForgotPasswordIn) -> dict:
+    """Email a password-reset link if the account exists. Always returns ok so
+    the endpoint never reveals whether an email is registered."""
+    out: dict = {"ok": True}
+    with get_control_connection() as conn:
+        row = store.get_by_email(conn, body.role, body.email)
+        if row and not row.get("deleted_at"):
+            raw = tokens.issue_token(
+                conn, subject_type=body.role, subject_id=row["id"], purpose="reset", ttl_hours=1
+            )
+            email_mod.send_password_reset(row["email"], raw)
+            audit.record(conn, "password_reset_requested", **_audit_kwargs(body.role, row["id"]))
+            if config.IS_DEV:
+                out["dev_reset_token"] = raw
+    return out
+
+
+@router.post("/reset-password", dependencies=[Depends(rate_limit("reset", 5, 60))])
+def reset_password(body: ResetPasswordIn) -> dict:
+    """Consume a reset token, set the new password, and email a confirmation."""
+    with get_control_connection() as conn:
+        result = tokens.consume_token(conn, body.token, "reset")
+        if not result:
+            raise HTTPException(status_code=400, detail="This reset link is invalid or expired.")
+        role, subject_id = result
+        row = store.get_by_id(conn, role, subject_id)
+        if not row:
+            raise HTTPException(status_code=400, detail="This account no longer exists.")
+        problem = passwords.password_problem(body.new_password, row["email"])
+        if problem:
+            raise HTTPException(status_code=400, detail=problem)
+        store.set_password(conn, role, subject_id, passwords.hash_password(body.new_password))
+        audit.record(conn, "password_reset", **_audit_kwargs(role, subject_id))
+        conn.commit()
+    email_mod.send_password_changed(row["email"])
+    return {"ok": True}

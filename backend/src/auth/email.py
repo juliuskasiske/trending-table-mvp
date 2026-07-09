@@ -53,6 +53,50 @@ def _send(to: str, subject: str, text: str, html: str) -> None:
     log.info("[email] sent %r to %s", subject, to)
 
 
+def reset_link(raw_token: str) -> str:
+    return f"{config.APP_BASE_URL}/reset?token={raw_token}"
+
+
+def send_password_reset(email: str, raw_token: str) -> None:
+    link = reset_link(raw_token)
+    subject = "Reset your password · Trending Table"
+    text = (
+        "We received a request to reset your Trending Table password.\n\n"
+        f"Set a new password here:\n{link}\n\n"
+        "The link expires in 1 hour. If you didn't request this, you can ignore this message."
+    )
+    html = f"""\
+<div style="font-family:system-ui,Segoe UI,Helvetica,Arial,sans-serif;max-width:480px;margin:auto">
+  <h2 style="margin:0 0 12px">Reset your password</h2>
+  <p style="color:#444;line-height:1.5">We received a request to reset your password.
+     Click below to set a new one.</p>
+  <p style="margin:24px 0">
+    <a href="{link}" style="background:#ff3d86;color:#fff;text-decoration:none;
+       padding:12px 20px;border-radius:8px;font-weight:600;display:inline-block">
+       Set a new password</a>
+  </p>
+  <p style="color:#888;font-size:13px;line-height:1.5">Or paste this link:<br>
+     <a href="{link}" style="color:#2b55ff">{link}</a></p>
+  <p style="color:#aaa;font-size:12px">This link expires in 1 hour. If you didn't request it, ignore this email.</p>
+</div>"""
+    _send(email, subject, text, html)
+
+
+def send_password_changed(email: str) -> None:
+    subject = "Your password was changed · Trending Table"
+    text = (
+        "Your Trending Table password was just changed.\n\n"
+        "If this wasn't you, reset it again immediately and contact support."
+    )
+    html = """\
+<div style="font-family:system-ui,Segoe UI,Helvetica,Arial,sans-serif;max-width:480px;margin:auto">
+  <h2 style="margin:0 0 12px">Password changed</h2>
+  <p style="color:#444;line-height:1.5">Your Trending Table password was just changed.
+     If this wasn't you, reset it again immediately and contact support.</p>
+</div>"""
+    _send(email, subject, text, html)
+
+
 def send_verification(email: str, raw_token: str) -> None:
     link = verification_link(raw_token)
     subject = "Confirm your email · Trending Table"

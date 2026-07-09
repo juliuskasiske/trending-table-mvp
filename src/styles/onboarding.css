@@ -203,6 +203,10 @@ body {
   max-width: 380px;
   margin: 0 auto;
 }
+.gate-forgot { align-self: center; font-size: 13px; margin-top: -2px; }
+.gate-forgot-form { display: flex; flex-direction: column; gap: 10px; max-width: 380px; margin: 10px auto 0; }
+.gate-forgot-form .step-sub { margin: 0; text-align: center; }
+.gate-forgot-note { color: var(--accent-2); text-align: center; font-weight: 700; }
 
 .gate-login .input {
   margin: 0;

@@ -68,12 +68,35 @@
               </button>
             </div>
             <button type="submit" class="btn btn-ink" id="gate-login" data-i18n="gate.login">Log in</button>
+            <button type="button" class="linklike gate-forgot" id="gate-forgot" data-i18n="gate.forgot">Forgot password?</button>
             <p class="gate-hint" data-i18n="gate.noAccount">No account yet? Register below:</p>
             <button type="button" class="btn btn-primary" id="gate-signup" data-i18n="gate.signup">Sign up</button>
             <p class="gate-error" id="gate-error" hidden></p>
           </form>
 
+          <div class="gate-forgot-form" id="gate-forgot-form" hidden>
+            <p class="step-sub" data-i18n="gate.forgotSub">Enter your email and we'll send you a reset link.</p>
+            <input class="input" id="forgot-email" type="email" placeholder="Email" data-i18n-ph="gate.email" autocomplete="email" />
+            <button type="button" class="btn btn-ink" id="forgot-send" data-i18n="gate.forgotSend">Send reset link</button>
+            <button type="button" class="linklike" id="forgot-back" data-i18n="gate.forgotBack">Back to login</button>
+            <p class="gate-hint gate-forgot-note" id="forgot-note" hidden></p>
+          </div>
+
           <div class="notice gate-soon" id="gate-soon" hidden></div>
+        </section>
+
+        <!-- Password reset (opened from the emailed link at /reset?token=…) -->
+        <section class="gate" id="reset-screen" hidden>
+          <p class="gate-eyebrow" data-i18n="reset.eyebrow">Reset password</p>
+          <h1 class="gate-title" data-i18n="reset.title">Set a new password</h1>
+          <form class="gate-login" id="reset-form" novalidate>
+            <div class="field"><label for="reset-pw" data-i18n="reset.pw1">Enter password</label>
+              <input class="input" id="reset-pw" type="password" autocomplete="new-password" /></div>
+            <div class="field"><label for="reset-pw2" data-i18n="reset.pw2">Enter password again</label>
+              <input class="input" id="reset-pw2" type="password" autocomplete="new-password" /></div>
+            <p class="gate-error" id="reset-error" hidden></p>
+            <button type="submit" class="btn btn-primary" id="reset-submit" data-i18n="reset.submit">Set password</button>
+          </form>
         </section>
 
         <form id="onboarding" novalidate hidden>

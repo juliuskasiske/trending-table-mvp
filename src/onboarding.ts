@@ -21,7 +21,9 @@ import {
   getMe,
   getPlaceDetails,
   improveMenuWithAi,
+  forgotPassword,
   login,
+  resetPassword,
   logout,
   placePhotoUrl,
   putBilling,
@@ -194,9 +196,20 @@ export function initOnboarding(): void {
 
   function showGate(): void {
     byId("gate")!.hidden = false;
+    byId("reset-screen")!.hidden = true;
+    // Reset the forgot-password sub-view back to the login form.
+    byId("gate-forgot-form")!.hidden = true;
+    byId("gate-form")!.hidden = false;
     if (form) form.hidden = true;
     if (progress) progress.hidden = true;
     setPath("/login");
+  }
+
+  function showReset(): void {
+    byId("gate")!.hidden = true;
+    byId("reset-screen")!.hidden = false;
+    if (form) form.hidden = true;
+    if (progress) progress.hidden = true;
   }
 
   function startFlow(index: number): void {
@@ -228,6 +241,55 @@ export function initOnboarding(): void {
   byId("gate-signup")?.addEventListener("click", () => {
     if (gateRole === "restaurant") startFlow(0); // → /register
     else window.location.assign("/creator"); // creator registration flow
+  });
+
+  // Forgot password: reveal an email field, send a reset link.
+  byId("gate-forgot")?.addEventListener("click", () => {
+    byId("gate-form")!.hidden = true;
+    byId("gate-forgot-form")!.hidden = false;
+    const fe = byId<HTMLInputElement>("forgot-email");
+    if (fe) { fe.value = byId<HTMLInputElement>("gate-email")?.value.trim() ?? ""; fe.focus(); }
+  });
+  byId("forgot-back")?.addEventListener("click", () => {
+    byId("gate-forgot-form")!.hidden = true;
+    byId("gate-form")!.hidden = false;
+  });
+  byId("forgot-send")?.addEventListener("click", async () => {
+    const email = byId<HTMLInputElement>("forgot-email")?.value.trim() ?? "";
+    const note = byId("forgot-note");
+    const btn = byId<HTMLButtonElement>("forgot-send");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      if (note) { note.hidden = false; note.textContent = t("account.email.err"); }
+      return;
+    }
+    if (btn) btn.disabled = true;
+    const role = gateRole === "creator" ? "creator" : "account";
+    try { await forgotPassword(email, role); } catch { /* never reveal existence */ }
+    if (note) { note.hidden = false; note.textContent = t("gate.forgotSent", { email }); }
+    if (btn) btn.disabled = false;
+  });
+
+  // Reset password screen (opened via the emailed /reset?token= link).
+  byId("reset-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const pw = byId<HTMLInputElement>("reset-pw")?.value ?? "";
+    const pw2 = byId<HTMLInputElement>("reset-pw2")?.value ?? "";
+    const err = byId("reset-error");
+    const btn = byId<HTMLButtonElement>("reset-submit");
+    const fail = (msg: string) => { if (err) { err.hidden = false; err.textContent = msg; } };
+    if (err) err.hidden = true;
+    if (pw.length < 8) { fail(t("pw.password_too_short")); return; }
+    if (pw !== pw2) { fail(t("account.password2.err")); return; }
+    const token = new URLSearchParams(window.location.search).get("token") ?? "";
+    if (btn) btn.disabled = true;
+    try {
+      await resetPassword(token, pw);
+      showBanner(t("gate.pwReset"), "ok");
+      showGate();
+    } catch (err2) {
+      fail(localizeError((err2 as Error).message) || t("reset.fail"));
+      if (btn) btn.disabled = false;
+    }
   });
 
   // Show/hide the login password with the eye toggle in the field.
@@ -1688,6 +1750,13 @@ export function initOnboarding(): void {
     }
     applyConfigUi();
 
+    const path = window.location.pathname.replace(/\/+$/, "");
+
+    // Password reset: the emailed link is APP_BASE_URL/reset?token=…. Show the
+    // set-a-new-password screen; the form reads the token from the URL on submit.
+    // (Handled before the verify block so the token isn't consumed/cleared here.)
+    if (path === "/reset") { showReset(); return; }
+
     // Email verification: the link in the email is APP_BASE_URL/verify?token=…,
     // which loads this SPA. Consume the token, show the result, and clean the URL.
     const token = new URLSearchParams(window.location.search).get("token");
@@ -1705,7 +1774,6 @@ export function initOnboarding(): void {
     // active session, so they can be reached directly. Only the root path sends
     // a signed-in account/creator into its app; a logged-out root shows the gate.
     const me = await getMe();
-    const path = window.location.pathname.replace(/\/+$/, "");
     if (path === "/register") {
       startFlow(0);
     } else if (path === "/login") {
