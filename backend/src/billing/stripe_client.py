@@ -96,6 +96,15 @@ def create_setup_intent(customer_id: str) -> str:
     return intent.client_secret
 
 
+def has_payment_method(customer_id: str | None) -> bool:
+    """True if the customer has at least one card on file."""
+    if not customer_id:
+        return False
+    _client()
+    pms = stripe.PaymentMethod.list(customer=customer_id, type="card", limit=1)
+    return bool(pms.data)
+
+
 def _price_for(cadence: str) -> str:
     price = config.STRIPE_PRICE_ANNUAL if cadence == "annual" else config.STRIPE_PRICE_MONTHLY
     if not price:

@@ -448,6 +448,21 @@ export function cancelBilling(id: number): Promise<{ ok: boolean }> {
   return api(`/api/restaurants/${id}/billing/cancel`, { method: "POST" });
 }
 
+/* ---- account-level card on file (onboarding payment step) ---------------- */
+export interface AccountBilling {
+  stripeEnabled: boolean;
+  hasCard: boolean;
+  publishableKey: string | null;
+}
+
+export function getAccountBilling(): Promise<AccountBilling> {
+  return api("/api/account/billing");
+}
+
+export function accountSetupIntent(): Promise<{ clientSecret: string; publishableKey: string | null }> {
+  return api("/api/account/billing/setup-intent", { method: "POST" });
+}
+
 export function updateMe(display_name: string): Promise<{ ok: boolean }> {
   return api("/api/auth/me", { method: "PATCH", json: { display_name } });
 }

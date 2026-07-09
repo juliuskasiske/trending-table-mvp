@@ -114,6 +114,20 @@
             </div>
           </section>
 
+          <!-- Step — Payment method (card on file, no charge) -->
+          <section class="step card" data-step="payment" data-name="Payment">
+            <p class="step-eyebrow" data-i18n="pay.eyebrow">Set up billing</p>
+            <h1 class="step-title" data-i18n="pay.setupTitle">Add a payment method</h1>
+            <p class="step-sub" data-i18n="pay.sub">We save a card so we can bill the platform fee and usage once your locales go live. You won't be charged now.</p>
+            <div id="pay-element" class="pay-element"></div>
+            <p class="field-error" id="pay-err" hidden></p>
+            <p class="pay-disabled" id="pay-disabled" hidden data-i18n="pay.disabled">Payments aren't enabled yet — you can add a card later from your account.</p>
+            <div class="actions pay-actions">
+              <button type="button" class="linklike" id="pay-later" data-i18n="pay.later">Add later</button>
+              <button type="button" class="btn btn-primary" id="pay-save" data-i18n="pay.save">Save card &amp; continue</button>
+            </div>
+          </section>
+
           <!-- Step 2 — Find restaurant -->
           <section class="step card" data-step="restaurant" data-name="Find your restaurant">
             <p class="step-eyebrow" data-i18n="restaurant.eyebrow">One search, everything filled</p>

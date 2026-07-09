@@ -825,6 +825,12 @@ select.select {
 .actions .btn[disabled],
 .creator-actions .btn[disabled] { box-shadow: none; transform: none; }
 
+/* ---- Onboarding payment step ------------------------------------------ */
+.pay-element { margin: 8px 0 4px; min-height: 40px; }
+.pay-disabled { color: var(--muted); font-weight: 600; font-size: 13.5px; margin: 4px 0 0; }
+.pay-actions { align-items: center; }
+.pay-actions .linklike { font-size: 13px; }
+
 /* ---- Password show/hide toggle ---------------------------------------- */
 .pw-field { position: relative; display: block; width: 100%; }
 .pw-field .input { width: 100%; padding-right: 46px; }

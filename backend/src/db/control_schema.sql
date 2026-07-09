@@ -75,6 +75,9 @@ ALTER TABLE creators ADD COLUMN IF NOT EXISTS stripe_account_id TEXT;
 ALTER TABLE creators ADD COLUMN IF NOT EXISTS payouts_enabled BOOLEAN NOT NULL DEFAULT false;
 -- Soft-delete tombstone for accounts (rows are kept, login is revoked).
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+-- Account-level Stripe customer (card on file collected during onboarding).
+-- Idempotent ALTER because the accounts table predates this column.
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT;
 
 -- Which account manages which restaurant, and in what role. One account can own
 -- many restaurants ("one account → many restaurants").

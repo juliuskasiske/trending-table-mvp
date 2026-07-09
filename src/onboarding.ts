@@ -9,6 +9,7 @@
  * rest is budget, a saved card, and a mostly-prefilled creative brief.
  */
 import {
+  accountSetupIntent,
   activateRestaurant,
   createRestaurant,
   createSubscription,
@@ -105,6 +106,12 @@ export function initOnboarding(): void {
   let restaurantId: number | null = null; // the provisioned tenant
   let authed = false; // a session exists (signed up or logged in)
   let principalEmail = ""; // the logged-in account's email
+  let accountVerified = false; // was the just-created account's email verified?
+  // Onboarding payment step (account-level card on file; separate from the
+  // legacy per-restaurant billing Stripe instance).
+  let payStripe: Stripe | null = null;
+  let payElements: StripeElements | null = null;
+  let payMounted = false;
   let doneName = ""; // restaurant name shown on the success screen
   let cadence: "monthly" | "annual" = "monthly"; // platform-fee billing cycle
   let configLoaded = false; // did /api/config actually load (vs backend down)?
@@ -155,6 +162,7 @@ export function initOnboarding(): void {
     }
 
     if (steps[index].dataset.step === "billing") ensureStripe();
+    if (steps[index].dataset.step === "payment") void mountPaymentElement();
     if (index === doneIndex) window.localStorage.removeItem(STORAGE_KEY);
 
     steps[index].scrollIntoView({ block: "start", behavior: "smooth" });
@@ -1038,6 +1046,60 @@ export function initOnboarding(): void {
     }
   }
 
+  /* ---- Onboarding payment step (account card on file, no charge) -------- */
+  async function mountPaymentElement(): Promise<void> {
+    if (payMounted) return;
+    const payEl = byId("pay-element");
+    const disabled = byId("pay-disabled");
+    const saveBtn = byId<HTMLButtonElement>("pay-save");
+    try {
+      const intent = await accountSetupIntent();
+      if (!intent.publishableKey || !intent.clientSecret) throw new Error("no-stripe");
+      const st = await loadStripe(intent.publishableKey);
+      if (!st) throw new Error("stripe-load");
+      payStripe = st;
+      payElements = st.elements({ clientSecret: intent.clientSecret });
+      payElements.create("payment").mount("#pay-element");
+      payMounted = true;
+    } catch {
+      // Payments not enabled (or Stripe failed to load) — let them continue and
+      // add a card later from the account. Never blocks signup.
+      if (payEl) payEl.hidden = true;
+      if (disabled) disabled.hidden = false;
+      if (saveBtn) saveBtn.hidden = true;
+    }
+  }
+
+  /** End of onboarding: enforce the email-verify barrier, then into the app. */
+  function finishOnboarding(): void {
+    if (!accountVerified) {
+      renderVerifyFullpage({ email: principalEmail, onVerified: () => window.location.assign("/account") });
+    } else {
+      window.location.assign("/account");
+    }
+  }
+
+  byId("pay-later")?.addEventListener("click", () => finishOnboarding());
+  byId("pay-save")?.addEventListener("click", async () => {
+    // A SetupIntent only stores the card — it never charges.
+    if (!payStripe || !payElements) { finishOnboarding(); return; }
+    const errEl = byId("pay-err");
+    const saveBtn = byId<HTMLButtonElement>("pay-save");
+    if (errEl) errEl.hidden = true;
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = t("pay.saving"); }
+    const { error } = await payStripe.confirmSetup({
+      elements: payElements,
+      confirmParams: { return_url: window.location.origin + "/register" },
+      redirect: "if_required",
+    });
+    if (error) {
+      if (errEl) { errEl.hidden = false; errEl.textContent = error.message || t("pay.error"); }
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = t("pay.save"); }
+      return;
+    }
+    finishOnboarding();
+  });
+
   byId("save-card")?.addEventListener("click", async () => {
     if (!stripe || !elements || restaurantId == null) return;
     const saveBtn = byId<HTMLButtonElement>("save-card");
@@ -1295,15 +1357,9 @@ export function initOnboarding(): void {
     try {
       if (kind === "account") {
         const p = await persistAccount();
-        // Hard barrier: an unverified account cannot enter the app. Show the
-        // confirm-your-email gate until they verify (it polls + auto-advances).
-        if (!p.email_verified) {
-          renderVerifyFullpage({ email: p.email, onVerified: () => window.location.assign("/account") });
-          return;
-        }
-        // Account is the only onboarding step now — go straight into the app,
-        // where the dashboard is used to create restaurants.
-        if (index + 1 >= flowCount) { window.location.assign("/account"); return; }
+        accountVerified = p.email_verified;
+        // Next step is the payment card-on-file screen; the email-verify barrier
+        // and the hand-off into the app both happen after that (finishOnboarding).
       } else if (kind === "restaurant") await persistRestaurant();
       else if (kind === "billing") await persistBilling();
       else if (kind === "guidelines") await persistGuidelines();
@@ -1360,6 +1416,7 @@ export function initOnboarding(): void {
     // must run the normal Continue path — sign up → verify → account app — and
     // never fall through to the legacy "done" success screen below.
     if (steps[index]?.dataset.step === "account") { void handleNext(); return; }
+    if (steps[index]?.dataset.step === "payment") { byId("pay-save")?.click(); return; }
     // Re-validate the whole flow (skip the account step for an already-signed-in
     // user). Never reach "You're in." without the required fields.
     for (let i = authed ? 1 : 0; i < flowCount; i++) {

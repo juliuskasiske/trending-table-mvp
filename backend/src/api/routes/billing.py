@@ -18,6 +18,51 @@ log = logging.getLogger("billing")
 
 router = APIRouter(prefix="/api/restaurants", tags=["billing"])
 webhook_router = APIRouter(prefix="/api/stripe", tags=["billing"])
+# Account-level card-on-file (collected during onboarding). Payment method lives
+# on the account's Stripe customer; each locale's subscription reuses it.
+account_router = APIRouter(prefix="/api/account/billing", tags=["billing"])
+
+
+def _ensure_account_customer(conn, principal: dict) -> str:
+    with conn.cursor() as cur:
+        cur.execute("SELECT stripe_customer_id, display_name FROM accounts WHERE id = %s", (principal["id"],))
+        customer_id, name = cur.fetchone()
+    if not customer_id:
+        customer_id = stripe_client.create_customer(principal["email"], name or principal["email"])
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE accounts SET stripe_customer_id = %s WHERE id = %s",
+                (customer_id, principal["id"]),
+            )
+        conn.commit()
+    return customer_id
+
+
+@account_router.get("")
+def account_billing(principal: dict = Depends(deps.require_account)) -> dict:
+    """Whether Stripe is live and whether the account already has a card on file."""
+    if not stripe_client.configured():
+        return {"stripeEnabled": False, "hasCard": False, "publishableKey": None}
+    with get_control_connection() as conn, conn.cursor() as cur:
+        cur.execute("SELECT stripe_customer_id FROM accounts WHERE id = %s", (principal["id"],))
+        (customer_id,) = cur.fetchone()
+    return {
+        "stripeEnabled": True,
+        "hasCard": stripe_client.has_payment_method(customer_id),
+        "publishableKey": stripe_client.publishable_key(),
+    }
+
+
+@account_router.post("/setup-intent")
+def account_setup_intent(principal: dict = Depends(deps.require_account)) -> dict:
+    """Create a SetupIntent to save a card on the account's customer. A
+    SetupIntent never charges — it only stores the payment method."""
+    if not stripe_client.configured():
+        raise HTTPException(status_code=400, detail="Payments are not enabled.")
+    with get_control_connection() as conn:
+        customer_id = _ensure_account_customer(conn, principal)
+    client_secret = stripe_client.create_setup_intent(customer_id)
+    return {"clientSecret": client_secret, "publishableKey": stripe_client.publishable_key()}
 
 
 class BillingIn(BaseModel):
