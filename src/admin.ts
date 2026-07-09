@@ -89,12 +89,30 @@ const MARKUP = `
     <p class="admin-nav-tag">Control tower</p>
     <nav class="admin-nav-list">
       <button type="button" class="nav-item on" data-view="overview">Overview</button>
-      <button type="button" class="nav-item" data-view="pipeline">Pipeline</button>
-      <button type="button" class="nav-item" data-view="restaurants">Restaurants</button>
-      <button type="button" class="nav-item" data-view="creators">Creators</button>
-      <button type="button" class="nav-item" data-view="campaigns">Campaigns</button>
-      <button type="button" class="nav-item" data-view="outreach">Outreach</button>
-      <button type="button" class="nav-item" data-view="schema">Data model</button>
+
+      <div class="nav-group">
+        <button type="button" class="nav-group-head">Acquisition<span class="nav-chev">▾</span></button>
+        <div class="nav-group-items">
+          <button type="button" class="nav-item nav-sub" data-view="pipeline">Pipeline</button>
+          <button type="button" class="nav-item nav-sub" data-view="outreach">Outreach</button>
+        </div>
+      </div>
+
+      <div class="nav-group">
+        <button type="button" class="nav-group-head">Marketplace<span class="nav-chev">▾</span></button>
+        <div class="nav-group-items">
+          <button type="button" class="nav-item nav-sub" data-view="restaurants">Restaurants</button>
+          <button type="button" class="nav-item nav-sub" data-view="creators">Creators</button>
+          <button type="button" class="nav-item nav-sub" data-view="campaigns">Campaigns</button>
+        </div>
+      </div>
+
+      <div class="nav-group">
+        <button type="button" class="nav-group-head">System<span class="nav-chev">▾</span></button>
+        <div class="nav-group-items">
+          <button type="button" class="nav-item nav-sub" data-view="schema">Data model</button>
+        </div>
+      </div>
     </nav>
     <button type="button" class="linklike admin-signout" id="admin-logout">Sign out</button>
   </aside>
@@ -204,15 +222,76 @@ const statusPill = (s: string) => `<span class="pill ${esc(s)}">${esc(s)}</span>
 const boolPill = (v: boolean) =>
   v ? `<span class="pill yes">verified</span>` : `<span class="pill no">unverified</span>`;
 
+/** Plain text of an HTML cell, for filtering + sorting. */
+function cellText(html: string): string {
+  const d = document.createElement("div");
+  d.innerHTML = html;
+  return (d.textContent || "").trim();
+}
+/** Parse a cell as a number (handles €, %, thousands separators), else null. */
+function cellNum(s: string): number | null {
+  if (s.trim() === "") return null;
+  const c = s.replace(/[€$%\s]/g, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", ".");
+  const n = Number(c);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Sortable + filterable table. Cells may contain HTML; sort/filter use their
+ * text. Click a header to sort (toggles asc/desc); the box filters all columns. */
 function renderTable(mount: HTMLElement | null, headers: string[], rows: string[][]): void {
   if (!mount) return;
   if (!rows.length) {
     mount.innerHTML = `<p class="muted" style="padding:14px">Nothing yet.</p>`;
     return;
   }
-  const thead = `<tr>${headers.map((h) => `<th>${esc(h)}</th>`).join("")}</tr>`;
-  const tbody = rows.map((cells) => `<tr>${cells.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("");
-  mount.innerHTML = `<table class="admin"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+  const text = rows.map((cells) => cells.map(cellText));
+  let sortCol = -1;
+  let sortDir: 1 | -1 = 1;
+  let filter = "";
+
+  const draw = (): void => {
+    let idx = rows.map((_, i) => i);
+    if (filter) {
+      const f = filter.toLowerCase();
+      idx = idx.filter((i) => text[i].some((tx) => tx.toLowerCase().includes(f)));
+    }
+    if (sortCol >= 0) {
+      idx.sort((a, b) => {
+        const ta = text[a][sortCol] ?? "", tb = text[b][sortCol] ?? "";
+        const na = cellNum(ta), nb = cellNum(tb);
+        const cmp = na !== null && nb !== null
+          ? na - nb
+          : ta.localeCompare(tb, undefined, { numeric: true, sensitivity: "base" });
+        return cmp * sortDir;
+      });
+    }
+    const thead = `<tr>${headers.map((h, i) => {
+      const cls = "th-sort" + (sortCol === i ? (sortDir === 1 ? " asc" : " desc") : "");
+      return `<th><button type="button" class="${cls}" data-col="${i}">${esc(h)}<span class="th-arrow" aria-hidden="true"></span></button></th>`;
+    }).join("")}</tr>`;
+    const tbody = idx.length
+      ? idx.map((i) => `<tr>${rows[i].map((c) => `<td>${c}</td>`).join("")}</tr>`).join("")
+      : `<tr><td class="muted" colspan="${headers.length}" style="padding:14px">No matches.</td></tr>`;
+    const tbl = mount.querySelector<HTMLElement>("table.admin");
+    if (tbl) tbl.innerHTML = `<thead>${thead}</thead><tbody>${tbody}</tbody>`;
+    mount.querySelectorAll<HTMLButtonElement>(".th-sort").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const col = Number(btn.dataset.col);
+        if (sortCol === col) sortDir = (sortDir === 1 ? -1 : 1);
+        else { sortCol = col; sortDir = 1; }
+        draw();
+      });
+    });
+  };
+
+  mount.innerHTML = `
+    <div class="table-toolbar">
+      <input class="input table-filter" type="search" autocomplete="off" placeholder="Filter ${esc(String(rows.length))} rows…" aria-label="Filter rows" />
+    </div>
+    <table class="admin"><thead></thead><tbody></tbody></table>`;
+  const fil = mount.querySelector<HTMLInputElement>(".table-filter");
+  fil?.addEventListener("input", () => { filter = fil.value.trim(); draw(); });
+  draw();
 }
 
 function statCard(v: string | number, label: string, accent = false): string {
@@ -892,7 +971,9 @@ function setView(view: View): void {
     if (sec) sec.hidden = v !== view;
   });
   document.querySelectorAll<HTMLElement>(".nav-item").forEach((b) => {
-    b.classList.toggle("on", b.dataset.view === view);
+    const on = b.dataset.view === view;
+    b.classList.toggle("on", on);
+    if (on) b.closest(".nav-group")?.classList.remove("collapsed"); // keep active item visible
   });
   if (view === "campaigns") void loadCampaigns();
   if (window.location.hash !== `#${view}`) {
@@ -949,6 +1030,10 @@ function wire(): void {
 
   document.querySelectorAll<HTMLElement>(".nav-item").forEach((b) => {
     b.addEventListener("click", () => setView(b.dataset.view as View));
+  });
+  // Collapsible nav groups.
+  document.querySelectorAll<HTMLElement>(".nav-group-head").forEach((h) => {
+    h.addEventListener("click", () => h.parentElement?.classList.toggle("collapsed"));
   });
 
   byId("admin-logout")?.addEventListener("click", () => {
