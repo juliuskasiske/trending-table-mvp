@@ -6,6 +6,7 @@ import logging
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from psycopg.rows import dict_row
 from pydantic import BaseModel
 
 from .. import deps
@@ -21,6 +22,8 @@ webhook_router = APIRouter(prefix="/api/stripe", tags=["billing"])
 # Account-level card-on-file (collected during onboarding). Payment method lives
 # on the account's Stripe customer; each locale's subscription reuses it.
 account_router = APIRouter(prefix="/api/account/billing", tags=["billing"])
+# Bookable restaurant/locale services (Visibility Boost, Nutzungsrechte).
+account_services_router = APIRouter(prefix="/api/account", tags=["services"])
 
 
 def _ensure_account_customer(conn, principal: dict) -> str:
@@ -208,9 +211,37 @@ async def stripe_webhook(request: Request) -> dict:
         raise HTTPException(status_code=400, detail="Invalid signature.")
 
     obj = event["data"]["object"]
+    etype = event["type"]
+
+    # Service booking (creator OR account): Checkout completed → record it
+    # (idempotent). The confirm-on-return endpoint records the same booking;
+    # whichever lands first wins via the UNIQUE session id.
+    if etype == "checkout.session.completed":
+        md = obj.get("metadata") or {}
+        paid = obj.get("payment_status") in ("paid", "no_payment_required")
+        creator_id = md.get("creator_id")
+        account_id = md.get("account_id")
+        if paid and (creator_id or account_id):
+            table = "creator_service_bookings" if creator_id else "account_service_bookings"
+            subject_col = "creator_id" if creator_id else "account_id"
+            subject_id = int(creator_id or account_id)
+            with get_control_connection() as conn, conn.cursor() as cur:
+                cur.execute(
+                    f"INSERT INTO {table} ({subject_col}, product_id, price_id,"
+                    "   name, amount_cents, currency, interval, status,"
+                    "   stripe_checkout_session_id, stripe_subscription_id, stripe_payment_intent_id)"
+                    " VALUES (%s, %s, %s, %s, %s, %s, %s, 'active', %s, %s, %s)"
+                    " ON CONFLICT (stripe_checkout_session_id) DO NOTHING",
+                    (subject_id, md.get("product_id") or "", md.get("price_id") or "",
+                     md.get("service_name") or "Service", obj.get("amount_total"),
+                     obj.get("currency") or "eur", md.get("interval") or None,
+                     obj.get("id"), obj.get("subscription"), obj.get("payment_intent")),
+                )
+                conn.commit()
+        return {"received": True}
+
     sub_id = None
     status = None
-    etype = event["type"]
     if etype.startswith("customer.subscription."):
         sub_id, status = obj.get("id"), obj.get("status")
     elif etype in ("invoice.paid", "invoice.payment_failed"):
@@ -278,3 +309,104 @@ def set_billing(body: BillingIn, ctx: dict = Depends(restaurant_ctx)) -> dict:
         cur.execute("UPDATE restaurants SET spending_limit_eur = %s WHERE id = %s", (limit, rid))
         conn.commit()
     return {"ok": True, "spending_limit_eur": body.spending_limit_eur}
+
+
+# ---- Restaurant/locale services (bookable Stripe products) -----------------
+
+class ServiceCheckoutIn(BaseModel):
+    price_id: str
+
+
+class ServiceConfirmIn(BaseModel):
+    session_id: str
+
+
+def record_account_booking(conn, account_id: int, session: dict) -> dict | None:
+    """Idempotently record an account's service booking from a completed Checkout
+    Session. Returns the booking row, or None if the session isn't paid/complete."""
+    if session.get("status") != "complete" or \
+            session.get("payment_status") not in ("paid", "no_payment_required"):
+        return None
+    svc = next((s for s in stripe_client.list_restaurant_services()
+                if s["price_id"] == session.get("price_id")), None)
+    name = (svc or {}).get("name") or session["metadata"].get("service_name") or "Service"
+    amount = session.get("amount_total")
+    if amount is None:
+        amount = (svc or {}).get("amount")
+    interval = (svc or {}).get("interval")
+    product_id = session.get("product_id") or session["metadata"].get("product_id") or ""
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            "INSERT INTO account_service_bookings (account_id, product_id, price_id, name,"
+            "   amount_cents, currency, interval, status, stripe_checkout_session_id,"
+            "   stripe_subscription_id, stripe_payment_intent_id)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, 'active', %s, %s, %s)"
+            " ON CONFLICT (stripe_checkout_session_id) DO NOTHING"
+            " RETURNING id, product_id, price_id, name, amount_cents, currency,"
+            "   interval, status, booked_at",
+            (account_id, product_id, session.get("price_id"), name, amount,
+             session.get("currency") or "eur", interval, session["id"],
+             session.get("subscription"), session.get("payment_intent")),
+        )
+        row = cur.fetchone()
+        conn.commit()
+    return row
+
+
+@account_services_router.get("/services")
+def account_services(principal: dict = Depends(deps.require_account)) -> dict:
+    """Bookable restaurant services (live from Stripe) + this account's bookings."""
+    catalog = stripe_client.list_restaurant_services()
+    with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            "SELECT id, product_id, price_id, name, amount_cents, currency, interval,"
+            "   status, booked_at FROM account_service_bookings"
+            " WHERE account_id = %s AND status = 'active' ORDER BY booked_at DESC",
+            (principal["id"],),
+        )
+        booked = cur.fetchall()
+    return {"stripeEnabled": stripe_client.enabled(), "catalog": catalog, "booked": booked}
+
+
+@account_services_router.post("/services/checkout")
+def account_service_checkout(body: ServiceCheckoutIn,
+                             principal: dict = Depends(deps.require_account)) -> dict:
+    """Create a Stripe Checkout Session for one restaurant service; return its URL."""
+    if not stripe_client.enabled():
+        raise HTTPException(status_code=400, detail="Payments are not enabled.")
+    svc = next((s for s in stripe_client.list_restaurant_services()
+                if s["price_id"] == body.price_id), None)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Unknown service.")
+    with get_control_connection() as conn:
+        customer_id = _ensure_account_customer(conn, principal)
+    mode = "subscription" if svc["recurring"] else "payment"
+    front = config.APP_BASE_URL.rstrip("/")
+    session = stripe_client.create_checkout_session(
+        customer_id, svc["price_id"], mode,
+        success_url=f"{front}/account?service=success&session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{front}/account?service=cancelled",
+        metadata={
+            "account_id": str(principal["id"]),
+            "price_id": svc["price_id"],
+            "product_id": svc["product_id"],
+            "service_name": svc["name"],
+            "interval": svc["interval"] or "",
+        },
+    )
+    return {"url": session["url"]}
+
+
+@account_services_router.post("/services/confirm")
+def account_service_confirm(body: ServiceConfirmIn,
+                            principal: dict = Depends(deps.require_account)) -> dict:
+    """Record the booking after Checkout returns to the success URL (works
+    without a webhook). Verifies the session belongs to this account."""
+    session = stripe_client.retrieve_checkout_session(body.session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Unknown checkout session.")
+    if session["metadata"].get("account_id") != str(principal["id"]):
+        raise HTTPException(status_code=403, detail="This checkout session isn't yours.")
+    with get_control_connection() as conn:
+        row = record_account_booking(conn, principal["id"], session)
+    return {"booked": row is not None, "booking": row}

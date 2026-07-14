@@ -10,8 +10,10 @@ import "./styles/onboarding.css"; // shared card / field / input / button / chip
 import "./styles/admin.css"; // shared .admin-title + .pill
 import "./styles/account.css";
 import "./styles/platform.css";
+import "./styles/services.css"; // shared bookable-services cards
 import {
   changePassword,
+  confirmAccountServiceBooking,
   createCampaign,
   createRestaurant,
   deleteAccount,
@@ -21,6 +23,7 @@ import {
   digitizeMenu,
   digitizeMenuUrl,
   faviconLogo,
+  getAccountServices,
   improveMenuWithAi,
   getCampaign,
   getCampaignAnalytics,
@@ -36,10 +39,13 @@ import {
   putProfile,
   resendVerification,
   searchPlaces,
+  startAccountServiceCheckout,
   type Campaign,
   type CampaignAnalytics,
   type CampaignDetail,
   type CampaignPost,
+  type CreatorBooking,
+  type CreatorService,
   type MenuSource,
   type Principal,
   type RestaurantProfileInput,
@@ -47,6 +53,7 @@ import {
 } from "./api.ts";
 import { MenuItem, GUIDELINE_PRESETS, defaultGuidelines, type PlaceDetails, type PlaceSuggestion } from "./types.ts";
 import { getLang, initI18n, localizeError, onLangChange, setLang, t, tChip } from "./i18n.ts";
+import { serviceCard, wireServiceCheckout } from "./services-ui.ts";
 import { confirmBox } from "./confirm.ts";
 import { renderVerifyFullpage } from "./verify-screen.ts";
 import { fmtEur } from "./format.ts";
@@ -68,6 +75,7 @@ const ic = {
   creators: svg('<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/>'),
   campaigns: svg('<path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>'),
   messages: svg('<path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z"/>'),
+  services: svg('<path d="M20.6 8.4 12 3 3.4 8.4 12 13.8z"/><path d="M3.4 12.4 12 17.8l8.6-5.4"/>'),
   settings: svg('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'),
   food: svg('<path d="M4 3v6a2 2 0 0 0 2 2 2 2 0 0 0 2-2V3M6 11v10M17 3c-1.7 0-3 2-3 4.5S15.3 12 17 12m0-9v18"/>'),
   chevron: svg('<path d="m6 9 6 6 6-6"/>'),
@@ -142,7 +150,7 @@ const restPill = (s: string): string =>
 
 /* ---- state --------------------------------------------------------------- */
 
-type MainView = "restaurants" | "campaigns" | "creators" | "messages" | "settings";
+type MainView = "restaurants" | "campaigns" | "creators" | "messages" | "services" | "settings";
 
 let me: Principal | null = null;
 let restaurants: RestaurantSummary[] = [];
@@ -169,6 +177,7 @@ function shell(): string {
       ${item("campaigns")}
       ${item("creators")}
       ${item("messages")}
+      ${item("services")}
     </nav>
     <div class="pnav-foot">
       <div class="rest-menu" id="rest-menu" hidden>
@@ -211,7 +220,72 @@ function render(): void {
   if (mainView === "campaigns") { void renderCampaigns(m); return; }
   if (mainView === "creators") return renderComingSoon(m, "creators", "creators.verifying");
   if (mainView === "messages") return renderComingSoon(m, "messages", "messages.comingSoon");
+  if (mainView === "services") return renderAccountServices(m);
   renderSettings(m);
+}
+
+/* ---- services: bookable restaurant products (Visibility Boost, Nutzungsrechte) */
+
+// Stripe product ids that get an "Empfohlen" banner on the locale side.
+const RECOMMENDED_ACCOUNT_PRODUCTS = new Set<string>([
+  "prod_Us58wjMTkRN03J", // Restaurant Visibility Boost
+]);
+// Display-only name override (Stripe product keeps its original name).
+const ACCOUNT_SERVICE_NAME_OVERRIDES: Record<string, string> = {
+  "Restaurant Visibility Boost": "Visibility Boost",
+  "Nutzungsrechte (Whitelisting, 3 Monate)": "Nutzungsrechte",
+};
+
+function renderAccountServices(m: HTMLElement): void {
+  m.innerHTML = `
+    <h1 class="admin-title">${esc(t("account.services.title"))}</h1>
+    <p class="pl-sub">${esc(t("account.services.sub"))}</p>
+    <div id="acct-svc-body"><p class="svc-loading">${esc(t("creator.services.loading"))}</p></div>`;
+  const body = byId("acct-svc-body");
+  if (!body) return;
+  getAccountServices()
+    .then((data) => renderAccountServicesBody(body, data.stripeEnabled, data.catalog, data.booked))
+    .catch(() => { body.innerHTML = `<p class="svc-empty">${esc(t("account.error"))}</p>`; });
+}
+
+function renderAccountServicesBody(
+  body: HTMLElement, stripeEnabled: boolean,
+  catalog: CreatorService[], booked: CreatorBooking[],
+): void {
+  const bookedPrices = new Set(booked.map((b) => b.price_id));
+  const byType = (type: string) => catalog.filter((s) => s.metadata.type === type);
+
+  const card = (s: CreatorService): string =>
+    serviceCard(s, {
+      stripeEnabled,
+      booked: bookedPrices.has(s.price_id),
+      recommended: RECOMMENDED_ACCOUNT_PRODUCTS.has(s.product_id),
+      displayName: ACCOUNT_SERVICE_NAME_OVERRIDES[s.name],
+    });
+  const grid = (items: CreatorService[]): string =>
+    `<div class="svc-grid">${items.map(card).join("")}</div>`;
+  const section = (title: string, desc: string, html: string): string =>
+    `<section class="svc-section">
+      <h2 class="svc-section-title">${esc(title)}</h2>
+      <p class="svc-section-desc">${esc(desc)}</p>
+      ${html}
+    </section>`;
+  const empty = (msg: string): string => `<p class="svc-empty">${esc(msg)}</p>`;
+
+  const boosts = byType("visibility_boost");
+  const rights = byType("usage_rights");
+
+  const notice = stripeEnabled ? "" :
+    `<div class="svc-notice">${esc(t("creator.services.stripeOff"))}</div>`;
+
+  body.innerHTML = `
+    ${notice}
+    ${section(t("account.services.visibility"), t("account.services.visibilityDesc"),
+      boosts.length ? grid(boosts) : empty(t("creator.services.catalogEmpty")))}
+    ${section(t("account.services.rights"), t("account.services.rightsDesc"),
+      rights.length ? grid(rights) : empty(t("creator.services.catalogEmpty")))}`;
+
+  wireServiceCheckout(body, startAccountServiceCheckout);
 }
 
 /** Plausible (blurred) faux content per tab, so the coming-soon screen looks
@@ -1233,6 +1307,20 @@ function syncLangToggle(): void {
 }
 
 /** Boot: guard auth, then render the shell. */
+/** After Stripe Checkout redirects back to /account?service=…, record the
+ * booking (success) and open the services view, then clean the URL. */
+async function handleAccountServiceReturn(): Promise<void> {
+  const params = new URLSearchParams(window.location.search);
+  const outcome = params.get("service");
+  if (!outcome) return;
+  const sessionId = params.get("session_id");
+  if (outcome === "success" && sessionId) {
+    await confirmAccountServiceBooking(sessionId).catch(() => {});
+  }
+  mainView = "services";
+  window.history.replaceState({}, "", "/account");
+}
+
 export async function initAccount(): Promise<void> {
   initI18n(); // sets <html lang> + language state
   document.title = t("account.pageTitle");
@@ -1247,6 +1335,7 @@ export async function initAccount(): Promise<void> {
     renderVerifyFullpage({ email: me.email, onVerified: () => window.location.reload() });
     return;
   }
+  await handleAccountServiceReturn();
   restaurants = (await listRestaurants().catch(() => ({ restaurants: [] }))).restaurants;
   document.body.innerHTML = shell();
   wireShell();

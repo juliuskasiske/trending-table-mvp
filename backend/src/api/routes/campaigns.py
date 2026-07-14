@@ -5,7 +5,7 @@ and per-campaign content guidelines. From the budget we show a non-binding
 expected-views estimate (budget ÷ the internal rate — the rate is never
 returned). Creators are matched internally via the control tower
 (campaign_creators); money moves on restaurant approval. Launching a campaign
-costs €9.99 (real Stripe wired in a later phase; here it just activates).
+costs €19.99 (real Stripe wired in a later phase; here it just activates).
 """
 from __future__ import annotations
 

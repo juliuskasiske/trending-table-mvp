@@ -9,23 +9,30 @@ import "./styles/onboarding.css";
 import "./styles/admin.css";   // shared .admin-title
 import "./styles/account.css"; // dark platform nav + coming-soon shell
 import "./styles/creator.css";
+import "./styles/services.css"; // shared bookable-services cards
 import {
   changePassword,
+  confirmServiceBooking,
   deleteAccount,
   getCreatorHandles,
   getCreatorProfile,
+  getCreatorServices,
   getMe,
   logout,
   putCreatorProfile,
   resendVerification,
   setCreatorHandles,
   signup,
+  startServiceCheckout,
+  type CreatorBooking,
   type CreatorProfile,
+  type CreatorService,
   type PlatformStats,
   type Principal,
   type SocialAccount,
 } from "./api.ts";
 import { getLang, initI18n, localizeError, onLangChange, setLang, t } from "./i18n.ts";
+import { serviceCard, wireServiceCheckout } from "./services-ui.ts";
 import { confirmBox } from "./confirm.ts";
 import { renderVerifyInto, stopVerifyPoll } from "./verify-screen.ts";
 
@@ -43,6 +50,7 @@ const dic = {
   account: svg('<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/>'),
   campaigns: svg('<path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>'),
   messages: svg('<path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z"/>'),
+  services: svg('<path d="M20.6 8.4 12 3 3.4 8.4 12 13.8z"/><path d="M3.4 12.4 12 17.8l8.6-5.4"/>'),
   logout: svg('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/>'),
   chevron: svg('<path d="m6 9 6 6 6-6"/>'),
   at: svg('<circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/>'),
@@ -50,7 +58,7 @@ const dic = {
 };
 
 type Step = "signup" | "verify" | "profile" | "handles" | "done" | "home";
-type DashView = "account" | "campaigns" | "messages" | "settings";
+type DashView = "account" | "campaigns" | "messages" | "services" | "settings";
 type AcctTab = "profile" | "channels";
 type EditorMode = "onboard" | "account";
 
@@ -513,6 +521,7 @@ function dashShell(): string {
       ${item("account", t("creator.nav.account"))}
       ${item("campaigns", t("creator.tab.campaigns"))}
       ${item("messages", t("creator.tab.messages"))}
+      ${item("services", t("creator.nav.services"))}
     </nav>
     <div class="pnav-foot">
       <div class="rest-menu" id="cr-menu" hidden>
@@ -577,7 +586,86 @@ function renderDashMain(): void {
   if (!m) return;
   if (dashView === "account") renderAccountCenter(m);
   else if (dashView === "settings") renderCreatorSettings(m);
+  else if (dashView === "services") renderServices(m);
   else renderDashComingSoon(m, dashView);
+}
+
+/* ---- services: bookable Stripe products + the creator's bookings ---------- */
+
+// Stripe product ids that get an "Empfohlen" banner (Creator Advanced + the
+// Visibility Boost add-on). Matched by product id so a price change won't drop it.
+const RECOMMENDED_PRODUCTS = new Set<string>([
+  "prod_Us58cca2lqCH0i", // Creator Advanced
+  "prod_Us58gJN9rR7uSd", // Visibility Boost
+]);
+// Display-only name overrides (the Stripe product keeps its original name).
+const SERVICE_NAME_OVERRIDES: Record<string, string> = {
+  "Creator Visibility Boost": "Visibility Boost",
+};
+
+function renderServices(m: HTMLElement): void {
+  m.innerHTML = `
+    <h1 class="admin-title">${esc(t("creator.services.title"))}</h1>
+    <p class="pl-sub">${esc(t("creator.services.sub"))}</p>
+    <div id="svc-body"><p class="svc-loading">${esc(t("creator.services.loading"))}</p></div>`;
+  const body = byId("svc-body");
+  if (!body) return;
+  getCreatorServices()
+    .then((data) => renderServicesBody(body, data.stripeEnabled, data.catalog, data.booked))
+    .catch(() => { body.innerHTML = `<p class="svc-empty">${esc(t("creator.error"))}</p>`; });
+}
+
+function renderServicesBody(
+  body: HTMLElement, stripeEnabled: boolean,
+  catalog: CreatorService[], booked: CreatorBooking[],
+): void {
+  const bookedPrices = new Set(booked.map((b) => b.price_id));
+
+  // Split the catalog: subscription plans (recurring) vs one-time add-ons.
+  const plans = catalog.filter((s) => s.recurring)
+    .sort((a, b) => (a.amount ?? 0) - (b.amount ?? 0));
+  const addons = catalog.filter((s) => s.one_time);
+
+  // Current plan = the booked recurring plan (most recent), else the base plan
+  // every creator starts on (the cheapest one).
+  const bookedPlan = booked.find((b) => b.interval === "month");
+  const currentPlan = plans.find((p) => p.price_id === bookedPlan?.price_id) ?? plans[0] ?? null;
+  const currentAmount = currentPlan?.amount ?? 0;
+  const upgrades = plans.filter((p) =>
+    p.price_id !== currentPlan?.price_id && (p.amount ?? 0) > currentAmount);
+
+  const card = (s: CreatorService, current: boolean): string =>
+    serviceCard(s, {
+      stripeEnabled,
+      current,
+      booked: bookedPrices.has(s.price_id),
+      recommended: RECOMMENDED_PRODUCTS.has(s.product_id),
+      displayName: SERVICE_NAME_OVERRIDES[s.name],
+    });
+
+  const grid = (items: CreatorService[], current = false): string =>
+    `<div class="svc-grid">${items.map((s) => card(s, current)).join("")}</div>`;
+  const section = (title: string, desc: string, html: string): string =>
+    `<section class="svc-section">
+      <h2 class="svc-section-title">${esc(title)}</h2>
+      <p class="svc-section-desc">${esc(desc)}</p>
+      ${html}
+    </section>`;
+  const empty = (msg: string): string => `<p class="svc-empty">${esc(msg)}</p>`;
+
+  const notice = stripeEnabled ? "" :
+    `<div class="svc-notice">${esc(t("creator.services.stripeOff"))}</div>`;
+
+  body.innerHTML = `
+    ${notice}
+    ${section(t("creator.services.yourPlan"), t("creator.services.yourPlanDesc"),
+      currentPlan ? grid([currentPlan], true) : empty(t("creator.services.catalogEmpty")))}
+    ${section(t("creator.services.upgrade"), t("creator.services.upgradeDesc"),
+      upgrades.length ? grid(upgrades) : empty(t("creator.services.topPlan")))}
+    ${section(t("creator.services.moreJobs"), t("creator.services.moreJobsDesc"),
+      addons.length ? grid(addons) : empty(t("creator.services.catalogEmpty")))}`;
+
+  wireServiceCheckout(body, startServiceCheckout);
 }
 
 /** Account settings — change password + delete account (mirrors the locale app). */
@@ -717,6 +805,22 @@ function wireLang(): void {
     });
 }
 
+/** After Stripe Checkout redirects back to /creator?service=…, record the
+ * booking (success) and open the services page, then clean the URL. */
+async function handleServiceReturn(): Promise<void> {
+  const params = new URLSearchParams(window.location.search);
+  const outcome = params.get("service");
+  if (!outcome) return;
+  const sessionId = params.get("session_id");
+  if (outcome === "success" && sessionId) {
+    await confirmServiceBooking(sessionId).catch(() => {});
+  }
+  step = "home";
+  dashView = "services";
+  // Drop the query params so a refresh doesn't re-confirm.
+  window.history.replaceState({}, "", "/creator");
+}
+
 /** Boot the creator flow. */
 export async function initCreator(): Promise<void> {
   initI18n();
@@ -736,6 +840,9 @@ export async function initCreator(): Promise<void> {
     // Otherwise: no channels yet → onboarding from profile; else home.
     step = !me.email_verified ? "verify"
       : accounts.length ? "home" : "profile";
+    // Returning from Stripe Checkout for a service booking → land on the
+    // services page and record the booking (belt-and-braces with the webhook).
+    if (me.email_verified) await handleServiceReturn();
   } else {
     // Logged out, or signed in as a locale account choosing "register as a
     // creator" — show the creator signup. Signing up creates a creator account.

@@ -288,6 +288,122 @@ def subscription_detail(subscription_id: str | None) -> dict | None:
     }
 
 
+# ---- Creator services (Stripe Checkout) -----------------------------------
+
+_services_cache: dict[str, list[dict]] = {}
+
+
+def _service_from_product(p) -> dict | None:
+    """Normalize a Stripe product (with expanded default_price) into a catalog
+    entry. Returns None if it has no usable default price."""
+    price = p.get("default_price")
+    if not price or isinstance(price, str):
+        return None
+    recurring = price.get("recurring") or None
+    return {
+        "product_id": p["id"],
+        "price_id": price["id"],
+        "name": p.get("name") or "",
+        "description": p.get("description") or None,
+        "amount": price.get("unit_amount"),          # cents (0 for the free plan)
+        "currency": price.get("currency") or "eur",
+        "recurring": bool(recurring),
+        "interval": (recurring or {}).get("interval"),  # "month" | None
+        "one_time": not recurring,
+        "metadata": dict(p.get("metadata") or {}),
+    }
+
+
+def _list_services(side: str, exclude_types: tuple[str, ...] = ()) -> list[dict]:
+    """Active Stripe products for one marketplace side (metadata.side), with
+    their default price. Plans (recurring) first by price, then one-time add-ons.
+    Cached per (side, exclude_types). Returns [] when Stripe isn't configured or
+    is unreachable — callers must cope."""
+    cache_key = f"{side}|{','.join(exclude_types)}"
+    if cache_key in _services_cache:
+        return _services_cache[cache_key]
+    if not enabled():
+        return []
+    _client()
+    try:
+        products = stripe.Product.list(
+            active=True, limit=100, expand=["data.default_price"],
+        )
+    except Exception:
+        return []
+    out: list[dict] = []
+    for p in products.auto_paging_iter():
+        meta = p.get("metadata") or {}
+        if meta.get("side") != side:
+            continue
+        if meta.get("type") in exclude_types:
+            continue
+        svc = _service_from_product(p)
+        if svc:
+            out.append(svc)
+    # Plans before one-time add-ons; within each group, cheapest first.
+    out.sort(key=lambda s: (s["one_time"], s["amount"] or 0))
+    _services_cache[cache_key] = out
+    return out
+
+
+def list_creator_services() -> list[dict]:
+    """Bookable creator services (metadata.side == 'creator')."""
+    return _list_services("creator")
+
+
+def list_restaurant_services() -> list[dict]:
+    """Bookable restaurant/locale services (metadata.side == 'restaurant'),
+    excluding the internal campaign-floor fee — only the à-la-carte add-ons
+    (Visibility Boost, Nutzungsrechte)."""
+    return _list_services("restaurant", exclude_types=("campaign_floor",))
+
+
+def create_checkout_session(customer_id: str, price_id: str, mode: str,
+                            success_url: str, cancel_url: str,
+                            metadata: dict) -> dict:
+    """Create a Stripe Checkout Session for one service. `mode` is
+    'subscription' for a recurring plan or 'payment' for a one-time add-on.
+    Returns {"id", "url"} — the frontend redirects the browser to `url`."""
+    _client()
+    session = stripe.checkout.Session.create(
+        mode=mode,
+        customer=customer_id,
+        line_items=[{"price": price_id, "quantity": 1}],
+        success_url=success_url,
+        cancel_url=cancel_url,
+        metadata=metadata,
+        client_reference_id=str(metadata.get("creator_id", "")),
+    )
+    return {"id": session.id, "url": session.url}
+
+
+def retrieve_checkout_session(session_id: str) -> dict | None:
+    """Read back a completed Checkout Session to record the booking on the
+    success redirect (so it works without a webhook). None if unknown/unpaid."""
+    _client()
+    try:
+        s = stripe.checkout.Session.retrieve(session_id, expand=["line_items"])
+    except stripe.error.InvalidRequestError:
+        return None
+    items = (s.get("line_items") or {}).get("data") or []
+    price = items[0]["price"] if items else None
+    return {
+        "id": s["id"],
+        "status": s.get("status"),                    # 'complete' when done
+        "payment_status": s.get("payment_status"),    # 'paid' | 'no_payment_required'
+        "mode": s.get("mode"),
+        "customer": s.get("customer"),
+        "subscription": s.get("subscription"),
+        "payment_intent": s.get("payment_intent"),
+        "amount_total": s.get("amount_total"),
+        "currency": s.get("currency"),
+        "metadata": dict(s.get("metadata") or {}),
+        "price_id": (price or {}).get("id"),
+        "product_id": (price or {}).get("product"),
+    }
+
+
 # ---- Usage billing (metered views) ---------------------------------------
 
 def usage_enabled() -> bool:

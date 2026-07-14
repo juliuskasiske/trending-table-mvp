@@ -1,0 +1,57 @@
+/* ---- bookable services (shared by the creator + locale/account pages) ----- */
+.svc-loading, .svc-empty { color: var(--muted); font-weight: 600; padding: 10px 0; }
+.svc-section { margin: 0 0 32px; }
+/* A light divider separating the sections. */
+.svc-section + .svc-section {
+  border-top: 1px solid rgba(23, 23, 23, 0.14);
+  padding-top: 28px;
+}
+/* Section headings in the body font (Hanken Grotesk), bold — not the Syne
+   display font used elsewhere. */
+.svc-section-title {
+  font: 800 24px/1.2 var(--font); color: var(--ink); margin: 0;
+}
+.svc-section-desc {
+  color: var(--muted); font-weight: 600; font-size: 13.5px;
+  margin: 4px 0 14px; max-width: 60ch;
+}
+.svc-notice {
+  border: 2px solid var(--line); background: var(--panel);
+  padding: 12px 14px; font-weight: 600; color: var(--muted); margin-bottom: 20px;
+}
+.svc-grid {
+  display: grid; gap: 18px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+/* Card: name → price (large) → features → action, stacked. Pink drop shadow. */
+.svc-card {
+  display: flex; flex-direction: column; gap: 12px;
+  border: 2px solid var(--ink); background: var(--panel);
+  box-shadow: 5px 5px 0 var(--accent); padding: 20px;
+}
+.svc-card.current { border-color: var(--accent); }
+.svc-card.recommended { border-color: var(--accent); }
+/* "Empfohlen" banner — a filled pink label at the top of the card. */
+.svc-rec {
+  align-self: flex-start;
+  background: var(--accent); color: var(--on-accent);
+  font: 800 11px/1 var(--font); text-transform: uppercase; letter-spacing: 0.05em;
+  padding: 6px 10px;
+}
+.svc-card-name { font: 800 18px/1.2 var(--font-display); color: var(--ink); margin: 0; }
+/* Price in the body font (Hanken Grotesk); larger than the feature text below. */
+.svc-price { font: 800 18px/1.1 var(--font); color: var(--ink); }
+.svc-feats { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.svc-feats li { position: relative; padding-left: 20px; font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.svc-feats li::before { content: "✓"; position: absolute; left: 0; color: var(--accent); font-weight: 800; }
+/* Action pinned to the card bottom; pink shadow (overrides .btn-ink's blue). */
+.svc-card .svc-book, .svc-card .svc-current-badge { margin-top: auto; align-self: flex-start; }
+.svc-card .svc-book { box-shadow: 4px 4px 0 var(--accent); }
+.svc-card .svc-book:hover { box-shadow: 6px 6px 0 var(--accent); }
+.svc-card .svc-book:active { box-shadow: 2px 2px 0 var(--accent); }
+.svc-card .svc-book:disabled { box-shadow: none; }
+.svc-current-badge {
+  border: 2px solid var(--accent); color: var(--accent);
+  font: 800 12px/1 var(--font); padding: 9px 13px;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}

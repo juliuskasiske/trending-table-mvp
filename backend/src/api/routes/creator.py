@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from .. import deps
 from ... import audit, config, crypto
+from ...billing import stripe_client
 from ...db.connection import get_control_connection
 from ...integrations import instagram
 
@@ -61,6 +62,14 @@ class PostIn(BaseModel):
     campaign_id: int
     url: str
     caption: str | None = None
+
+
+class ServiceCheckoutIn(BaseModel):
+    price_id: str
+
+
+class ServiceConfirmIn(BaseModel):
+    session_id: str
 
 
 def _clean_handle(h: str | None) -> str | None:
@@ -398,3 +407,112 @@ def my_posts(principal: dict = Depends(deps.require_creator)) -> dict:
             (principal["id"],),
         )
         return {"posts": cur.fetchall()}
+
+
+# ---- Services (bookable Stripe products + the creator's bookings) ----------
+
+def _ensure_creator_customer(conn, principal: dict) -> str:
+    """The creator's Stripe customer (they pay us through it). Created lazily on
+    the first checkout. Distinct from stripe_account_id (Connect payouts)."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT stripe_customer_id, display_name FROM creators WHERE id = %s",
+                    (principal["id"],))
+        customer_id, name = cur.fetchone()
+    if not customer_id:
+        customer_id = stripe_client.create_customer(principal["email"], name or principal["email"])
+        with conn.cursor() as cur:
+            cur.execute("UPDATE creators SET stripe_customer_id = %s WHERE id = %s",
+                        (customer_id, principal["id"]))
+        conn.commit()
+    return customer_id
+
+
+def _record_booking(conn, creator_id: int, session: dict) -> dict | None:
+    """Idempotently record a booking from a completed Checkout Session. Returns
+    the booking row, or None if the session isn't paid/complete."""
+    if session.get("status") != "complete" or \
+            session.get("payment_status") not in ("paid", "no_payment_required"):
+        return None
+    svc = next((s for s in stripe_client.list_creator_services()
+                if s["price_id"] == session.get("price_id")), None)
+    name = (svc or {}).get("name") or session["metadata"].get("service_name") or "Service"
+    amount = session.get("amount_total")
+    if amount is None:
+        amount = (svc or {}).get("amount")
+    interval = (svc or {}).get("interval")
+    product_id = session.get("product_id") or session["metadata"].get("product_id") or ""
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            "INSERT INTO creator_service_bookings (creator_id, product_id, price_id, name,"
+            "   amount_cents, currency, interval, status, stripe_checkout_session_id,"
+            "   stripe_subscription_id, stripe_payment_intent_id)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, 'active', %s, %s, %s)"
+            " ON CONFLICT (stripe_checkout_session_id) DO NOTHING"
+            " RETURNING id, product_id, price_id, name, amount_cents, currency,"
+            "   interval, status, booked_at",
+            (creator_id, product_id, session.get("price_id"), name, amount,
+             session.get("currency") or "eur", interval, session["id"],
+             session.get("subscription"), session.get("payment_intent")),
+        )
+        row = cur.fetchone()
+        conn.commit()
+    return row
+
+
+@router.get("/services")
+def list_services(principal: dict = Depends(deps.require_creator)) -> dict:
+    """Bookable creator services (live from Stripe) + this creator's bookings."""
+    catalog = stripe_client.list_creator_services()
+    with get_control_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            "SELECT id, product_id, price_id, name, amount_cents, currency, interval,"
+            "   status, booked_at FROM creator_service_bookings"
+            " WHERE creator_id = %s AND status = 'active' ORDER BY booked_at DESC",
+            (principal["id"],),
+        )
+        booked = cur.fetchall()
+    return {"stripeEnabled": stripe_client.enabled(), "catalog": catalog, "booked": booked}
+
+
+@router.post("/services/checkout")
+def start_service_checkout(body: ServiceCheckoutIn,
+                           principal: dict = Depends(deps.require_verified_creator)) -> dict:
+    """Create a Stripe Checkout Session for one service and return its URL."""
+    if not stripe_client.enabled():
+        raise HTTPException(status_code=400, detail="Payments are not enabled.")
+    svc = next((s for s in stripe_client.list_creator_services()
+                if s["price_id"] == body.price_id), None)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Unknown service.")
+    with get_control_connection() as conn:
+        customer_id = _ensure_creator_customer(conn, principal)
+    mode = "subscription" if svc["recurring"] else "payment"
+    front = config.APP_BASE_URL.rstrip("/")
+    session = stripe_client.create_checkout_session(
+        customer_id, svc["price_id"], mode,
+        success_url=f"{front}/creator?service=success&session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{front}/creator?service=cancelled",
+        metadata={
+            "creator_id": str(principal["id"]),
+            "price_id": svc["price_id"],
+            "product_id": svc["product_id"],
+            "service_name": svc["name"],
+            "interval": svc["interval"] or "",
+        },
+    )
+    return {"url": session["url"]}
+
+
+@router.post("/services/confirm")
+def confirm_service(body: ServiceConfirmIn,
+                    principal: dict = Depends(deps.require_creator)) -> dict:
+    """Record the booking after Checkout returns to the success URL (so it works
+    without a webhook). Verifies the session belongs to this creator."""
+    session = stripe_client.retrieve_checkout_session(body.session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Unknown checkout session.")
+    if session["metadata"].get("creator_id") != str(principal["id"]):
+        raise HTTPException(status_code=403, detail="This checkout session isn't yours.")
+    with get_control_connection() as conn:
+        row = _record_booking(conn, principal["id"], session)
+    return {"booked": row is not None, "booking": row}

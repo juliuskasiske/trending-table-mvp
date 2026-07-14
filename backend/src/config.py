@@ -73,8 +73,8 @@ INSTAGRAM_REDIRECT_URI = os.environ.get("INSTAGRAM_REDIRECT_URI", "")
 from decimal import Decimal as _Decimal
 
 VIEW_ESTIMATE_RATE_EUR = _Decimal(os.environ.get("VIEW_ESTIMATE_RATE_EUR", "0.03"))
-# The one-time fee (in cents) to launch a campaign. €9.99.
-CAMPAIGN_FEE_CENTS = int(os.environ.get("CAMPAIGN_FEE_CENTS", "999"))
+# The one-time fee (in cents) to launch a campaign. €19.99.
+CAMPAIGN_FEE_CENTS = int(os.environ.get("CAMPAIGN_FEE_CENTS", "1999"))
 # Minimum campaign budget (€) and required lead time (days) for the post-by date.
 MIN_CAMPAIGN_BUDGET_EUR = int(os.environ.get("MIN_CAMPAIGN_BUDGET_EUR", "250"))
 CAMPAIGN_LEAD_DAYS = int(os.environ.get("CAMPAIGN_LEAD_DAYS", "21"))

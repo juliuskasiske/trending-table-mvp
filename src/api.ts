@@ -626,6 +626,64 @@ export const submitCreatorPost = (campaign_id: number, url: string) =>
     method: "POST", json: { campaign_id, url },
   });
 
+/* ---- creator services (bookable Stripe products) ------------------------- */
+
+export interface CreatorService {
+  product_id: string;
+  price_id: string;
+  name: string;
+  description: string | null;
+  amount: number | null;          // cents (0 for the free plan)
+  currency: string;
+  recurring: boolean;
+  interval: string | null;        // "month" | null
+  one_time: boolean;
+  metadata: Record<string, string>;
+}
+
+export interface CreatorBooking {
+  id: number;
+  product_id: string;
+  price_id: string;
+  name: string;
+  amount_cents: number | null;
+  currency: string;
+  interval: string | null;
+  status: string;                 // active | cancelled
+  booked_at: string;
+}
+
+export const getCreatorServices = () =>
+  api<{ stripeEnabled: boolean; catalog: CreatorService[]; booked: CreatorBooking[] }>(
+    "/api/creator/services");
+
+export const startServiceCheckout = (price_id: string) =>
+  api<{ url: string }>("/api/creator/services/checkout", {
+    method: "POST", json: { price_id },
+  });
+
+export const confirmServiceBooking = (session_id: string) =>
+  api<{ booked: boolean; booking: CreatorBooking | null }>("/api/creator/services/confirm", {
+    method: "POST", json: { session_id },
+  });
+
+/* ---- account/locale services (bookable Stripe products) ------------------ */
+// Same shapes as the creator side (CreatorService / CreatorBooking).
+
+export const getAccountServices = () =>
+  api<{ stripeEnabled: boolean; catalog: CreatorService[]; booked: CreatorBooking[] }>(
+    "/api/account/services");
+
+export const startAccountServiceCheckout = (price_id: string) =>
+  api<{ url: string }>("/api/account/services/checkout", {
+    method: "POST", json: { price_id },
+  });
+
+export const confirmAccountServiceBooking = (session_id: string) =>
+  api<{ booked: boolean; booking: CreatorBooking | null }>("/api/account/services/confirm", {
+    method: "POST", json: { session_id },
+  });
+
 /* ---- admin (control tower) ----------------------------------------------- */
 
 export interface FunnelStage {

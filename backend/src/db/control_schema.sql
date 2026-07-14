@@ -69,7 +69,7 @@ ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS stripe_subscription_status TEXT
 -- can show it without querying each tenant DB.
 ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS logo_url TEXT;
 ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS stripe_usage_subscription_id TEXT;
--- Redesign: the saved card used for the €9.99 launch fee + off-session
+-- Redesign: the saved card used for the €19.99 launch fee + off-session
 -- per-approval charges. The old subscription/spending-limit columns above are
 -- deprecated (kept for back-compat; no longer written).
 ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS stripe_payment_method_id TEXT;
@@ -439,7 +439,7 @@ CREATE TABLE IF NOT EXISTS usage_events (
 );
 CREATE INDEX IF NOT EXISTS usage_events_restaurant_idx ON usage_events (restaurant_id, occurred_at DESC);
 CREATE INDEX IF NOT EXISTS usage_events_post_idx       ON usage_events (post_id);
--- Redesign: unified ledger now records the €9.99 campaign fee + per-approval
+-- Redesign: unified ledger now records the €19.99 campaign fee + per-approval
 -- creator charges (view rows are deprecated). Widen the kind CHECK.
 ALTER TABLE usage_events DROP CONSTRAINT IF EXISTS usage_events_kind_check;
 ALTER TABLE usage_events ADD CONSTRAINT usage_events_kind_check
@@ -500,3 +500,52 @@ SELECT r.id AS restaurant_id,
 FROM restaurants r
 LEFT JOIN usage_events u ON u.restaurant_id = r.id
 GROUP BY r.id;
+
+-- ---------------------------------------------------------------------------
+-- Creator services: the à-la-carte / plan products a creator books via Stripe
+-- Checkout (catalog lives in Stripe, discovered by product metadata.side).
+-- The creator's own Stripe customer (they pay us; distinct from the Connect
+-- stripe_account_id they get paid out through).
+ALTER TABLE creators ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT;
+
+-- One row per successful booking of a creator service. A booking is recorded
+-- when Checkout completes (confirmed on the success redirect and/or webhook).
+CREATE TABLE IF NOT EXISTS creator_service_bookings (
+    id                          BIGSERIAL PRIMARY KEY,
+    creator_id                  BIGINT NOT NULL REFERENCES creators(id) ON DELETE CASCADE,
+    product_id                  TEXT NOT NULL,
+    price_id                    TEXT NOT NULL,
+    name                        TEXT NOT NULL,
+    amount_cents                INTEGER,
+    currency                    TEXT NOT NULL DEFAULT 'eur',
+    interval                    TEXT,              -- 'month' for a plan, NULL for a one-time add-on
+    status                      TEXT NOT NULL DEFAULT 'active'
+                                CHECK (status IN ('active', 'cancelled')),
+    stripe_checkout_session_id  TEXT UNIQUE,       -- idempotency: one booking per session
+    stripe_subscription_id      TEXT,
+    stripe_payment_intent_id    TEXT,
+    booked_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS creator_service_bookings_creator_idx
+    ON creator_service_bookings (creator_id);
+
+-- Restaurant/locale-side service bookings (Visibility Boost, Nutzungsrechte),
+-- booked by an account via Stripe Checkout. Mirrors creator_service_bookings.
+CREATE TABLE IF NOT EXISTS account_service_bookings (
+    id                          BIGSERIAL PRIMARY KEY,
+    account_id                  BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    product_id                  TEXT NOT NULL,
+    price_id                    TEXT NOT NULL,
+    name                        TEXT NOT NULL,
+    amount_cents                INTEGER,
+    currency                    TEXT NOT NULL DEFAULT 'eur',
+    interval                    TEXT,              -- 'month' for a plan, NULL for a one-time add-on
+    status                      TEXT NOT NULL DEFAULT 'active'
+                                CHECK (status IN ('active', 'cancelled')),
+    stripe_checkout_session_id  TEXT UNIQUE,       -- idempotency: one booking per session
+    stripe_subscription_id      TEXT,
+    stripe_payment_intent_id    TEXT,
+    booked_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS account_service_bookings_account_idx
+    ON account_service_bookings (account_id);
