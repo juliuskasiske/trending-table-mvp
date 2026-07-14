@@ -42,12 +42,13 @@ export interface ServiceCardOpts {
   booked?: boolean;        // already booked (one-time add-on) → disabled "Booked"
   recommended?: boolean;   // show the "Empfohlen" banner
   displayName?: string;    // override the Stripe product name for display
+  features?: string[];     // override the metadata-derived feature bullets
 }
 
 /** One service card — identical markup for both sides (styled via .svc-*). */
 export function serviceCard(s: CreatorService, opts: ServiceCardOpts): string {
   const name = opts.displayName ?? s.name;
-  const feats = svcFeatures(s.metadata);
+  const feats = opts.features ?? svcFeatures(s.metadata);
   let action: string;
   if (opts.current) {
     action = `<span class="svc-current-badge">${esc(t("creator.services.currentBadge"))}</span>`;

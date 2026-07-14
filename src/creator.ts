@@ -602,6 +602,11 @@ const RECOMMENDED_PRODUCTS = new Set<string>([
 const SERVICE_NAME_OVERRIDES: Record<string, string> = {
   "Creator Visibility Boost": "Visibility Boost",
 };
+// Per-product feature bullets (i18n keys), overriding the generic metadata list.
+const CREATOR_FEATURE_KEYS: Record<string, string[]> = {
+  "prod_Us58rnu7RGe244": ["creator.services.freeCoops"],     // Creator Free
+  "prod_Us58cca2lqCH0i": ["creator.services.advancedCoops"], // Creator Advanced
+};
 
 function renderServices(m: HTMLElement): void {
   m.innerHTML = `
@@ -634,14 +639,17 @@ function renderServicesBody(
   const upgrades = plans.filter((p) =>
     p.price_id !== currentPlan?.price_id && (p.amount ?? 0) > currentAmount);
 
-  const card = (s: CreatorService, current: boolean): string =>
-    serviceCard(s, {
+  const card = (s: CreatorService, current: boolean): string => {
+    const featKeys = CREATOR_FEATURE_KEYS[s.product_id];
+    return serviceCard(s, {
       stripeEnabled,
       current,
       booked: bookedPrices.has(s.price_id),
       recommended: RECOMMENDED_PRODUCTS.has(s.product_id),
       displayName: SERVICE_NAME_OVERRIDES[s.name],
+      features: featKeys ? featKeys.map((k) => t(k)) : undefined,
     });
+  };
 
   const grid = (items: CreatorService[], current = false): string =>
     `<div class="svc-grid">${items.map((s) => card(s, current)).join("")}</div>`;
