@@ -862,7 +862,7 @@ async function renderCampaignDetail(m: HTMLElement, rid: number, cid: number): P
   const contacted = data.assignments.length;
   const posted = data.assignments.filter((a) => ["posted", "approved", "paid"].includes(a.status)).length;
   const launchBtn = c.status === "draft"
-    ? `<button type="button" class="btn-review" id="camp-launch">${esc(t("campaigns.launch", { fee: "€9,99" }))}</button>`
+    ? `<button type="button" class="btn-review" id="camp-launch">${esc(t("campaigns.launch", { fee: "€19,99" }))}</button>`
     : "";
   // Ending an active campaign pulls the unspent budget remainder to the platform.
   const endBtn = c.status === "active"
@@ -921,13 +921,13 @@ async function renderCampaignDetail(m: HTMLElement, rid: number, cid: number): P
   byId("camp-launch")?.addEventListener("click", () => {
     confirmBox(
       t("campaigns.launchConfirmTitle"),
-      t("campaigns.launchConfirmMsg", { fee: "9,99 €" }),
+      t("campaigns.launchConfirmMsg", { fee: "19,99 €" }),
       null,
       async () => {
         await launchCampaign(rid, cid);
         await renderCampaignDetail(m, rid, cid);
       },
-      { variant: "primary", confirmLabel: t("campaigns.launchConfirmCta", { fee: "9,99 €" }) },
+      { variant: "primary", confirmLabel: t("campaigns.launchConfirmCta", { fee: "19,99 €" }) },
     );
   });
   byId("camp-end")?.addEventListener("click", () => {
